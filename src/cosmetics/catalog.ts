@@ -6,12 +6,14 @@ export const COSMETICS_VERSION = 2;
 export const itemKey = (it: Pick<Item, 'slot' | 'id'>) => `${it.slot}:${it.id}`;
 
 /**
- * Rewards whose achievement was retired and that moved to a successor (Dynamo Defense levels, Nov 2026). Owning
+ * Rewards whose achievement was retired and that moved to a successor (Dynamo Defense levels and continuous combat, Nov 2026). Owning
  * them follows the new achievement; a rider who only had the retired one loses the item with it.
  */
 const RESOURCED: Record<string, string> = {
   'pet:robodog': 'td_levels5', 'jersey:hazard': 'td_levels15', 'title:w_unbreakable': 'td_levels30',
   'bottoms:w_spotless_overalls': 'td_three_stars', 'trail:embers': 'td_hard', 'pet:turret': 'td_double_shift',
+  // Called efforts retired (continuous combat, Nov 2026)
+  'feet:w_insulated_boots': 'td_quick_change', 'back:w_dynamo_coil_pack': 'td_top_gear', 'pet:ember': 'td_redline', 'back:w_twin_air_tanks': 'td_long_haul',
 };
 const resourced = (it: Item): Item => RESOURCED[itemKey(it)] ? { ...it, source: { achievement: RESOURCED[itemKey(it)] } } : it;
 

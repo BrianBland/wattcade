@@ -31,18 +31,18 @@ describe('endless runs', () => {
     s.finish();
   });
 
-  it('clears a boss announcement when bailing during its recovery lull or an active phase', () => {
+  it('clears a boss announcement when bailing during the quiet start or an active phase', () => {
     const profile = testProfile();
     const s = createGameSession({ game: module, profile, input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, startWave: 9, skipGarage: true } });
     s.step(1);
     expect((s.sim.snapshot() as TdSnapshot).boss).not.toBeNull();
     s.sim.receive!({ type: 'bail' }); s.step(1);
-    expect(s.sim.snapshot()).toMatchObject({ phase: 'garage', boss: null, effort: null, lull: 0, swapLeft: 0 });
+    expect(s.sim.snapshot()).toMatchObject({ phase: 'garage', boss: null, radar: null, flow: null, lull: 0, swapLeft: 0 });
     s.sim.receive!({ type: 'garageRow', row: ENDLESS_ROW }); s.step(1);
     for (let i = 0; i < 30 * 120 && (s.sim.snapshot() as TdSnapshot).phase === 'run' && !(s.sim.snapshot() as TdSnapshot).boss; i++) s.step(1);
     expect((s.sim.snapshot() as TdSnapshot).boss).not.toBeNull();
     s.sim.receive!({ type: 'bail' }); s.step(1);
-    expect(s.sim.snapshot()).toMatchObject({ phase: 'garage', boss: null, effort: null });
+    expect(s.sim.snapshot()).toMatchObject({ phase: 'garage', boss: null, radar: null });
     s.finish();
   });
 
@@ -67,11 +67,11 @@ describe('endless runs', () => {
 
   it('bails mid-wave once, preserves other game saves, and resets combat on restart', () => {
     const { s, snap, saved, profile, other } = ride();
-    s.step(30 * 170); // past the first wave's 45 s lull and its 90 s interval
+    s.step(30 * 170); // past the quiet start and into the second segment
     expect(snap().phase).toBe('run');
     const kills = saved().totals.kills;
     s.sim.receive!({ type: 'bail' }); s.sim.receive!({ type: 'bail' }); s.step(1);
-    expect(snap()).toMatchObject({ phase: 'garage', enemies: [], towers: [], shells: [], workshop: null, surge: null, spin: null, railCharges: 0 });
+    expect(snap()).toMatchObject({ phase: 'garage', enemies: [], towers: [], shells: [], workshop: null, radar: null, railCharges: 0 });
     expect(saved().totals).toMatchObject({ runsBailed: 1, runsFallen: 0 });
     expect(saved().totals.kills).toBeGreaterThanOrEqual(kills);
     expect(profile.gameData.lighthouse).toEqual(other);

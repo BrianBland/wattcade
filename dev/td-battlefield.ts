@@ -37,7 +37,7 @@ function snapshot(): TdSnapshot {
       element: def.color === 'blue' || def.color === 'red' || def.color === 'purple' ? def.color : 'purple', gold: kind === 'boss', hp: def.hp, maxHp: def.hp, hurt: 0, charging: false, shiftIn: 5, next: null, progress, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0, shield: 0, hitT: -1, hitCls: 'neutral', hitDmg: 0, ...(i % 7 === 0 && route < 0 ? { dazed: 0.8 } : {}) };
   });
   const weapon = (q.get('weapon') ?? 'gatling') as Weapon;
-  return { ...s, wave: 15, lull: 0, waveElapsed: 35, waveMaxS: 60, enemies, phase: 'run', over: false, banner: null, boss: null, effort: null, flaming: weapon === 'flame', flamePower: 1.1, flameRange: 70, railCharges: 2, railProgress: 0.5, weapon, aimAngle: -0.25,
+  return { ...s, wave: 15, lull: 0, waveElapsed: 35, waveMaxS: 60, enemies, phase: 'run', over: false, banner: null, boss: null, flaming: weapon === 'flame', flamePower: 1.1, flameRange: 70, railCharges: 2, railProgress: 0.5, weapon, aimAngle: -0.25,
     baseHp: q.has('damage') ? 20 : s.baseMaxHp, grid: 1.1, brood: { ...s.brood, weapon, color: WEAPON_ELEMENT[weapon], countdownS: 0 },
     towers: s.towers.map((tw,i)=>({...tw, kind: (['tesla','flamer','lens','mortar'] as const)[i%4], level: 3+i%3, firedAt: s.t - ((s.t+i*0.17)%1.6) })), fx: [] };
 }

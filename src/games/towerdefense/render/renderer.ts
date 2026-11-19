@@ -17,7 +17,7 @@ import { decks, onDeck, underDeck } from './ground/deck';
 import { Machinery } from './machinery';
 import { along, cableRoutes, culvertPlates, strokeCrossings } from './cables';
 import { DynamoSound } from './dynamoSound';
-import { PAYOFF_STYLE, cableHeat, shimmerBands, stepBlend } from './overdrive';
+import { cableHeat, shimmerBands, stepBlend } from './overdrive';
 import { HitFeedback, type Callout, type HitEvent } from './hitFeedback';
 import { ALARM_EVERY_S, FALL_S, HEAD_DELAY_S, damageState, dropDone, pipFlash } from './structureFx';
 import { prefetchLevel } from './levelPool';
@@ -480,14 +480,6 @@ export class TdRenderer implements GameRenderer {
           }
           this.ring(x, y, COL.gold, 3 * k, 40 * k, 0.8);
         }
-      } else if (f.kind === 'payoff') {
-        if (!allowHitStop) continue;
-        const st = PAYOFF_STYLE[f.effort], { x, y } = this.P(this.geo.base.x, this.geo.base.y);
-        if (f.won) {
-          this.ring(x, y, st.color, 4 * k, 110 * k, 0.9); this.ring(x, y, '#ffffff', 3 * k, 80 * k, 0.6);
-          this.flash = { color: st.color, a: Math.max(this.flash.a, 0.22) }; this.shake = Math.max(this.shake, 0.6);
-          this.aliens?.flinch(s.t); play('payoffSting');
-        } else this.particles.push({ x, y: y - 12 * k, vx: 0, vy: -6 * k, age: 0, life: 1.4, size: Math.max(11, 2.4 * k), color: 'rgba(200,205,215,0.8)', kind: 'text', text: `${st.label} missed` });
       } else if (f.kind === 'bossIntro') {
         if (!allowHitStop) continue;
         this.intro = { at: this.wall, wave: f.wave, color: f.color }; this.shake = Math.max(this.shake, 0.55); play('rumble', { vol: 1.2 }); play('roar', { vol: 0.6, pitch: 0.7 });
@@ -503,10 +495,6 @@ export class TdRenderer implements GameRenderer {
         // The impact throws up a little soot that climbs away, so it doesn't park a grey disc over the burning road.
         for (let i = 0; i < 2; i++) this.particles.push({ x: x + (Math.random() - 0.5) * 3 * k, y: y - k, vx: (Math.random() - 0.5) * 4 * k, vy: -(6 + Math.random() * 4) * k, age: 0, life: 0.9, size: 1.3 * k, color: 'soot', kind: 'smoke' });
         this.shake = Math.max(this.shake, 0.25);
-      } else if (f.kind === 'emp') {
-        const { x, y } = this.P(this.geo.base.x, this.geo.base.y);
-        this.ring(x, y, '#7df9ff', 5 * k, 140 * k, 1.1); this.ring(x, y, '#ffffff', 3 * k, 120 * k, 0.9);
-        this.flash = { color: '#7df9ff', a: 0.5 }; this.shake = Math.max(this.shake, 1);
       } else if (f.kind === 'baseHit') {
         this.shake = Math.max(this.shake, Math.min(1, 0.2 + f.dmg / 15));
         if (f.dmg >= 5) this.flash = { color: '#ff3020', a: Math.min(0.45, 0.12 + f.dmg / 60) };

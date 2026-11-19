@@ -12,15 +12,14 @@ import {
   type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossState, type BossTricks } from './boss';
-import { effortMet, scheduleCall, type EffortView } from './efforts';
 import { canObserve, levelFor as gearboxLevelFor, observeK, priorK, type FireballLevelTuning } from './fireballLevel';
 import { TIER_FTP_DEFAULT, beamHits, clampTier, effortFactor, fireballPeriod as fireballPeriodAt, fireballShape, gatlingShape, railShape, riderTier, roman, type Tier } from './tiers';
 import { specKey } from './baked';
 import { levelFor } from './levelCache';
 import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, quickGrounds, starTotal } from './unlocks';
 import { chooseTarget, stepTarget, type Lock, type TargetCand } from './targeting';
-import { clearHealFor, nextBrood, planWave, setOf, waveRole, type Spawn, type WavePlan, type WaveRole } from './waves';
-import type { Banner, BossView, BroodInfo, BroodView, BurnView, EnemyView, Fx, HitClass, GarageRow, GarageView, LevelTile, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
+import { nextBrood, planWave, setOf, troughHealFor, waveRole, type Spawn, type WavePlan, type WaveRole } from './waves';
+import type { Banner, BossView, FlowStage, RadarView, BroodInfo, BroodView, BurnView, EnemyView, Fx, HitClass, GarageRow, GarageView, LevelTile, ShellView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
 export * from './defs';
 export type { TdSnapshot } from './types';
@@ -184,10 +183,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const hpScale2 = T.num('hpScaleQuad', 0.02, 0, 0.2, 0.001, 'extra HP per wave^2');
   const countScale = T.num('waveCountScale', 1, 0.3, 3, 0.1, 'heavy enemies per wave multiplier');
   const miniInterval = T.num('miniIntervalS', 1.6, 0.3, 6, 0.1);
-  const waveMin = T.num('waveMinS', 90, 5, 300, 1, 'a work wave lasts at least this long (the interval)');
-  const waveMax = T.num('waveMaxS', 150, 15, 400, 1, 'a work wave ends by this time even if aliens remain');
-  const easyWaveS = T.num('easyWaveS', 120, 10, 400, 5, 'the easy recovery wave that closes each set lasts this long');
-  const spawnWindow = T.num('heavySpawnWindowS', 75, 3, 240, 1);
+  // The flow: a level is one continuous stream in segments (build, peak, boss peak, trough); nothing waits for the field to clear.
+  const segmentS = T.num('segmentS', 120, 10, 400, 5, 'a build or peak segment of the flow lasts this long, then the next one rolls straight in');
+  const troughS = T.num('troughS', 100, 10, 400, 5, 'a trough (easy recovery segment, and the warm-up) lasts this long');
+  const bossPeakMaxS = T.num('bossPeakMaxS', 240, 30, 600, 10, 'a boss peak ends when the boss dies, or by this time (the boss escapes)');
+  const spawnTail = T.num('spawnTailS', 10, 0, 60, 1, 'the last seconds of a segment send no new heavies (its spawns spread over the rest)');
+  const buildLow = T.num('buildPressure', 0.75, 0.3, 1.5, 0.05, 'the first build segment of a set sends this share of a peak; the set ramps up to the peak');
   // levels (docs/towerdefense/LEVELS-DESIGN.md §1–2)
   const intensityEasy = T.num('intensityEasy', 0.8, 0.4, 1, 0.05, 'Easy intensity: work-wave trainer targets (grade, level, ERG) x this');
   const intensityHard = T.num('intensityHard', 1.15, 1, 1.6, 0.05, 'Hard intensity: work-wave trainer targets x this');
@@ -197,11 +198,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // Stars count every hit the base took over the level: clear heals keep the base standing, but don't erase leaks.
   const starTwo = T.num('starTwoHp', 0.5, 0, 1, 0.05, 'two stars: at most this share of base HP lost over the whole level (heals not counted)');
   const starThree = T.num('starThreeHp', 0.85, 0, 1, 0.05, 'three stars: at most 1 - this share of base HP lost over the whole level');
+  const endlessRamp = T.num('endlessRamp', 0.7, 0.2, 2, 0.05, 'Endless: difficulty waves per segment (segments are shorter than the old waves, so the ramp per minute stays put)');
   const levelPeak = T.num('levelPeakWave', 7, 2, 30, 1, 'a level\'s last wave fights like this endless wave (+ the level\'s depth)');
-  const lullS = T.num('lullS', 45, 0, 120, 1, 'recovery lull before each work or boss wave: brood card, countdown, no new spawns');
-  const firstLullS = T.num('firstLullS', 15, 0, 120, 1, 'lull before the first wave of a level or run: time to pick a first tower, then straight in');
-  const easyLullS = T.num('easyLullS', 25, 0, 120, 1, 'lull before an easy recovery wave (the easy wave is itself the recovery)');
-  const rampS = T.num('rampS', 8, 0, 30, 1, 'last seconds of the lull in which the next weapon\'s trainer setting ramps in');
+  const firstLullS = T.num('firstLullS', 15, 0, 120, 1, 'quiet start of a level or run: time to pick a first tower, then the flow starts and never stops');
+  const radarS = T.num('radarS', 90, 20, 240, 5, 'how far ahead the enemy radar looks');
   const broodShare = T.num('broodShare', 0.8, 0.34, 1, 0.05, 'share of a wave\'s heavies in its brood colour (the rest are for the towers)');
   const broodMaxRun = T.num('broodMaxRun', 2, 1, 5, 1, 'no brood colour more than N waves in a row');
   const swarmPack = T.num('swarmPackSize', 5, 1, 12, 1, 'blue slots are swarm packs of N darts or drones');
@@ -224,11 +224,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const bossShieldOther = T.num('bossShieldOtherMult', 0.5, 0.1, 2, 0.05, 'Bulwark Tyrant: laser and tower damage to plates');
   const bossTricks = (): BossTricks => ({ swarmEveryS: bossSwarmEvery(), swarmPack: bossSwarmPack(), chargeEveryS: bossChargeEvery(),
     chargeWarnS: bossChargeWarn(), chargeS: bossChargeS(), shieldShare: bossShieldShare() });
-  const clearHeal = T.num('earlyClearHeal', 14, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
-  const speedHeal = T.num('speedClearHeal', 12, 0, 100, 1, 'extra heal for a fast clear: all of it at waveMinS, none at waveMaxS');
+  const troughHeal = T.num('troughHeal', 30, 0, 100, 1, 'base HP restored at the end of a clean trough (leaks during the trough scale it down)');
   const stallMult = T.num('stallDamageMult', 2.2, 1, 5, 0.1, 'leaks hit this much harder while the dynamo is stalled (shields down)');
   const stallGrace = T.num('stallGraceS', 3, 0, 15, 0.5, 'seconds under 15 rpm before the dynamo stalls (brief coasting is free)');
-  const leakHealZero = T.num('leakHealZero', 15, 0, 200, 1, 'base damage taken in a wave that cancels its clear heal (scaled down linearly; 0 = any leak cancels it)');
+  const leakHealZero = T.num('leakHealZero', 15, 0, 200, 1, 'base damage taken in a trough that cancels its heal (scaled down linearly; 0 = any leak cancels it)');
   // dynamo: towers, overdrive, surges, economy
   const towerNominal = T.num('towerNominalFtp', 0.65, 0.2, 1.5, 0.05, 'ftpFraction at which towers fire at their rated speed');
   const towerMaxBoost = T.num('towerMaxBoost', 1.6, 1, 3, 0.1, 'cap on tower speed from extra watts');
@@ -241,18 +240,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const teslaChainPerLv = T.num('teslaChainPerLevel', 0.5, 0, 2, 0.25, 'extra Tesla chain targets per level (floored)');
   const towerCostT = T.num('towerCostMult', 1, 0.2, 5, 0.05, 'all tower build/upgrade costs x');
   const overdriveMult = T.num('overdriveMult', 1.5, 1, 3, 0.1, 'damage / tower speed while sprinting');
-  const callGapMin = T.num('callGapMinWaves', 1, 1, 8, 1, 'waves between called efforts (a wave is a ~2 min interval)');
-  const callGapMax = T.num('callGapMaxWaves', 1, 1, 10, 1);
-  const callCountdown = T.num('callCountdownS', 5, 1, 10, 0.5);
-  const callNeed = T.num('callNeedS', 8, 3, 30, 1);
-  const callWindow = T.num('callWindowS', 18, 8, 60, 1);
-  const callSpinRatio = T.num('callSpinCadenceRatio', 0.97, 0.85, 1.2, 0.01, 'spin floor relative to recent cadence');
-  const callGrindRatio = T.num('callGrindCadenceRatio', 0.9, 0.6, 1, 0.01, 'grind ceiling relative to recent cadence');
-  const callPowerRatio = T.num('callPowerRatio', 0.95, 0.8, 1.2, 0.01);
-  const callHoldBand = T.num('callHoldBand', 0.08, 0.03, 0.2, 0.01);
-  const overclockS = T.num('overclockS', 30, 5, 120, 5, 'Gatling Overclock (double fire rate) after a Spin-up');
-  const payoffHitStop = T.num('payoffHitStopS', 0.08, 0, 0.1, 0.01, 'freeze when a called effort is won');
-  const empDmg = T.num('empDamage', 90, 0, 1000, 5, 'EMP damage to every enemy when a surge is won');
   const startScrapT = T.num('startScrap', 60, 0, 1000, 10);
   const scrapScale = T.num('scrapMult', 1, 0.2, 5, 0.1);
   // A level's waves climb faster than Endless (its last wave fights like Endless wave levelPeakWave + depth), so
@@ -282,7 +269,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
    * The difficulty wave (enemy mix and HP) of a level's wave `w`: the level ramps from wave 1 to its peak
    * (levelPeakWave + depth) over its length, so a long level is longer, not deeper. Endless: the wave itself.
    */
-  const dw = (w: number) => !play ? w : Math.round(1 + (Math.min(w, play.waves.length) - 1) * (levelPeak() + depth() - 1) / Math.max(1, play.waves.length - 1));
+  const dw = (w: number) => !play ? 1 + (w - 1) * endlessRamp() : Math.round(1 + (Math.min(w, play.waves.length) - 1) * (levelPeak() + depth() - 1) / Math.max(1, play.waves.length - 1));
   const targetK = () => intensity === 'easy' ? intensityEasy() : intensity === 'hard' ? intensityHard() : 1;
   const hpK = () => intensity === 'easy' ? intensityEasyHp() : intensity === 'hard' ? intensityHardHp() : 1;
   let started = false;
@@ -308,6 +295,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   /** Base HP lost over the current run, heals not counted (level stars). */
   let levelDmg = 0;
   let wave = 1, waveElapsed = 0, wavesSurvived = 0, lull = 0, lullLen = 0;
+  /** The last segment's time is up and the level waits for its field to clear (waveElapsed when that began; -1 = not yet). */
+  let segOverAt = -1;
   let plan: WavePlan, nextPlan: WavePlan;
   let schedule: Spawn[] = [];
   let miniTimer = 2;
@@ -322,15 +311,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   /** The pad the D-pad has selected outside the build menu (A opens it there); BASE_PAD = the base. */
   let padCursor = -1;
   let flaming = false, flamePower = 0, grid = 0, overdrive = false;
-  let surge: SurgeView | null = null;
-  let spin: SpinView | null = null, overclock = 0;
-  let effort: EffortView | null = null;
-  let effortEndedAt = 0, recentCadence = 90, recentFtp = 0.65;
-  const callSchedule = { nextWave: 2, lastWave: 0 };
-  const calls = { started: 0, won: 0, failed: 0 };
+  /** Seconds at tier IV+ (Redline), weapon mounts (Quick Change), and whether the live boss has seen anything under tier V. */
+  let highTierS = 0, weaponSwitches = 0, bossBelowV = false;
   let scrap = 0;
-  let bestRunWaves = 0, wavesCleared = 0, runSurges = 0, bestRunSurges = 0;
-  let runCallsWon = 0, bestRunCalls = 0;
+  let bestRunWaves = 0, wavesCleared = 0;
   let runSpotless = 0, bestRunSpotless = 0, spotlessWaves = 0;
   let bestChain = 0, strongKills = 0, exposedSprinted = false, bestMaxedTowers = 0;
   const exposedBossIds = new Set<number>();
@@ -343,10 +327,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let lastBoss: Element | null = null;
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
-  const dealt = { player: 0, tower: 0, emp: 0 };
+  const dealt = { player: 0, tower: 0 };
   const weaponSeconds: Record<Weapon, number> = { gatling: 0, flame: 0, rail: 0 };
   const dealtW: Record<Weapon, number> = { gatling: 0, flame: 0, rail: 0 };
-  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, spinsWon: 0, spinsFailed: 0, overclockS: 0, runs: 0, runsFallen: 0, runsBailed: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0, turretKills: 0, ignitionBursts: 0, levelsCleared: 0 };
+  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, runs: 0, runsFallen: 0, runsBailed: 0, bosses: 0, overdriveS: 0, heavyKills: 0, towerKills: 0, turretKills: 0, ignitionBursts: 0, levelsCleared: 0 };
 
   // ---------- helpers ----------
   function cue(name: string) { cues.push({ name, id: ++cueId }); if (cues.length > 40) cues.shift(); }
@@ -355,15 +339,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (fx.length > 160) fx.splice(0, fx.length - 160);
   }
   function say(text: string, sub = '', color = '#ffffff', big = false) { banner = { text, sub, color, t0: t, big }; }
-  /** The weapon's trainer setting, eased from the lull's recovery value early in the lull to full over the last `rampS`. */
-  /** 0 = the lull's recovery setting, 1 = the weapon's full setting. */
-  function rampK(): number {
-    const ramp = rampS();
-    // An easy wave and its incoming lull stay at recovery effort. The following
-    // work wave ramps toward its own setting during that work wave's lull.
-    const easy = plan?.role === 'easy';
-    return phase !== 'run' || easy ? 0 : lull <= 0 ? 1 : ramp <= 0 || lull >= ramp ? 0 : 1 - lull / ramp;
-  }
   /** A tier's rated power for this ride (Easy/Hard scale it like every trainer target). */
   const ratedFtp = (t: number) => tierFtpT[clampTier(t) - 1]() * targetK();
   const gearTuning = (): FireballLevelTuning => ({ cueRpm: gearRefRpm(), alpha: gearAlpha(), minPct: 1, maxPct: gearMaxLevel(), tauS: gearCalTau() });
@@ -408,13 +383,18 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     e.angle = angleTo(e.x, e.y); e.dist = distTo(e.x, e.y);
   }
 
+  /** An alien's HP when it spawns in segment `w` (walkers on split roads are weaker: a tower sees only one route). */
+  function hpFor(kind: Kind, w: number, route: number): number {
+    const w1 = dw(w) - 1;
+    const hs = (1 + hpScale() * w1 + hpScale2() * w1 * w1) * (kind === 'boss' ? 1 + Math.floor(dw(w) / 5) * 0.35 : 1);
+    return KINDS[kind].hp * hs * hpK() * (route < 0 && geo.lanes.length > 1 ? splitRoadHp() : 1);
+  }
   /** Walkers take the level's roads in turn (one road: always lane 0). */
   let laneTurn = 0;
   function spawn(kind: Kind, route: number, d = 0, lane = route < 0 ? laneTurn++ % geo.lanes.length : 0) {
     const k = KINDS[kind];
     const w1 = dw(wave) - 1;
-    const hs = (1 + hpScale() * w1 + hpScale2() * w1 * w1) * (kind === 'boss' ? 1 + Math.floor(dw(wave) / 5) * 0.35 : 1);
-    const hp = k.hp * hs * hpK() * (route < 0 && geo.lanes.length > 1 ? splitRoadHp() : 1);
+    const hp = hpFor(kind, wave, route);
     const e: Enemy = {
       id: nextId++, kind, route, lane, d, len: route < 0 ? geo.lanes[lane].length : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : geo.laneSpread * 2),
       phase: ctx.rng() * 12, x: 0, y: 0, angle: 0, dist: 99,
@@ -435,7 +415,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
 
   interface IgnitionChain { id: number; bursts: number }
-  function hit(e: Enemy, base: number, el: Element | null, src: 'player' | 'tower' | 'emp' = 'player', chain?: IgnitionChain) {
+  function hit(e: Enemy, base: number, el: Element | null, src: 'player' | 'tower' = 'player', chain?: IgnitionChain) {
     if (e.dead) return;
     const element = elementOf(e);
     const mult = el == null ? 1 : match[ELEMENT_WEAPON[el]][element]();
@@ -455,7 +435,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (el === 'red' && element === 'red') ignite(e, src, chain ?? { id: ++ignitionChainId, bursts: 0 });
     }
   }
-  function ignite(e: Enemy, src: 'player' | 'tower' | 'emp', chain: IgnitionChain) {
+  function ignite(e: Enemy, src: 'player' | 'tower', chain: IgnitionChain) {
     if (chain.bursts >= Math.floor(ignitionCap()) || ctx.rng() >= ignitionChance()) return;
     chain.bursts++;
     bestChain = Math.max(bestChain, chain.bursts);
@@ -468,7 +448,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
   }
 
-  function kill(e: Enemy, src: 'player' | 'tower' | 'emp', cls: HitClass = 'neutral') {
+  function kill(e: Enemy, src: 'player' | 'tower', cls: HitClass = 'neutral') {
     e.dead = true;
     const def = KINDS[e.kind];
     const key = e.kind === 'boss' ? 'gold' : elementOf(e);
@@ -477,7 +457,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     kills[key]++;
     if (src === 'tower') stats.towerKills++;
     if (src === 'player') stats.turretKills++;
-    if (src === 'emp') stats.empKills++;
     const got = gainScrap(def.scrap);
     if (def.heavy) {
       stats.heavyKills++;
@@ -489,7 +468,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       stats.bosses++; save.totals.bosses++;
       if (e.boss && !save.bossColors.includes(e.boss.color)) save.bossColors.push(e.boss.color);
       say(`${def.name} destroyed!`, `+${got} scrap`, '#ffd24a', true);
-      ctx.emit({ type: 'bossKilled', data: { wave, phases: e.boss?.phases ?? 0, color: e.boss?.color ?? 'gold', exposedSprinted: exposedBossIds.delete(e.id) } });
+      ctx.emit({ type: 'bossKilled', data: { wave, phases: e.boss?.phases ?? 0, color: e.boss?.color ?? 'gold', exposedSprinted: exposedBossIds.delete(e.id), topGear: !bossBelowV } });
       addFx({ kind: 'hitStop', life: 0.1, seconds: 0.08 });
       persist();
     } else if (def.heavy) ctx.emit({ type: 'enemyKilled', data: { element: key, wave, matchup: cls } });
@@ -499,142 +478,169 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     spawn(kind, from.route, Math.max(0, from.d + dOff), from.lane);
   }
 
-  // ---------- waves ----------
+  // ---------- the flow ----------
+  // A level is one continuous stream cut into segments ("waves" internally): a set builds to a peak (or a boss
+  // peak), then a trough. Segments roll straight into each other: the field never has to clear, there are no lulls
+  // after the first, and the weapon is the rider's choice.
+  const segLen = (role: WaveRole) => role === 'easy' ? troughS() : role === 'boss' ? bossPeakMaxS() : segmentS();
+  /** Where segment `w` sits in its set's curve. */
+  function stageOf(w: number): FlowStage {
+    const v = setView(w);
+    if (v.warmup) return 'warm-up';
+    if (v.role === 'easy') return 'trough';
+    if (v.role === 'boss') return 'boss';
+    return v.pos >= v.of && roleOf(w + 1) !== 'boss' ? 'peak' : 'build';
+  }
+  /** A set's build segments ramp from buildPressure up to the peak's full flow. */
+  function pressureOf(w: number): number {
+    const v = setView(w);
+    if (v.role !== 'work' || v.of <= 1) return 1;
+    return buildLow() + (1 - buildLow()) * (v.pos - 1) / (v.of - 1);
+  }
   function planFor(w: number): WavePlan {
     const role = roleOf(w), boss = role === 'boss';
-    // Bosses take turns: a boss wave avoids the last boss's colour when the brood order allows it.
+    // Bosses take turns: a boss segment avoids the last boss's colour when the colour order allows it.
     const brood = nextBrood(broods, waveRng, { maxRun: boss ? 1 : broodMaxRun(), coverWaves: broodCover(), avoid: boss ? lastBoss ?? undefined : undefined });
     if (boss) lastBoss = brood;
     broods.push(brood);
-    const p = planWave(dw(w), waveRng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack(), routes: geo.routes, role });
+    const window = Math.max(3, (boss ? segmentS() : segLen(role)) - spawnTail() - 1);
+    const p = planWave(dw(w), waveRng, { spawnWindowS: window, countScale: countScale() * pressureOf(w), brood, broodShare: broodShare(), swarmPack: swarmPack(), routes: geo.routes, role });
     return { ...p, wave: w };
   }
-  /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
+  /** Plans segment `wave` and starts it: straight away, or after the short quiet start of a fresh level or run. */
   function startWave(fresh: boolean) {
     plan = fresh ? planFor(wave) : nextPlan;
     nextPlan = planFor(wave + 1);
     if (play && !fresh) for (let fw = dw(wave - 1) + 1; fw < dw(wave); fw++) gainScrap(catchUpBase() + catchUpPer() * fw);
-    waveElapsed = 0;
-    escorts.length = 0;
+    waveElapsed = 0; segOverAt = -1;
+    if (fresh) escorts.length = 0;
     schedule = plan.spawns.map((s) => ({ ...s }));
-    lull = lullLen = fresh ? firstLullS() : plan.role === 'easy' ? easyLullS() : lullS();
+    lull = lullLen = fresh ? firstLullS() : 0;
     const b = broodInfo(plan);
     ctx.emit({ type: 'broodAnnounced', data: { wave, color: b.color, weapon: b.weapon, mode: b.mode } });
     if (plan.boss) ctx.emit({ type: 'bossPhaseAnnounced', data: { wave, phase: 1, color: b.color, weapon: b.weapon, mode: b.mode, countdownS: lull } });
-    if (autoWeapon) selectWeapon(b.weapon);
+    if (autoWeapon && fresh) selectWeapon(b.weapon);
     if (lull <= 0) beginWave();
   }
-  /** The lull is over: spawns start. */
+  /** The segment's spawns start. */
   function beginWave() {
+    if (botBuild && !workshop) for (let i = 0; i < 12 && botBuildOnce(); i++); // bots spend their scrap as each segment starts
     ctx.emit({ type: 'waveStart', data: { wave } });
-    if (plan.boss) ctx.emit({ type: 'bossPhaseStarted', data: { wave, phase: 1, color: plan.brood, weapon } });
-    const { set, pos, of, warmup } = setView(wave);
-    if (warmup) say(`Wave ${wave} · warm-up`, `${play!.spec.name} · ride easy and warm up`, '#7dffb0');
-    else if (plan.role === 'easy') say(`Wave ${wave} · easy`, `Set ${set} done · ride easy and recover`, '#7dffb0');
-    else if (!plan.boss) say(`Wave ${wave}`, `Set ${set} · interval ${pos} of ${of}`, '#cfe3ff');
+    if (plan.boss) { ctx.emit({ type: 'bossPhaseStarted', data: { wave, phase: 1, color: plan.brood, weapon } }); bossBelowV = false; }
+    const { set } = setView(wave), stage = stageOf(wave), lead = `${plan.brood.toUpperCase()} leads`;
+    const sets = play ? play.waves.reduce((n, w) => Math.max(n, w.set), 0) : 0;
+    const of = sets ? ` of ${sets}` : '';
+    const want = roman(suggestedTier());
+    if (stage === 'warm-up') say('Warm-up', `${play!.spec.name} · tier ${want} · build your first towers`, '#7dffb0');
+    else if (stage === 'trough') say(`Set ${set}${of} · trough`, `Ride easy · build · a clean trough heals the base`, '#7dffb0');
+    else if (stage === 'build') say(`Set ${set}${of} · build`, `Tier ${want} · ${lead}`, '#cfe3ff');
+    else if (stage === 'peak') say(`Set ${set}${of} · peak`, `Tier ${want} · ${lead}`, '#ffd24a');
     cue('waveStart');
-    const kind = scheduleCall(callSchedule, wave, plan.boss || plan.role === 'easy', weapon, () => ((wave * 7 + ELEMENTS.indexOf(plan.brood)) % 5) / 5, callGapMin(), callGapMax());
-    if (kind) {
-      const targetFtp = clamp(recentFtp, 0.56, 0.75);
-      const minRpm = kind === 'spin' ? Math.round(clamp(recentCadence * callSpinRatio(), 60, 110)) : kind === 'grind' ? 45 : 60;
-      const maxRpm = kind === 'grind' ? Math.round(clamp(recentCadence * callGrindRatio(), 55, 85)) : 140;
-      effort = { kind, wave, state: 'announced', countdownS: callCountdown(), heldS: 0, needS: callNeed(), leftS: Math.max(callNeed(), callWindow()),
-        minRpm, maxRpm, targetFtp, minFtp: kind === 'hold' ? Math.max(0.5, targetFtp - callHoldBand()) : Math.max(0.5, Math.min(0.65, targetFtp) * callPowerRatio()),
-        maxFtp: kind === 'hold' ? targetFtp + callHoldBand() : 3 };
-      calls.started++;
-      say(`${kind === 'spin' ? 'Spin-up' : kind === 'grind' ? 'Grind' : 'Hold'} in ${Math.ceil(effort.countdownS)}s`, effortCue(effort), '#7df9ff');
-      ctx.emit({ type: 'effortAnnounced', data: { wave, kind, weapon, countdownS: effort.countdownS, minRpm, maxRpm, minFtp: effort.minFtp, maxFtp: effort.maxFtp } });
-      cue('alarm');
-    }
   }
-  function effortCue(e: EffortView): string {
-    return e.kind === 'spin' ? `${e.minRpm}+ rpm · keep the dynamo powered` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : `Hold ${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP`;
-  }
-  function finishEffort(won: boolean) {
-    if (!effort || effort.state === 'won' || effort.state === 'failed') return;
-    const e = effort;
-    e.state = won ? 'won' : 'failed'; effortEndedAt = t;
-    if (won) { calls.won++; runCallsWon++; bestRunCalls = Math.max(bestRunCalls, runCallsWon); }
-    else calls.failed++;
-    ctx.emit({ type: won ? 'effortWon' : 'effortFailed', data: { wave: e.wave, kind: e.kind } });
-    addFx({ kind: 'payoff', life: 1.4, effort: e.kind, won });
-    if (won) addFx({ kind: 'hitStop', life: 0.1, seconds: payoffHitStop() });
-    if (e.kind === 'spin') {
-      if (won) {
-        stats.spinsWon++; overclock = overclockS();
-        const b = gainScrap(10 + wave);
-        say('Overclocked!', `Gatling ×2 · +${b} scrap`, '#8fd8ff', true); cue('overclock');
-      } else stats.spinsFailed++;
-      ctx.emit({ type: won ? 'spinWon' : 'spinFailed', data: { wave: e.wave } });
-    } else {
-      if (won) {
-        stats.surgesWon++; runSurges++; bestRunSurges = Math.max(bestRunSurges, runSurges); save.totals.surges++;
-        addFx({ kind: 'emp', life: 1.2 });
-        for (const alien of enemies) if (!alien.dead) hit(alien, KINDS[alien.kind].heavy ? empDmg() : 9999, null, 'emp');
-        const b = gainScrap(20 + wave * 2);
-        railBank = Math.max(railBank, railCost());
-        say('Dynamo charged!', `EMP · +${b} scrap · Railgun pulse ready`, '#7df9ff', true); cue('emp');
-      } else stats.surgesFailed++;
-      ctx.emit({ type: won ? 'surgeWon' : 'surgeFailed', data: { wave: e.wave, kind: e.kind } });
-    }
-  }
-  function updateEffort(dt: number) {
-    const bike = ctx.bike();
-    if (lull <= 0 && !plan.boss && bike.cadence3s >= 30 && !effort) {
-      const k = 1 - Math.exp(-dt / 30);
-      recentCadence += (bike.cadence3s - recentCadence) * k;
-      recentFtp += (bike.ftpFraction - recentFtp) * k;
-    }
-    if (effort && lull <= 0) {
-      const e = effort;
-      if (e.state === 'announced') {
-        e.countdownS = Math.max(0, e.countdownS - dt);
-        if (e.countdownS <= 1e-8) {
-          e.countdownS = 0; e.state = 'active';
-          ctx.emit({ type: 'effortStart', data: { wave, kind: e.kind, weapon } });
-          ctx.emit({ type: e.kind === 'spin' ? 'spinStart' : 'surgeStart', data: { wave } });
-          say(e.kind.toUpperCase(), effortCue(e), '#7df9ff');
-        }
-      } else if (e.state === 'active') {
-        e.leftS = Math.max(0, e.leftS - dt);
-        if (effortMet(e, bike.cadence3s, bike.ftpFraction)) e.heldS += dt;
-        if (e.heldS >= e.needS) finishEffort(true);
-        else if (e.leftS <= 0) finishEffort(false);
-      } else if (t - effortEndedAt > 4) effort = null;
-    }
-    // Compatibility views keep the existing drill panels, summaries and achievements.
-    spin = effort?.kind === 'spin' && effort.state !== 'announced' ? {
-      state: effort.state, held: effort.heldS, needS: effort.needS, leftS: effort.leftS, rpm: effort.minRpm, t0: effortEndedAt,
-    } : null;
-    surge = effort && effort.kind !== 'spin' && effort.state !== 'announced' ? {
-      state: effort.state, progress: Math.min(1, effort.heldS / effort.needS), needS: effort.needS, leftS: effort.leftS, zone: 2, t0: effortEndedAt,
-    } : null;
-  }
-
-  function clearWave(early: boolean) {
-    if (effort && (effort.state === 'active' || effort.state === 'announced')) finishEffort(false);
-    effort = null; spin = null; surge = null;
+  /** The current segment is over: the next rolls straight in (a boss still alive escapes; a trough heals). */
+  function clearWave() {
     for (const e of enemies) if (!e.dead && e.boss) {
       e.dead = true; ctx.emit({ type: 'bossEscaped', data: { wave } });
     }
     enemies = enemies.filter((e) => !e.dead);
     wavesSurvived++; wavesCleared++; bestRunWaves = Math.max(bestRunWaves, wavesSurvived);
     save.totals.waves++;
-    const bonus = gainScrap(10 + wave * 2 + (early ? 10 : 0));
-    const heal = early ? clearHealFor(waveElapsed, leakDmg, { heal: clearHeal(), speedBonus: speedHeal(), waveMinS: waveMin(), waveMaxS: waveMax(), leakZero: leakHealZero() }) : 0;
+    const trough = plan.role === 'easy';
+    const bonus = gainScrap(10 + wave * 2);
+    const heal = trough ? troughHealFor(leakDmg, troughHeal(), leakHealZero()) : 0;
     baseHp = Math.min(baseMaxHp, baseHp + heal);
-    // Spotless is the full clean-clear heal, not merely "nothing leaked": a zone-2 ride leaks nothing.
-    const spotless = early && leakDmg === 0 && heal >= clearHeal() + speedHeal();
+    const spotless = leakDmg === 0;
     if (spotless) { runSpotless++; spotlessWaves++; bestRunSpotless = Math.max(bestRunSpotless, runSpotless); }
     else runSpotless = 0;
     ctx.emit({ type: 'waveCleared', data: { wave, heal, leakDmg, spotless, runSpotless } });
-    say(`Wave ${wave} cleared`, `+${bonus} scrap${heal ? ` · base +${heal} HP${leakDmg === 0 ? ' (clean)' : ''}` : ''}`, '#7dffb0');
+    if (trough && !setView(wave).warmup) {
+      say(heal ? `Base +${heal} HP` : 'Trough over', `${leakDmg === 0 ? 'Clean trough' : 'Leaks cost the heal'} · +${bonus} scrap`, '#7dffb0');
+      cue('waveClear');
+    }
     leakDmg = 0;
-    cue('waveClear');
     wave++;
     persist();
     if (play && wave > play.waves.length) { levelDone(); return; }
     startWave(false);
+  }
+  /** The live segment is done: its time is up, or (a boss peak) its boss is dead. */
+  function segmentDone(): boolean {
+    if (!plan.boss) return waveElapsed >= segLen(plan.role);
+    const bossLeft = enemies.some((e) => !e.dead && e.boss) || schedule.some((s) => s.kind === 'boss');
+    return (!bossLeft && waveElapsed >= 5) || waveElapsed >= bossPeakMaxS();
+  }
+  /** Seconds between stream drones (they thicken as the level goes on; half rate in troughs). */
+  const miniGap = () => (miniInterval() / (1 + 0.1 * (wave - 1))) * (plan?.role === 'easy' ? 2 : 1);
+  /**
+   * The enemy radar: incoming HP per colour over the next radarS seconds, by when it reaches the base. Built from
+   * the aliens on the field (their time to the base), the live segment's remaining spawns, the next segment's
+   * plan and the drone stream. `scale` is a slowly decaying high-water mark so peaks look taller than troughs.
+   */
+  function radarView(dt: number): RadarView {
+    const stepS = 10, n = Math.max(1, Math.round(radarS() / stepS));
+    const buckets = Array.from({ length: n }, () => ({ blue: 0, red: 0, purple: 0, air: 0 }));
+    let boss: RadarView['boss'] = null;
+    const put = (eta: number, hp: number, color: Element | 'gold' | 'prism', air: boolean) => {
+      const i = Math.floor(Math.max(0, eta) / stepS);
+      if (i >= n || color === 'gold') return;
+      const b = buckets[i];
+      if (color === 'prism') { b.blue += hp / 3; b.red += hp / 3; b.purple += hp / 3; } else b[color] += hp;
+      if (air) b.air++;
+    };
+    // `lead` weighs what is on the field and what spawns within the window (slow heavies arrive late, but they
+    // are what the turret should be ready for); the bars place everything by when it reaches the base
+    const soon = { blue: 0, red: 0, purple: 0 };
+    const weigh = (hp: number, color: Element | 'gold' | 'prism') => {
+      if (color === 'prism') { soon.blue += hp / 3; soon.red += hp / 3; soon.purple += hp / 3; } else if (color !== 'gold') soon[color] += hp;
+    };
+    for (const e of enemies) {
+      if (e.dead) continue;
+      if (e.boss) { boss = { inS: 0, color: e.boss.color }; continue; }
+      weigh(e.hp, elementOf(e));
+      put((e.len - e.d) / Math.max(0.5, travelSpeed(e)), e.hp, elementOf(e), e.route >= 0);
+    }
+    const ahead = (sp: readonly Spawn[], offset: number, w: number, color: Element) => {
+      for (const s of sp) {
+        const inS = offset + s.at;
+        if (inS >= n * stepS) continue;
+        if (s.kind !== 'boss' && inS < 60) weigh(hpFor(s.kind, w, s.route), KINDS[s.kind].color);
+        if (s.kind === 'boss') { if (!boss || inS < boss.inS) boss = { inS, color }; continue; }
+        const len = s.route < 0 ? ROAD_LENGTH : flightLength(s.route);
+        put(inS + len / (KINDS[s.kind].speed * Math.min(1.5, 1 + 0.012 * (dw(w) - 1))), hpFor(s.kind, w, s.route), KINDS[s.kind].color, s.route >= 0);
+      }
+    };
+    if (plan) ahead(schedule, (lull > 0 ? lull : 0) - (lull > 0 ? 0 : waveElapsed), plan.wave, plan.brood);
+    if (nextPlan && (!play || nextPlan.wave <= play.waves.length)) ahead(nextPlan.spawns, segRemaining(), nextPlan.wave, nextPlan.brood);
+    // the drone stream, once it would have reached the base
+    const miniHp = hpFor('mini', wave, -1), miniEta = ROAD_LENGTH / KINDS.mini.speed;
+    for (let i = 0; i < n; i++) if ((i + 1) * stepS > miniEta + (lull > 0 ? lull : 0)) buckets[i].blue += miniHp * stepS / Math.max(0.2, miniGap());
+    const total = (b: typeof buckets[number]) => b.blue + b.red + b.purple;
+    radarPeak = Math.max(...buckets.map(total), radarPeak * Math.exp(-dt / 180), 1);
+    leadHp = soon;
+    const lead = ELEMENTS.reduce<Element | null>((m, c) => soon[c] > 0 && (!m || soon[c] > soon[m]) ? c : m, null);
+    return { stepS, buckets: buckets.map((b) => ({ blue: Math.round(b.blue), red: Math.round(b.red), purple: Math.round(b.purple), air: b.air })), scale: Math.round(radarPeak), lead, boss };
+  }
+  let radar: RadarView | null = null, radarPeak = 1, radarAge = 0, botWeaponT = 0, leadHp = { blue: 0, red: 0, purple: 0 };
+  /** Bots read the radar like a rider: switch to the colour leading it when that clearly outweighs the mounted one. */
+  function botWeapon(dt: number) {
+    botWeaponT -= dt;
+    if (botWeaponT > 0 || !radar || swapLeft > 0) return;
+    botWeaponT = 12;
+    const soon = leadHp;
+    const boss = enemies.find((e) => !e.dead && e.boss);
+    if (boss) { selectWeapon(ELEMENT_WEAPON[elementOf(boss)]); return; }
+    // the weapon whose matchups pay most against what's coming (Fireball can't reach Gliders, so blue counts less for it)
+    const score = (w: Weapon) => ELEMENTS.reduce((sum, c) => sum + soon[c] * match[w][c]() * (w === 'flame' && c === 'blue' ? 0.5 : 1), 0);
+    const best = WEAPONS.reduce((a, b) => score(b) > score(a) ? b : a);
+    if (best !== weapon && score(best) > 1.15 * score(weapon)) selectWeapon(best);
+  }
+  /** Seconds until the live segment ends (a boss peak: the boss's likely remaining fight, at most its cap). */
+  function segRemaining(): number {
+    if (lull > 0) return lull + (plan.boss ? segmentS() : segLen(plan.role));
+    if (!plan.boss) return Math.max(0, segLen(plan.role) - waveElapsed);
+    const b = enemies.find((e) => !e.dead && e.boss);
+    const guess = b ? segmentS() * (b.hp / b.maxHp) : segmentS() - waveElapsed;
+    return clamp(guess, 5, Math.max(5, bossPeakMaxS() - waveElapsed));
   }
   /** Where a wave sits: its set, place and the set's work-wave count (a level's list, or endless sets of five). */
   function setView(w: number): { set: number; pos: number; of: number; role: WaveRole; warmup: boolean } {
@@ -663,13 +669,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       chain = 0;
     }
     persist();
-    runCallsWon = 0; runSpotless = 0; runSurges = 0;
+    runSpotless = 0;
     ctx.emit({ type: 'runEnded', data: { reason, wave, wavesSurvived, endless: !play } });
     lull = 0; swapLeft = 0; plan = undefined!;
     phase = 'garage'; garageSel = 0; garageT = 0; garageBreather = garageBreatherS();
     enemies = []; spawned.length = 0; shells = []; burns = []; schedule = []; fx = [];
     towers.fill(null); workshop = null; pending.length = 0;
-    surge = null; spin = null; overclock = 0; effort = null; escorts.length = 0;
+    escorts.length = 0;
     exposedBossIds.clear(); grid = 0; overdrive = false; flaming = false; flamePower = 0; targetId = 0;
     railBank = 0;
     resetCombat();
@@ -681,18 +687,20 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
 
   // ---------- weapons ----------
-  /** The tier the incoming flow calls for: recovery II, Gatling work III, Fireball/Railgun work IV, boss openings V. */
-  function suggestedTier(p: WavePlan | undefined = plan, w: Weapon = weapon, now = true): Tier {
+  /** The tier the flow calls for: warm-up I, trough II, build III, peak and boss IV, a boss opening V. */
+  function suggestedTier(p: WavePlan | undefined = plan, now = true): Tier {
     if (now && phase === 'run') {
       const b = enemies.find((e) => !e.dead && e.boss && !e.boss.pending)?.boss;
       if (b && (b.telegraph || b.exposed)) return 5;
+      if (lull > 0) return 2;
     }
-    if (!p || p.role === 'easy' || (now && lull > rampS())) return 2;
-    return w === 'gatling' && !p.boss ? 3 : 4;
+    if (!p) return 2;
+    const stage = stageOf(p.wave);
+    return stage === 'warm-up' ? 1 : stage === 'trough' ? 2 : stage === 'build' ? 3 : 4;
   }
   function broodInfo(p: WavePlan): BroodInfo {
     const weapon = ELEMENT_WEAPON[p.brood];
-    const want = suggestedTier(p, weapon, false);
+    const want = suggestedTier(p, false);
     const cue = p.role === 'easy' ? `ride easy · tier ${roman(want)}`
       : weapon === 'gatling' ? `spin fast · tier ${roman(want)}` : weapon === 'flame' ? `tier ${roman(want)} · 85+ rpm` : `tier ${roman(want)}+ · steady`;
     return { wave: p.wave, color: p.brood, weapon, mode: 'resistance', setting: `tier ${roman(want)} · ${Math.round(ratedFtp(want) * 100)}% FTP`, cue };
@@ -702,6 +710,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   /** Mounts a weapon: the turret is silent for `swapS` while it changes (asking for the one being mounted does nothing). */
   function selectWeapon(w: Weapon) {
     if (w === weapon || phase !== 'run') return;
+    weaponSwitches++;
     weapon = w; swapTotal = swapLeft = swapS(); revAcc = 0;
     cue('swap');
     ctx.emit({ type: 'weaponSwitched', data: { weapon: w, wave } });
@@ -996,8 +1005,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
   function recommendation(pad?: number): BuildSuggestion | null {
     if (!plan) return null;
-    // `plan` is the announced incoming wave during the lull. `nextPlan` is one wave later.
-    const coming = lull > 0 ? plan : nextPlan;
+    // The live segment while it is young (or still in its quiet start), then the next one.
+    const coming = lull > 0 || waveElapsed < segmentS() / 2 ? plan : nextPlan;
     return suggestBuild({ wave: coming.wave, brood: coming.brood, counts: coming.counts,
       towers: towers.filter((tw): tw is Tower => !!tw), scrap, costMult: towerCostMult(), maxLevel: towerCap(),
       baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup(), pad, geo, kinds: TOWER_KINDS.filter(kindOpen) });
@@ -1168,12 +1177,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     weapon = 'gatling'; swapLeft = 0; swapTotal = 1; aim = 0; targetId = 0;
     revAcc = 0; railBank = 0; gearLevel = 0; gearRelief = 1;
     tier = clampTier(typeof opts?.tier === 'number' ? opts.tier : startTier());
-    surge = null; effort = null; spin = null; overclock = 0;
+    highTierS = 0; bossBelowV = false; radar = null; radarPeak = 1; botWeaponT = 0;
     flaming = false; flamePower = 0; grid = 0; overdrive = false;
-    wavesSurvived = 0; runSurges = 0; runCallsWon = 0; runSpotless = 0; waveElapsed = 0; lull = 0; miniTimer = 2;
+    wavesSurvived = 0; runSpotless = 0; waveElapsed = 0; lull = 0; segOverAt = -1; miniTimer = 2;
     baseHurt = 99;
     resetCombat();
-    callSchedule.nextWave = 2; callSchedule.lastWave = 0;
     trainerSync();
     baseMaxHp = baseHpMax(); baseHp = baseMaxHp; levelDmg = 0;
     wave = play ? 1 : Math.max(1, Math.round(opts?.startWave ?? 1));
@@ -1336,8 +1344,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (was && railBank >= railCost()) cue('railReady');
     }
 
-    updateEffort(dt);
-    if (overclock > 0) { overclock = Math.max(0, overclock - dt); stats.overclockS += dt; }
+    if (tier >= 4 && bike.cadence3s >= 15) highTierS += dt;
+    if (tier < 5 && enemies.some((e) => !e.dead && e.boss)) bossBelowV = true;
+    if (autoWeapon) botWeapon(dt);
 
     // --- aim: always automatic
     const tgt = autoTarget();
@@ -1357,7 +1366,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       // cadence sets the rate (crank revs per pellet); the tier sets pellet size: damage, pierce and splash
       revAcc += Math.max(0, revs);
       let shots = 0;
-      const perShot = gatlingRevs() / (overclock > 0 ? 2 : 1), shape = gatlingShape(tier);
+      const perShot = gatlingRevs(), shape = gatlingShape(tier);
       const dmg = gatlingDmg() * shape.dmg * effortK() * odMult();
       while (revAcc >= perShot && shots < 12) {
         revAcc -= perShot; shots++;
@@ -1415,32 +1424,36 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (spawned.length) { enemies.push(...spawned.filter((e) => !e.dead)); spawned.length = 0; }
     enemies = enemies.filter((e) => !e.dead);
 
-    // --- spawning (the easy wave's stream runs at half rate)
+    // --- spawning: the drone stream never stops once the flow starts (half rate in troughs)
     if (lull > 0) {
-      if (lull <= dt && botBuild && !workshop) for (let i = 0; i < 12 && botBuildOnce(); i++);
       lull = Math.max(0, lull - dt); if (lull === 0) beginWave();
     }
     else {
       waveElapsed += dt;
-      // the drone stream runs until the wave has sent everything and waveMinS has passed, so the field can clear
-      const easy = plan.role === 'easy';
-      if (schedule.length || waveElapsed < (easy ? easyWaveS() - 30 : waveMin() - 40)) miniTimer -= dt;
+      if (segOverAt < 0) miniTimer -= dt;
       if (miniTimer <= 0) {
         spawn('mini', -1);
-        miniTimer = (miniInterval() / (1 + 0.1 * (wave - 1))) * (0.7 + swarmRng() * 0.6) * (easy ? 2 : 1);
+        miniTimer = miniGap() * (0.7 + swarmRng() * 0.6);
       }
       while (schedule.length && schedule[0].at <= waveElapsed) { const s = schedule.shift()!; spawn(s.kind, s.route); }
     }
     if (spawned.length) { enemies.push(...spawned); spawned.length = 0; }
     trainerSync(dt);
 
-    // --- waves
-    // a work wave ends when the field is clear (after waveMinS), or at waveMaxS; the easy wave runs its full length
-    const fieldClear = enemies.length === 0 && schedule.length === 0 && escorts.length === 0;
-    if (baseHp > 0 && lull <= 0) {
-      if (plan.role === 'easy') { if (waveElapsed >= easyWaveS() && (fieldClear || waveElapsed >= easyWaveS() + 30)) clearWave(false); }
-      else if ((waveElapsed >= waveMin() && fieldClear) || waveElapsed >= waveMax()) clearWave(waveElapsed < waveMax());
+    // --- the flow: a segment ends on time (a boss peak: when its boss dies) and the next rolls in; the level's
+    // last segment then waits for its field to clear (or segmentTail more seconds) before the level is done
+    if (baseHp > 0 && lull <= 0 && segmentDone()) {
+      if (!play || wave < play.waves.length) clearWave();
+      else {
+        if (segOverAt < 0) { segOverAt = waveElapsed; schedule = []; }
+        const fieldClear = enemies.length === 0 && escorts.length === 0;
+        if (fieldClear || waveElapsed - segOverAt >= 45) clearWave();
+      }
     }
+    // the radar is a 10 s-bucket picture: four refreshes a second are plenty
+    radarAge += dt;
+    if (phase !== 'run' || !plan) radar = null;
+    else if (!radar || radarAge >= 0.25) { radar = radarView(radarAge); radarAge = 0; }
 
     if (baseHp <= 0) { baseHp = 0; endRun('fell'); }
   }
@@ -1540,7 +1553,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   function broodView(): BroodView {
     const b = plan ? broodInfo({ ...plan, brood: WEAPON_ELEMENT[weapon] }) : { wave, color: WEAPON_ELEMENT[weapon], weapon, mode: 'sim' as const, setting: '', cue: '' };
-    return { ...b, countdownS: phase === 'run' ? lull : 0, lullS: lullLen, rampS: rampS() };
+    return { ...b, countdownS: phase === 'run' ? lull : 0, lullS: lullLen, rampS: 0 };
   }
   function garageView(): GarageView {
     const title = result ? (result.failed ? `${result.spec.name} · base fell` : `${result.spec.name} cleared · ${starText(result.stars)}`) : 'Choose a ride';
@@ -1579,40 +1592,39 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       };
       if (phase === 'run' && loading) return { gears: true, targetZone: { min: 1, max: 2, label: 'Preparing the level' }, controls: [] };
       const boss = bossView();
-      const call = effort && (effort.state === 'active' || effort.state === 'announced') ? effort : null;
       const powerZone = (ftp: number): 1 | 2 | 3 | 4 | 5 => ftp < 0.56 ? 1 : ftp < 0.76 ? 2 : ftp < 0.91 ? 3 : ftp < 1.06 ? 4 : 5;
       const want = suggestedTier();
       const tz: GameHud['targetZone'] = boss?.exposed || boss?.telegraph
         ? { min: 5, max: 5, label: boss.exposed ? 'Exposed · sprint!' : `Sprint in ${Math.ceil(boss.windowLeftS)}s`, source: 'power' }
-        : call ? { min: powerZone(call.minFtp), max: powerZone(call.maxFtp), label: call.state === 'announced' ? `${call.kind} in ${Math.ceil(call.countdownS)}s` : effortCue(call), source: 'power' }
-        : lull > rampS() ? { min: 1, max: 2, label: `Recover · tier ${roman(want)} · ${WEAPON_NAME[weapon]} next` }
-        : plan?.role === 'easy' ? { min: 1, max: 2, label: `Easy wave · tier ${roman(want)}` }
+        : lull > 0 ? { min: 1, max: 2, label: `Get ready · tier ${roman(want)}` }
+        : plan?.role === 'easy' ? { min: 1, max: 2, label: `${setView(wave).warmup ? 'Warm-up' : 'Trough'} · tier ${roman(want)}` }
         : { min: powerZone(ratedFtp(want)), max: powerZone(ratedFtp(want)), label: `Tier ${roman(want)} · you're on ${roman(tier)}`, source: 'power' };
-      const targetCadence: GameHud['targetCadence'] = call?.kind === 'spin' ? { min: call.minRpm, label: 'Spin up the Gatling' } : call?.kind === 'grind' ? { min: call.minRpm, max: call.maxRpm, label: 'Grind at power' } : undefined;
       if (workshop) return {
-        gears: false, targetZone: tz, targetCadence, touchControls: [],
+        gears: false, targetZone: tz, touchControls: [],
         controls: [{ button: 'dpad', label: 'Choose an option or Exit', shortLabel: 'Choose' }, { button: 'a', label: 'Build / upgrade / Exit', shortLabel: 'OK' }, ...weaponHints().map((h) => ({ ...h, indicator: false as const })), ...gearHints()],
       };
-      return { gears: false, targetZone: tz, targetCadence, touchControls: ['y', 'b', 'z'], controls: playControls() };
+      return { gears: false, targetZone: tz, touchControls: ['y', 'b', 'z'], controls: playControls() };
     },
     snapshot(): TdSnapshot {
       return {
         t, level, phase, garage: phase === 'garage' ? garageView() : null, nextMaps: nextMaps(), loading: phase === 'run' && loading,
-        wave, waveElapsed, waveMaxS: plan?.role === 'easy' ? easyWaveS() : waveMax(), wavesSurvived, lull,
+        wave, waveElapsed, waveMaxS: plan ? plan.boss ? bossPeakMaxS() : segLen(plan.role) : segmentS(), wavesSurvived, lull,
+        flow: phase === 'run' && plan ? { stage: stageOf(wave), set: setView(wave).set, sets: play ? play.waves.reduce((n, w) => Math.max(n, w.set), 0) : 0, leftS: segRemaining() } : null,
+        radar: phase === 'run' ? radar : null,
         forecast: nextPlan ? { wave: nextPlan.wave, boss: nextPlan.boss, role: nextPlan.role, counts: { ...nextPlan.counts } }
           : { wave: 1, boss: false, role: 'work', counts: { blue: 0, red: 0, purple: 0, gold: 0, prism: 0, air: 0 } },
         set: setView(wave),
         run: play ? { id: play.spec.id, name: play.spec.name, kind: play.spec.kind, minutes: play.spec.minutes, waves: play.waves.length, estMinutes: estimateMinutes(play.waves) } : null,
         intensity,
-        boss: bossView(), matchup: matchup(), effort: effort ? { ...effort } : null,
-        brood: broodView(), nextBrood: nextPlan ? broodInfo(nextPlan) : null,
+        boss: bossView(), matchup: matchup(),
+        brood: broodView(),
         baseHp, baseMaxHp, baseHurt,
         weapon, swapLeft, swapS: swapTotal,
         aimAngle: aim, targetId, lock: lock(),
         tier, tierCount: 5, suggestedTier: suggestedTier(), tierFtp: ratedFtp(tier), tierOutput,
         railCharges: railBank >= railCost() ? 1 : 0, railMaxCharges: 1, railProgress: Math.min(1, railBank / Math.max(1e-6, railCost())), railCharging: weapon === 'rail' && railBank < railCost(), zHold: 0, railDumpHoldS: 0.5,
         flaming, flameRange: flameRange(), flamePower, laserId: 0,
-        grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
+        grid, overdrive, stalled: stalled(),
         scrap,
         padCursor: phase === 'run' && !workshop ? cursorPad() : -1, inputEpoch,
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
@@ -1622,9 +1634,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         enemies: enemies.map(enemyView), fx: fx.slice(), banner,
         cues: cues.slice(),
         over: false, bestWave: bestWave(), kills: { ...kills },
-        hooks: { storm: false, surge: effort?.state === 'active',
-          cadence: effort && (effort.state === 'active' || effort.state === 'announced') ? effort.kind === 'grind' ? (effort.minRpm + effort.maxRpm) / 2 : effort.kind === 'spin' ? effort.minRpm + 3 : undefined : undefined,
-          powerFtp: effort?.targetFtp ?? ratedFtp(suggestedTier()), shielded: bossView()?.exposed ?? false },
+        hooks: { storm: false, surge: false, powerFtp: ratedFtp(suggestedTier()), shielded: bossView()?.exposed ?? false },
       };
     },
     summary() {
@@ -1636,17 +1646,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         weaponSeconds_rail: Math.round(weaponSeconds.rail),
         railChargesFired: railFired,
         baseHpLeft: Math.round(baseHp),
-        towersBuilt: stats.towersBuilt, towerUpgrades: stats.towerUpgrades, towerKills: stats.towerKills, turretKills: stats.turretKills, empKills: stats.empKills,
-        turretDamage: Math.round(dealt.player), towerDamage: Math.round(dealt.tower), empDamage: Math.round(dealt.emp),
+        towersBuilt: stats.towersBuilt, towerUpgrades: stats.towerUpgrades, towerKills: stats.towerKills, turretKills: stats.turretKills,
+        turretDamage: Math.round(dealt.player), towerDamage: Math.round(dealt.tower),
         scrapEarned: stats.scrapEarned,
-        surgesWon: stats.surgesWon, surgesFailed: stats.surgesFailed,
-        spinsWon: stats.spinsWon, spinsFailed: stats.spinsFailed, overclockSeconds: Math.round(stats.overclockS),
-        callsStarted: calls.started, callsWon: calls.won, callsFailed: calls.failed,
-        bestRunCalls, callsMissed: calls.failed,
+        weaponSwitches, highTierSeconds: Math.round(highTierS),
         ignitionBursts: stats.ignitionBursts, bestChain, bestMaxedTowers,
         strongKills, exposedSprinted: exposedSprinted ? 1 : 0,
         spotlessWaves, bestRunSpotless,
-        bossesKilled: stats.bosses, bestRunSurges,
+        bossesKilled: stats.bosses,
         overdriveSeconds: Math.round(stats.overdriveS),
         // the save's campaign as the ride ends (achievements take the max, so each level counts once)
         campaignCleared: Object.values(save.campaign).filter((v) => v > 0).length,

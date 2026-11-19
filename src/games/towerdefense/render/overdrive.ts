@@ -1,5 +1,4 @@
-// Overdrive and called-effort payoff visuals: pure helpers (colours, bands, timings) used by the renderer.
-import type { EffortKind } from '../sim/efforts';
+// Overdrive visuals: pure helpers (colours, bands, timings) used by the renderer.
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
@@ -42,7 +41,3 @@ export function shimmerBands(t: number, W: number, uh: number, heat: number, n =
 export const FLINCH_S = 0.45;
 export const flinchAt = (since: number) => (since < 0 || since > FLINCH_S ? 0 : Math.exp(-since * 7) * Math.sin(Math.min(1, since / 0.04) * Math.PI / 2));
 
-/** Ring colour and sting for each called effort's payoff. */
-export const PAYOFF_STYLE: Record<EffortKind, { color: string; label: string }> = {
-  spin: { color: '#8fd8ff', label: 'SPIN-UP' }, grind: { color: '#ff9a3a', label: 'GRIND' }, hold: { color: '#c38dff', label: 'HOLD' },
-};

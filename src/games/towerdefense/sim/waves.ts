@@ -4,8 +4,8 @@ import { ELEMENTS, KIND_FROM, KINDS, type Element, type Kind } from './defs';
 /** `route`: -1 walks the road; 0.. is a Glider flight from that level flyer spawn. */
 export interface Spawn { at: number; kind: Kind; route: number }
 /**
- * Waves come in sets of five, like workout intervals: three work waves, a boss wave, then an easy recovery wave
- * (a light stream at recovery effort) before the next set.
+ * The flow comes in segments ("waves" in the code) grouped in sets, like workout intervals: in Endless three work
+ * segments build to a boss peak, then an easy trough (a light stream at recovery effort) before the next set.
  */
 export type WaveRole = 'work' | 'boss' | 'easy';
 export const SET_LENGTH = 5;
@@ -68,16 +68,10 @@ export function nextBrood(history: readonly Element[], rng: () => number, o: Bro
   return pool[Math.floor(rng() * pool.length) % pool.length];
 }
 
-export interface ClearHealOpts { heal: number; speedBonus: number; waveMinS: number; waveMaxS: number; leakZero: number }
-/**
- * Base HP restored when a wave is cleared at `elapsedS` (before its timeout) after the base took `leakDmg` that wave.
- * A fast clear adds up to `speedBonus` (full at waveMinS, none at waveMaxS); leaks scale the whole heal down, to 0 at `leakZero` damage.
- */
-export function clearHealFor(elapsedS: number, leakDmg: number, o: ClearHealOpts): number {
-  const span = Math.max(1e-6, o.waveMaxS - o.waveMinS);
-  const fast = Math.max(0, Math.min(1, (o.waveMaxS - elapsedS) / span));
-  const clean = o.leakZero > 0 ? Math.max(0, 1 - leakDmg / o.leakZero) : leakDmg > 0 ? 0 : 1;
-  return Math.round((o.heal + o.speedBonus * fast) * clean);
+/** Base HP restored at the end of a trough: all of `heal` when nothing leaked during it, down to 0 at `leakZero` damage. */
+export function troughHealFor(leakDmg: number, heal: number, leakZero: number): number {
+  const clean = leakZero > 0 ? Math.max(0, 1 - leakDmg / leakZero) : leakDmg > 0 ? 0 : 1;
+  return Math.round(heal * clean);
 }
 
 /** Heavy kinds of each colour and their mix within that colour. The first kind can appear in any wave. Blue is swarm only. */

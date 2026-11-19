@@ -21,10 +21,18 @@ it('level achievements read the campaign save at ride end and the cleared-level 
   expect(check('td_double_shift', { events: [lv(1), lv(3)] })).toBe(false);
 });
 
-it('Surge Protector is one run of called efforts, and still reads the old surge tally', () => {
-  expect(check('td_surges', { gameSummary: { bestRunCalls: 4, bestRunSurges: 9 } })).toBe(true);
-  expect(check('td_surges', { gameSummary: { bestRunCalls: 7, callsWon: 20 } })).toBe(false);
-  expect(check('td_surges', { gameSummary: { bestRunSurges: 8 } })).toBe(true);
+it('the call achievements are retired; their successors read weapon switches, tier V boss kills, tier IV+ time and long clears', () => {
+  for (const id of ['td_surges', 'td_spin', 'td_on_call', 'td_iron_lungs']) expect(achievements.some((a) => a.id === id)).toBe(false);
+  const switches = achievements.find((a) => a.id === 'td_quick_change')!;
+  expect(switches.goal).toBe(200);
+  expect(switches.count!.of({ gameId: 'towerdefense', events: [], gameSummary: { weaponSwitches: 12 } } as unknown as SessionRecord, profile)).toBe(12);
+  expect(check('td_top_gear', { events: [{ t: 0, type: 'bossKilled', data: { topGear: false } }] })).toBe(false);
+  expect(check('td_top_gear', { events: [{ t: 0, type: 'bossKilled', data: { topGear: true } }] })).toBe(true);
+  expect(achievements.find((a) => a.id === 'td_redline')!.count!.of({ gameId: 'towerdefense', events: [], gameSummary: { highTierSeconds: 600 } } as unknown as SessionRecord, profile)).toBe(10);
+  const cleared: Ev = { t: 0, type: 'levelCleared', data: { stars: 2, chain: 1, intensity: 'steady' } };
+  expect(check('td_long_haul', { durationS: 1800, events: [cleared] })).toBe(true);
+  expect(check('td_long_haul', { durationS: 1799, events: [cleared] })).toBe(false);
+  expect(check('td_long_haul', { durationS: 1800 })).toBe(false);
 });
 
 it('ignition chains read burst ordinals, not the burst count', () => {
@@ -32,18 +40,6 @@ it('ignition chains read burst ordinals, not the burst count', () => {
   expect(check('td_kindling', { events: [burst(3)] })).toBe(true);
   expect(check('td_bonfire', { events: [burst(3), burst(3)], gameSummary: { bestChain: 3 } })).toBe(false);
   expect(check('td_bonfire', { gameSummary: { bestChain: 4 } })).toBe(true);
-});
-
-it('Iron Lungs requires 12 calls, all three kinds, no failures or pending calls, and active time', () => {
-  const events = Array.from({ length: 12 }, (_, t) => ({ t, type: 'effortWon', data: { kind: ['spin','grind','hold'][t % 3] } }));
-  const r = { durationS: 1800, events, gameSummary: { callsStarted: 12 } };
-  expect(check('td_iron_lungs', r)).toBe(true);
-  expect(check('td_iron_lungs', { ...r, events: events.slice(1) })).toBe(false);
-  expect(check('td_iron_lungs', { ...r, events: events.map(e => ({ ...e, data: { kind: 'hold' } })) })).toBe(false);
-  expect(check('td_iron_lungs', { ...r, gameSummary: { callsStarted: 13 } })).toBe(false);
-  expect(check('td_iron_lungs', { ...r, events: [...events, { t: 20, type: 'effortFailed' }] })).toBe(false);
-  expect(check('td_iron_lungs', { ...r, durationS: 1799 })).toBe(false);
-  expect(check('td_iron_lungs', { ...r, samples: [] })).toBe(false);
 });
 
 it('Exposed! counts each defeated, exposed-sprinted boss once, not mere sprint events', () => {
@@ -57,24 +53,21 @@ it('Exposed! counts each defeated, exposed-sprinted boss once, not mere sprint e
   expect(a.count!.of(record, profile)).toBe(1);
   expect(a.count!.of({ ...record, gameId: 'dungeon' }, profile)).toBe(0);
 });
-it('Triple Rail counts Railgun pulses that hit 3 or more and On Call is a longer lifetime goal', () => {
+it('Triple Rail counts Railgun pulses that hit 3 or more', () => {
   const a = achievements.find(a => a.id === 'triple_rail')!;
   expect(a.goal).toBe(25);
   expect(a.count!.of({ gameId: 'towerdefense', events: [1,2,3,5].map(hits => ({ t: 0, type: 'railFired', data: { charges: 1, hits } })) } as unknown as SessionRecord, profile)).toBe(2);
-  expect(achievements.find(a => a.id === 'td_on_call')!.goal).toBe(40);
 });
 
 it('a zone-2 half hour unlocks at most one Dynamo Defense achievement', () => {
   const summary = {
-    wavesSurvived: 7, bossesKilled: 1, scrapEarned: 2500, callsWon: 2, callsMissed: 2, callsStarted: 4,
-    bestRunCalls: 2, bestChain: 3, strongKills: 180, spotlessWaves: 1, bestRunSpotless: 1, spinsWon: 0,
+    wavesSurvived: 7, bossesKilled: 1, scrapEarned: 2500, weaponSwitches: 14, highTierSeconds: 0,
+    bestChain: 3, strongKills: 180, spotlessWaves: 1, bestRunSpotless: 1,
   };
   const events: Ev[] = [
     burst(3),
     { t: 1, type: 'bossKilled', data: { wave: 4, phases: 3 } },
     { t: 2, type: 'towerUpgraded', data: { pad: 0, tower: 'tesla', level: 3 } },
-    ...Array.from({ length: 4 }, () => ({ t: 3, type: 'effortWon' as const })),
-    ...Array.from({ length: 2 }, () => ({ t: 4, type: 'effortFailed' as const })),
   ];
   const record = {
     id: 'z2', profileId: 'x', gameId: 'towerdefense', startedAt: Date.now(), durationS: 30 * 60,

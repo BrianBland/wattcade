@@ -32,10 +32,17 @@ const V3_RETIRED: Record<string, number> = {
   td_wave10: 40, td_wave25: 80, td_wave50: 150, td_spotless: 60, td_untouchable: 120, td_workshop: 150,
 };
 
+/**
+ * v4 (Nov 2026): Dynamo Defense dropped called efforts for continuous combat, so its call achievements were
+ * retired (Quick Change, Top Gear, Redline and Long Haul take their rewards).
+ */
+const V4_RETIRED: Record<string, number> = { td_surges: 80, td_spin: 40, td_on_call: 40, td_iron_lungs: 120 };
+
 /** Each rules step: ids whose goals changed (kept only if the profile already meets the new goal) and retired ids. */
 const STEPS: ReadonlyArray<{ v: number; changed: readonly string[]; retired?: Readonly<Record<string, number>> }> = [
   { v: 2, changed: V2_CHANGED },
   { v: 3, changed: [], retired: V3_RETIRED },
+  { v: 4, changed: [], retired: V4_RETIRED },
 ];
 
 type ProgressionData = { rules?: number; stormsWeathered?: number };

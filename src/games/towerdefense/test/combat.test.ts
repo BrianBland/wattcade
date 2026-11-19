@@ -4,7 +4,6 @@ import type { Button, GameEvent, InputState } from '../../../contracts';
 import { module } from '../index';
 import { advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossTricks } from '../sim/boss';
 import { ELEMENTS, MATCHUP, suggestedTower, TOWER_KINDS, TOWER_WEAPON, towerMatch, WEAPONS } from '../sim/defs';
-import { effortMet, scheduleCall, type EffortView } from '../sim/efforts';
 import { waveRole } from '../sim/waves';
 import type { TdSnapshot } from '../sim/types';
 import { matchupCopy } from '../render/panels';
@@ -182,31 +181,3 @@ describe('boss ladder', () => {
   });
 });
 
-describe('called-effort scheduler', () => {
-  it('calls at most once per work wave, skips boss and easy waves, and matches the weapon', () => {
-    const rng = makeRng(9), scheduler = { nextWave: 2, lastWave: 0 };
-    let last = 0, count = 0;
-    for (let wave = 1; wave <= 200; wave++) {
-      const weapon = WEAPONS[wave % 3];
-      const call = scheduleCall(scheduler, wave, waveRole(wave) !== 'work', weapon, rng, 1, 1);
-      if (!call) continue;
-      expect(call).toBe({ gatling: 'spin', flame: 'grind', rail: 'hold' }[weapon]);
-      expect(waveRole(wave)).toBe('work');
-      if (last) expect(wave).toBeGreaterThan(last);
-      last = wave; count++;
-    }
-    expect(count).toBe(120 - 1); // every work wave from wave 2
-    const spaced = { nextWave: 2, lastWave: 0 }, waves: number[] = [];
-    for (let wave = 1; wave <= 60; wave++) if (scheduleCall(spaced, wave, false, 'rail', makeRng(wave), 2, 3)) waves.push(wave);
-    for (let i = 1; i < waves.length; i++) { expect(waves[i] - waves[i - 1]).toBeGreaterThanOrEqual(2); expect(waves[i] - waves[i - 1]).toBeLessThanOrEqual(3); }
-  });
-  it('requires cadence and power together; hold also has a power ceiling', () => {
-    const e: EffortView = { kind: 'grind', wave: 2, state: 'active', countdownS: 0, heldS: 0, needS: 8, leftS: 18,
-      minRpm: 45, maxRpm: 81, minFtp: 0.6, maxFtp: 3, targetFtp: 0.65 };
-    expect(effortMet(e, 70, 0.65)).toBe(true);
-    expect(effortMet(e, 90, 0.65)).toBe(false);
-    expect(effortMet(e, 70, 0.3)).toBe(false);
-    expect(effortMet(e, 0, 0)).toBe(false);
-    expect(effortMet({ ...e, kind: 'hold', minRpm: 60, maxRpm: 140, maxFtp: 0.73 }, 90, 1)).toBe(false);
-  });
-});

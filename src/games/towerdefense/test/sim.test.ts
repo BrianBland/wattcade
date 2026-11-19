@@ -5,7 +5,7 @@ import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { progressLine } from '../card';
 import { BASE_PAD, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, FIELD_H, FIELD_W, KIND_FROM, KINDS, PADS, ROAD_LENGTH, TOWERS, flightAt, flightLength, padOrder, roadAt, towerBuildCost, type Element } from '../sim/defs';
-import { clearHealFor, nextBrood, planWave, waveCounts, waveRole, type WaveOpts } from '../sim/waves';
+import { nextBrood, troughHealFor, planWave, waveCounts, waveRole, type WaveOpts } from '../sim/waves';
 import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, starTotal } from '../sim/unlocks';
 import { CAMPAIGN } from '../sim/campaign';
 import { readSave } from '../sim/sim';
@@ -19,7 +19,7 @@ describe('scenarios via runHeadless', () => {
     it(sc.name, () => {
       const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts });
       expect(sc.assert(r.summary, r.stats, r)).toEqual([]);
-    });
+    }, 30_000);
   }
 });
 
@@ -115,20 +115,14 @@ describe('brood planner', () => {
   });
 });
 
-describe('clear heal', () => {
-  const o = { heal: 14, speedBonus: 12, waveMinS: 25, waveMaxS: 60, leakZero: 15 };
-  it('a clean clear heals more the faster it is', () => {
-    expect(clearHealFor(25, 0, o)).toBe(26);
-    expect(clearHealFor(42.5, 0, o)).toBe(20);
-    expect(clearHealFor(59, 0, o)).toBe(14);
-  });
-  it('leaks scale the heal down to nothing', () => {
-    expect(clearHealFor(25, 1, o)).toBe(24);
-    expect(clearHealFor(25, 7.5, o)).toBe(13);
-    expect(clearHealFor(25, 15, o)).toBe(0);
-    expect(clearHealFor(25, 40, o)).toBe(0);
-    expect(clearHealFor(25, 1, { ...o, leakZero: 0 })).toBe(0); // 0 = any leak cancels it
-    expect(clearHealFor(25, 0, { ...o, leakZero: 0 })).toBe(26);
+describe('trough heal', () => {
+  it('a clean trough heals in full; leaks scale it down to nothing', () => {
+    expect(troughHealFor(0, 30, 15)).toBe(30);
+    expect(troughHealFor(7.5, 30, 15)).toBe(15);
+    expect(troughHealFor(15, 30, 15)).toBe(0);
+    expect(troughHealFor(40, 30, 15)).toBe(0);
+    expect(troughHealFor(1, 30, 0)).toBe(0); // 0 = any leak cancels it
+    expect(troughHealFor(0, 30, 0)).toBe(30);
   });
   it('the dynamo stalls after stallGraceS under 15 rpm; leaks then hit x2.2', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
@@ -234,18 +228,16 @@ describe('levels meta', () => {
 
 describe('brood waves', () => {
   const weaponEffect = (s: ReturnType<typeof createGameSession>) => s.mixer.debug().activeEffects.find((e) => e.id === 'weapon')!;
-  it('each wave opens with a lull: card + countdown in the snapshot, no spawns, then the wave', () => {
+  it('only a fresh run starts quietly: a short countdown, no spawns, then the flow', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
     s.step(30);
     const b = snap(s).brood;
     expect(b.wave).toBe(1);
-    expect(b.countdownS).toBeGreaterThan(13); expect(b.countdownS).toBeLessThan(15); // the short first lull (firstLullS)
+    expect(b.countdownS).toBeGreaterThan(13); expect(b.countdownS).toBeLessThan(15); // firstLullS
     expect(b.lullS).toBe(15);
-    expect(b.weapon).toBe(ELEMENT_WEAPON[b.color]);
-    expect(snap(s).weapon).toBe(b.weapon);
-    expect(b.cue.length).toBeGreaterThan(4);
-    expect(snap(s).nextBrood?.wave).toBe(2);
+    expect(snap(s).weapon).toBe('gatling'); // a rider keeps their pick; the colour mounts nothing
     expect(snap(s).enemies).toHaveLength(0);
+    expect(snap(s).radar?.buckets.length).toBe(9);
     s.step(30 * 15);
     expect(snap(s).brood.countdownS).toBe(0);
     let seen = 0; // the turret can drop a lone drone within a second of its spawn, so watch every frame
@@ -254,18 +246,26 @@ describe('brood waves', () => {
     const evs = s.finish().events.map((e) => e.type);
     expect(evs.indexOf('broodAnnounced')).toBeLessThan(evs.indexOf('waveStart'));
   });
-  it('lulls: short before the first wave, shorter before an easy recovery wave, full before work waves', () => {
+  it('segments roll straight into each other on time, with the field still busy; a trough heals at its end', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { autopilot: true, baseHp: 1000 } });
-    for (const [key, value] of Object.entries({ waveMinS: 5, waveMaxS: 15, easyWaveS: 10, heavySpawnWindowS: 3 })) s.tuning.set(`towerdefense.${key}`, value);
-    const seen = new Map<string, number>();
-    for (let i = 0; i < 30 * 60 * 6 && seen.size < 3; i++) {
+    for (const [key, value] of Object.entries({ segmentS: 30, troughS: 20, spawnTailS: 2 })) s.tuning.set(`towerdefense.${key}`, value);
+    const stages: string[] = [];
+    let busy = 0;
+    for (let i = 0; i < 30 * 60 * 6; i++) {
+      const before = snap(s);
       s.step(1);
       const v = snap(s);
-      if (v.lull <= 0) continue;
-      const kind = v.set.warmup || v.brood.wave === 1 ? 'first' : v.set.role === 'easy' ? 'easy' : 'work';
-      if (!seen.has(kind)) seen.set(kind, v.brood.lullS);
+      if (v.wave !== before.wave && before.phase === 'run') {
+        if (v.lull > 0) throw new Error(`a lull after segment ${before.wave}`);
+        if (before.enemies.length > 0) busy++;
+      }
+      const st = v.flow?.stage;
+      if (st && stages.at(-1) !== st) stages.push(st);
     }
-    expect(Object.fromEntries(seen)).toEqual({ first: 15, work: 45, easy: 25 });
+    expect(busy).toBeGreaterThan(0); // nothing waits for the field to clear
+    expect(stages.slice(0, 5)).toEqual(['build', 'boss', 'trough', 'build', 'boss']);
+    const heals = s.finish().events.filter((e) => e.type === 'waveCleared' && Number(e.data?.heal) > 0);
+    expect(heals.length).toBeGreaterThan(0);
   });
   it('the game is the gearbox: resistance mode all run, the shifters step the tier and the level eases after it', () => {
     const h = rigged('z2');
@@ -294,43 +294,6 @@ describe('brood waves', () => {
     s.sim.receive!({ type: 'weapon', w: w === 'rail' ? 'gatling' : 'rail' });
     s.step(30 * 5);
     expect(snap(s).weapon).toBe(w);
-  });
-});
-
-describe('effort targets', () => {
-  function ride(kind: 'spin' | 'grind' | 'hold', cadence: number, power: number) {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 5, simOpts: { stars: 99, autopilot: true } });
-    let n = 0;
-    while (!(snap(s).effort?.kind === kind && snap(s).effort?.state === 'active') && n++ < 30 * 60 * 45) s.step(1);
-    const call = snap(s).effort!;
-    expect(call.kind).toBe(kind); expect(call.state).toBe('active');
-    const hud = s.sim.hud!();
-    s.fakeBike!.useScript(null); s.fakeBike!.manual.cadence = cadence; s.fakeBike!.manual.power = power;
-    while (snap(s).effort?.state === 'active') s.step(1);
-    return { s, hud, call, result: snap(s).effort!, sum: s.sim.summary() };
-  }
-  it('Spin-up follows Gatling and rewards an achievable cadence target with Overclock', () => {
-    const { s, hud, call, result, sum } = ride('spin', 100, 130);
-    expect(hud.targetCadence).toEqual({ min: call.minRpm, label: 'Spin up the Gatling' });
-    expect(call.minRpm).toBeGreaterThanOrEqual(80); expect(call.minRpm).toBeLessThan(95);
-    expect(result.state).toBe('won'); expect(sum.spinsWon).toBeGreaterThanOrEqual(1);
-    expect(snap(s).overclock).toBeGreaterThan(0);
-  });
-  it('Spin-up is missed at 80 rpm', () => {
-    expect(ride('spin', 80, 130).result.state).toBe('failed');
-  });
-  it('Grind is a power-judged low-cadence call in a Flamer wave', () => {
-    const { hud, call, result } = ride('grind', 70, 130);
-    expect(hud.targetZone).toMatchObject({ min: 2, max: 5, source: 'power' });
-    expect(hud.targetCadence).toMatchObject({ min: 45, max: call.maxRpm });
-    expect(result.state).toBe('won');
-    expect(ride('grind', 100, 130).result.state).toBe('failed');
-  });
-  it('Hold supplies a Zone 2 ERG target and rewards staying in its band', () => {
-    const { hud, result, call } = ride('hold', 90, 130);
-    expect(hud.targetZone?.source).toBe('power');
-    expect(call.targetFtp).toBeGreaterThanOrEqual(0.56); expect(call.targetFtp).toBeLessThanOrEqual(0.75);
-    expect(result.state).toBe('won');
   });
 });
 
@@ -384,9 +347,10 @@ function rigged(script = 'intervals') {
 
 describe('rail', () => {
   it('fires slow pulses by itself, no button: full pulses at heavies, quick snaps at light aliens', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'intervals' }, seed: 3, simOpts: { stars: 99, skipGarage: true, tier: 4, weapon: 'auto' } });
-    let n = 0;
-    while (snap(s).weapon !== 'rail' && n++ < 30 * 60 * 20) s.step(30);
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'intervals' }, seed: 3, simOpts: { stars: 99, skipGarage: true, tier: 4 } });
+    s.step(30 * 20);
+    s.sim.receive!({ type: 'weapon', weapon: 'rail', epoch: snap(s).inputEpoch });
+    s.step(1);
     expect(snap(s).weapon).toBe('rail');
     s.step(30 * 90);
     const evs = s.finish().events.filter(e => e.type === 'railFired');

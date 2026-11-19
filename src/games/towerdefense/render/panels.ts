@@ -5,7 +5,7 @@ import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import { roman } from '../sim/tiers';
 import type { Box, TdLayout } from './layout';
-import { constructionStatus, rideObjective } from './objectives';
+import { STAGE_NAME, constructionStatus, flowLabel, rideObjective } from './objectives';
 import { levelImage, levelSelectHtml, modesHtml, styleName, type ArtLookup } from './levelSelect';
 import type { TdLevel } from '../sim/level';
 import { THEME_CSS } from './theme';
@@ -60,6 +60,7 @@ const CSS = `
 .td-hud .td-tier-read small { margin:0; font-size:9px; letter-spacing:.12em; color:var(--td-dim); }
 .td-next { grid-area:next; min-width:0; justify-self:end; }
 .td-next { color:var(--dim); font-size:15px; text-align:right; }
+.td-next > .td-radar { width:min(260px, 100%); margin-left:auto; text-align:left; }
 .td-next > span { display:block; }
 .td-hud .td-current.incoming { padding:8px 16px; }
 .td-current.incoming .td-brood b { font-size:26px; line-height:1.05; }
@@ -74,6 +75,30 @@ const CSS = `
 .td-objective-detail { color:var(--dim); }
 .td-objective .bar { height:6px; }
 .td-crew { border-top:1px solid var(--line); padding-top:12px; }
+/* Enemy radar: incoming HP per colour by when it reaches the base. Horizontal: now on the left, +90 s on the right;
+   vertical (the landscape card): now at the bottom. Bar length = the bucket against the recent peak. */
+.td-radar { position:relative; display:flex; flex-direction:column; gap:3px; min-width:0; }
+.td-radar-head { display:flex; justify-content:space-between; gap:8px; }
+.td-hud .td-radar-head small { margin:0; font-size:10px; letter-spacing:.08em; }
+.td-radar-head b { font-size:11px; color:var(--td-text); text-transform:uppercase; letter-spacing:.06em; }
+.td-radar-well { position:relative; display:flex; gap:2px; padding:3px; background:var(--td-well); border:1px solid #000; border-radius:3px; box-shadow:inset 0 2px 5px #000; }
+.td-radar.h { gap:2px; }
+.td-radar.h .td-radar-well { height:22px; align-items:flex-end; padding:2px; }
+.td-radar.v .td-radar-well { flex:1; min-height:120px; flex-direction:column-reverse; }
+.td-rb { position:relative; flex:1 1 0; display:flex; min-width:0; min-height:0; }
+.td-radar.h .td-rb { flex-direction:column-reverse; height:calc(var(--k) * 100%); }
+.td-radar.v .td-rb { flex-direction:row; width:calc(var(--k) * 100%); }
+.td-rb > s { display:block; flex:var(--f) 1 0; min-width:0; min-height:0; }
+.td-rb > s.blue { background:var(--td-blue); } .td-rb > s.red { background:var(--td-red); } .td-rb > s.purple { background:var(--td-purple); }
+.td-rb > em { position:absolute; font-style:normal; font-size:9px; line-height:1; color:#d7f4ff; text-shadow:0 1px 0 #000; }
+.td-radar.h .td-rb > em { bottom:1px; left:50%; transform:translateX(-50%); }
+.td-radar.v .td-rb > em { right:-11px; top:50%; transform:translateY(-50%); }
+.td-rboss { position:absolute; width:10px; height:10px; background:var(--td-gold, #ffd24a); border:1px solid #000; transform:rotate(45deg); box-shadow:0 0 8px #ffd24a; }
+.td-radar.h .td-rboss { top:-3px; left:calc(3px + var(--at) * (100% - 16px)); }
+.td-radar.v .td-rboss { right:-3px; bottom:calc(3px + var(--at) * (100% - 16px)); }
+.td-radar-axis { display:flex; justify-content:space-between; }
+.td-hud .td-radar-axis small { margin:0; font-size:9px; letter-spacing:.06em; }
+.td-objective .td-radar.v { flex:1 1 140px; }
 .td-crew b { display:block; margin-bottom:5px; font-size:14px; }
 .td-crew p { color:var(--dim); font-size:13px; }
 .td-hud[data-objective-compact=true] .td-objective { gap:8px; }
@@ -192,6 +217,26 @@ const CSS = `
 `;
 
 const color = (e: Element) => `var(--td-${e})`;
+
+/**
+ * The enemy radar (sim `radar`): one bar per time bucket, its length the bucket's incoming HP against the recent
+ * peak, split by colour share; a Glider count over bars with air, and a gold diamond where a boss will spawn.
+ */
+export function radarHtml(s: TdSnapshot, dir: 'h' | 'v'): string {
+  const r = s.radar;
+  if (!r) return '';
+  const horizon = r.buckets.length * r.stepS;
+  const bars = r.buckets.map((b) => {
+    const total = b.blue + b.red + b.purple, k = Math.min(1, total / Math.max(1, r.scale));
+    const parts = (['blue', 'red', 'purple'] as const).filter((c) => b[c] > 0).map((c) => `<s class="${c}" style="--f:${(b[c] / total).toFixed(3)}"></s>`).join('');
+    return `<i class="td-rb" style="--k:${(total > 0 ? Math.max(0.06, k) : 0).toFixed(3)}">${parts}${b.air ? `<em>${b.air}✈</em>` : ''}</i>`;
+  }).join('');
+  const boss = r.boss ? `<b class="td-rboss" style="--at:${Math.min(1, r.boss.inS / horizon).toFixed(3)}" title="Boss"></b>` : '';
+  const head = `<div class="td-radar-head"><small>${dir === 'h' ? `Incoming · now → +${horizon}s` : 'Incoming'}</small><b>${r.boss && r.boss.inS > 0 ? `Boss in ${Math.ceil(r.boss.inS)}s` : r.lead ? `${r.lead} leads` : 'Clear'}</b></div>`;
+  const axis = `<div class="td-radar-axis"><small>+${horizon}s</small><small>now</small></div>`;
+  return `<div class="td-radar ${dir}" role="img" aria-label="Enemy radar, next ${horizon} seconds${r.lead ? `, ${r.lead} leads` : ''}">${head}`
+    + `${dir === 'v' ? axis : ''}<div class="td-radar-well">${bars}${boss}</div></div>`;
+}
 // Snapshot strings are game-owned, but garage descriptions may contain a profile-derived value.
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
@@ -312,22 +357,22 @@ export class TdHud {
     const run = s.phase === 'run' && !loading, bd = s.brood;
     for (const el of [this.status, this.current]) el.hidden = !run;
     const pct = (n: number) => `${Math.max(0, Math.min(100, n * 100))}%`;
-    this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}${s.run ? `<small>/${s.run.waves}</small>` : ''}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
+    const f = s.flow, segK = f ? 1 - f.leftS / Math.max(1, f.leftS + s.waveElapsed) : 0;
+    this.html(this.status, `<div class="td-stat"><b>${f && f.stage !== 'warm-up' ? `SET ${f.set}${f.sets ? `<small>/${f.sets}</small>` : ''}` : 'WARM-UP'}</b><small>${s.lull > 0 ? `Starts in ${Math.ceil(s.lull)}s` : f ? `${f.stage === 'warm-up' ? '' : `${STAGE_NAME[f.stage]} · `}${Math.ceil(f.leftS)}s` : ''}</small><div class="bar"><i style="width:${pct(segK)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
     this.current.style.setProperty('--brood', color(bd.color));
     const incoming = bd.countdownS > 0;
     this.current.classList.toggle('incoming', incoming);
+    // The radar sits here (portrait, phones); the landscape column shows it upright in the objective card instead.
     const forecast = incoming
-      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.warmup ? 'Warm-up' : s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/${s.set.of}`} · ${s.set.role === 'easy' ? 'Recovery' : bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
-      : `<span>${s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood'}</span>`;
-    this.html(this.current, `<div class="td-brood"><b>${WEAPON_NAME[bd.weapon]}</b><small>${bd.color} brood</small></div>${run ? tierHtml(s) : ''}<div class="td-next">${forecast}</div>`);
-    const e = s.effort, boss = s.boss, bn = s.banner;
+      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>${esc(flowLabel(s))} · get ready</small>`
+      : L.objective ? `<span>${esc(flowLabel(s))}</span>` : radarHtml(s, 'h');
+    const swapping = s.swapLeft > 0 ? ` · mounting ${Math.ceil(s.swapLeft)}s` : '';
+    this.html(this.current, `<div class="td-brood"><b>${WEAPON_NAME[s.weapon]}</b><small>${bd.color}${swapping}</small></div>${run ? tierHtml(s) : ''}<div class="td-next">${forecast}</div>`);
+    const boss = s.boss, bn = s.banner;
     let headline = '', sub = '';
     if (boss) {
       headline = boss.pending ? `Phase ${boss.phase + 1} in ${Math.ceil(boss.countdownS)}s` : boss.charge === 'warn' ? 'Ram charge incoming' : boss.charge === 'on' ? 'Ram charging' : boss.exposed ? `Exposed · ${Math.ceil(boss.windowLeftS)}s` : boss.telegraph ? `Sprint in ${Math.ceil(boss.windowLeftS)}s` : '';
-      sub = boss.pending ? `${BOSS_ESCALATION[boss.color]} · same weapon` : boss.charge ? 'Burn it down before it closes' : 'Shift to V · sprint for ×1.5 damage';
-    } else if (e) {
-      headline = e.state === 'announced' ? `${e.kind} in ${Math.ceil(e.countdownS)}s` : e.state === 'active' ? `${e.kind} · ${Math.ceil(Math.max(0, e.needS - e.heldS))}s more · ${Math.ceil(e.leftS)}s left` : `${e.kind} ${e.state}`;
-      sub = e.kind === 'spin' ? `${e.minRpm}+ rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : `${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP`;
+      sub = boss.pending ? BOSS_ESCALATION[boss.color] : boss.charge ? 'Burn it down before it closes' : 'Shift to V · sprint for ×1.5 damage';
     }
     const intro = s.fx.some((f) => f.kind === 'bossIntro' && s.t - f.t0 < f.life); // the canvas name card owns this moment
     if (!headline && bn && s.t - bn.t0 < 4 && !intro) { headline = bn.text; sub = bn.sub; }
@@ -336,7 +381,7 @@ export class TdHud {
     this.objective.hidden = !L.objective || !run || !!s.workshop;
     if (L.objective) {
       const o = rideObjective(s), crew = constructionStatus(s);
-      this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div><div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
+      this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div>${radarHtml(s, 'v')}<div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
     }
     this.menu.hidden = !s.garage;
     if (s.garage) {

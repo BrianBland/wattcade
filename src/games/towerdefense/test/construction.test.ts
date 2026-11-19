@@ -99,7 +99,7 @@ describe('construction input and persistence', () => {
     expect(snap(s).towers).toHaveLength(2);
     expect(snap(s).lull).toBeGreaterThan(0);
   });
-  it('nothing builds itself for a rider; the headless build bot spends at the lull’s end', () => {
+  it('nothing builds itself for a rider; the headless build bot spends as the flow starts', () => {
     const rider = session(new NullInput()); rider.step(30 * 50); expect(snap(rider).towers).toHaveLength(0);
     const bot = session(new NullInput(), { botBuild: true }); bot.step(1);
     bot.step(30 * 14); expect(snap(bot).towers).toHaveLength(0); // the 15 s first lull

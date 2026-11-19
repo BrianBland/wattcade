@@ -4,11 +4,11 @@ import { module } from '../index';
 import type { TdSnapshot } from '../sim/types';
 
 describe('balance comparisons', () => {
-  it('an easy wave and its lull call for tier II; the next work wave calls for more; the trainer stays the rider\'s gearbox', () => {
+  it('a trough calls for tier II, the next build for more; the trainer stays the rider\'s gearbox', () => {
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
       const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), seed,
         fake: { script: 'z2' }, simOpts: { autopilot: true, baseHp: 1000 } });
-      for (const [key, value] of Object.entries({ waveMinS: 5, waveMaxS: 15, easyWaveS: 10, heavySpawnWindowS: 3, lullS: 12, easyLullS: 12, firstLullS: 12 })) {
+      for (const [key, value] of Object.entries({ segmentS: 15, troughS: 15, spawnTailS: 2, bossPeakMaxS: 40, firstLullS: 12 })) {
         s.tuning.set(`towerdefense.${key}`, value);
       }
       const snap = () => s.sim.snapshot() as TdSnapshot;
@@ -18,19 +18,18 @@ describe('balance comparisons', () => {
       expect(snap().brood.mode).toBe('resistance');
       expect(snap().brood.cue).toContain('ride easy · tier II');
       expect(snap().suggestedTier).toBe(2);
-      s.step(30 * 13);
+      expect(snap().flow?.stage).toBe('trough');
       expect(snap().lull).toBe(0);
-      expect(snap().suggestedTier).toBe(2);
       expect(effect().mode).toBe('resistance');
       for (let second = 0; second < 60 && snap().wave < 6; second++) s.step(30);
       expect(snap().wave).toBe(6);
-      s.step(30 * 13);
+      expect(snap().lull).toBe(0);
       expect(snap().suggestedTier).toBeGreaterThanOrEqual(3);
       expect(effect().mode).toBe('resistance');
     }
   });
-  it('arms the turret for a rider holding the recovery target through an easy Fireball or Rail wave', () => {
-    // Rides exactly the published trainer target: 0.5 FTP on an easy wave, never the work-wave demand.
+  it('arms the turret for a rider holding the trough target with a Fireball or Railgun mounted', () => {
+    // Rides exactly the published trainer target: tier II's rated power in a trough, never the peak's demand.
     SCRIPTS['td-test-on-target'] = { ...SCRIPTS['target-follow'], name: 'td-test-on-target',
       powerFtp: (_t, e) => Number((e.hooks as { powerFtp?: number } | undefined)?.powerFtp ?? 0.65) };
     const weapons = new Set<string>();
@@ -38,7 +37,7 @@ describe('balance comparisons', () => {
       for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
         const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), seed,
           fake: { script: 'td-test-on-target' }, simOpts: { autopilot: true, baseHp: 1000 } });
-        for (const [key, value] of Object.entries({ waveMinS: 5, waveMaxS: 15, easyWaveS: 40, heavySpawnWindowS: 3, lullS: 12, easyLullS: 12, firstLullS: 12 })) {
+        for (const [key, value] of Object.entries({ segmentS: 15, troughS: 40, spawnTailS: 2, bossPeakMaxS: 40, firstLullS: 12 })) {
           s.tuning.set(`towerdefense.${key}`, value);
         }
         const snap = () => s.sim.snapshot() as TdSnapshot;

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { NullInput, createGameSession, testProfile } from '../../../core';
 import { module } from '../index';
-import type { Fx, TdSnapshot } from '../sim/types';
-import { FLINCH_S, PAYOFF_STYLE, cableHeat, flinchAt, mixHex, shimmerBands, stepBlend } from '../render/overdrive';
+import type { TdSnapshot } from '../sim/types';
+import { FLINCH_S, cableHeat, flinchAt, mixHex, shimmerBands, stepBlend } from '../render/overdrive';
 
 describe('overdrive visuals', () => {
   it('blends in fast and out slowly', () => {
@@ -37,24 +37,24 @@ describe('overdrive visuals', () => {
     expect(flinchAt(-1)).toBe(0);
     expect(flinchAt(0.04)).toBeGreaterThan(0.6);
     expect(flinchAt(FLINCH_S + 0.01)).toBe(0);
-    expect(Object.keys(PAYOFF_STYLE).sort()).toEqual(['grind', 'hold', 'spin']);
   });
 });
 
-describe('called-effort payoff fx', () => {
-  it('each resolved call emits one payoff fx; wins also freeze briefly (≤ 0.1 s)', () => {
+describe('no called efforts', () => {
+  it('a ride has no payoff or EMP fx, and every hit-stop freezes briefly (≤ 0.1 s)', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, seed: 2, simOpts: { autopilot: true, skipGarage: true } });
-    const seen = new Set<number>(), payoffs: Array<Extract<Fx, { kind: 'payoff' }>> = [], stops: number[] = [];
+    const seen = new Set<number>(), kinds = new Set<string>(), stops: number[] = [];
     for (let i = 0; i < 30 * 60 * 12; i++) {
       s.step(1);
       for (const f of (s.sim.snapshot() as TdSnapshot).fx) {
         if (seen.has(f.id)) continue; seen.add(f.id);
-        if (f.kind === 'payoff') payoffs.push(f);
+        kinds.add(f.kind);
         if (f.kind === 'hitStop') stops.push(f.seconds);
       }
     }
-    expect(payoffs.length).toBeGreaterThan(0);
-    expect(payoffs.some((p) => p.won)).toBe(true);
+    expect([...kinds]).not.toContain('payoff');
+    expect([...kinds]).not.toContain('emp');
+    expect(stops.length).toBeGreaterThan(0);
     for (const x of stops) expect(x).toBeLessThanOrEqual(0.1);
   });
 });

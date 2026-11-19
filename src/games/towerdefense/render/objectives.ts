@@ -1,44 +1,46 @@
 import { BOSS_ESCALATION } from '../sim/boss';
-import type { TdSnapshot } from '../sim/types';
+import { roman } from '../sim/tiers';
+import type { FlowStage, TdSnapshot } from '../sim/types';
 
 export interface RideObjective { label: string; title: string; target: string; detail: string; progress?: number }
 const seconds = (n: number) => `${Math.ceil(Math.max(0, n))}s`;
-const role = (r: string) => r === 'boss' ? 'Boss' : r === 'easy' ? 'Recovery' : 'Work wave';
+export const STAGE_NAME: Record<FlowStage, string> = { 'warm-up': 'Warm-up', build: 'Build', peak: 'Peak', boss: 'Boss peak', trough: 'Trough' };
+const nextName = (r: string) => r === 'boss' ? 'boss peak' : r === 'easy' ? 'trough' : 'more flow';
 
-/** Read the same live effort/boss state as the sim; recovery always takes priority over stale calls. */
+/** Where the ride is in its set (and the level), for labels: "Set 2/4 · Build". */
+export function flowLabel(s: TdSnapshot): string {
+  const f = s.flow;
+  if (!f) return '';
+  return f.stage === 'warm-up' ? 'Warm-up' : `Set ${f.set}${f.sets ? `/${f.sets}` : ''} · ${STAGE_NAME[f.stage]}`;
+}
+
+/** The ride's current job, from the flow stage and the boss; there are no called efforts, the radar shows what's coming. */
 export function rideObjective(s: TdSnapshot): RideObjective {
-  const label = `${s.run ? `${s.run.name} · W${s.wave}/${s.run.waves} · ` : ''}${s.set.warmup ? 'Warm-up' : `Set ${s.set.set} · ${s.set.role === 'work' ? `Work ${s.set.pos}/${s.set.of}` : role(s.set.role)}`}`;
-  const next = `Next: ${role(s.forecast.role).toLowerCase()}`;
-  if (s.brood.countdownS > 0) return { label, title: 'Recover', target: 'Easy spin · catch your breath',
-    detail: `${role(s.set.role)} starts in ${seconds(s.brood.countdownS)}` };
-  if (s.set.warmup) return { label, title: 'Warm-up wave', target: 'Ride easy · build your first towers',
-    detail: `${seconds(s.waveMaxS - s.waveElapsed)} remaining · ${next}` };
-  if (s.set.role === 'easy') return { label, title: 'Recovery wave', target: 'Ride easy · no called efforts',
-    detail: `${seconds(s.waveMaxS - s.waveElapsed)} remaining · ${next}` };
+  const label = `${s.run ? `${s.run.name} · ` : ''}${flowLabel(s)}`;
+  const want = `Tier ${roman(s.suggestedTier)}`, lead = s.radar?.lead ? `${s.radar.lead} leads` : 'mixed flow';
+  const f = s.flow, left = f ? seconds(f.leftS) : '';
+  if (s.lull > 0) return { label, title: 'Get ready', target: 'Pick a first tower · A on a pad', detail: `The flow starts in ${seconds(s.lull)}` };
   const b = s.boss;
-  if (b) {
+  if (b && f?.stage === 'boss') {
     const phase = `${b.name} · phase ${b.phase}/${b.phaseCount}`;
-    if (b.pending) return { label: phase, title: `Phase ${b.phase + 1} next`, target: `${BOSS_ESCALATION[b.color]} · same weapon`, detail: `Starts in ${seconds(b.countdownS)}` };
+    if (b.pending) return { label: phase, title: `Phase ${b.phase + 1} next`, target: BOSS_ESCALATION[b.color], detail: `Starts in ${seconds(b.countdownS)}` };
     if (b.exposed) return { label: phase, title: 'Exposed', target: 'Push now · damage window open', detail: `${seconds(b.windowLeftS)} remaining` };
     if (b.telegraph) return { label: phase, title: 'Prepare to sprint', target: 'Shift to tier V · sprint for ×1.5 damage', detail: `Opening in ${seconds(b.windowLeftS)}` };
-    if (b.charge) return { label: phase, title: b.charge === 'warn' ? 'Ram charge incoming' : 'Ram charging', target: 'Burn it down before it reaches the base', detail: s.brood.cue };
+    if (b.charge) return { label: phase, title: b.charge === 'warn' ? 'Ram charge incoming' : 'Ram charging', target: 'Burn it down before it reaches the base', detail: `${want} · Fireball counters red` };
     if (b.shield > 0) return { label: phase, title: 'Shield plates up', target: 'Railgun pulses at tier IV+ crack them', detail: `${Math.round(b.shield * 100)}% plates left · openings break them fast` };
-    return { label: phase, title: 'Hold your rhythm', target: s.brood.cue, detail: 'Watch for the next sprint window' };
+    return { label: phase, title: 'Boss peak', target: `${want} · counter its colour`, detail: 'Watch for the next sprint window' };
   }
-  const e = s.effort;
-  if (e) {
-    const power = e.kind === 'hold' ? `${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP` : `≥${Math.round(e.minFtp * 100)}% FTP`;
-    const target = e.kind === 'spin' ? `${e.minRpm}+ rpm · ${power}` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ${power}` : power;
-    const title = `${e.kind} ${e.state === 'announced' ? `in ${seconds(e.countdownS)}` : e.state === 'active' ? 'effort' : e.state === 'won' ? 'complete' : 'missed'}`;
-    return { label: 'Called effort', title, target,
-      detail: e.state === 'active' ? `${seconds(e.needS - e.heldS)} more · ${seconds(e.leftS)} left` : e.state === 'announced' ? `Hold the target for ${seconds(e.needS)}` : 'Return to your wave rhythm',
-      progress: e.state === 'active' || e.state === 'won' ? Math.max(0, Math.min(1, e.heldS / Math.max(0.01, e.needS))) : undefined };
+  const next = `then ${nextName(s.forecast.role)}`;
+  switch (f?.stage) {
+    case 'warm-up': return { label, title: 'Warm-up', target: `${want} · build your first towers`, detail: `${left} · ${next}` };
+    case 'trough': return { label, title: 'Trough', target: `${want} · ride easy and build`, detail: `A clean trough heals the base · ${left} left` };
+    case 'peak': return { label, title: 'Peak', target: `${want} · ${lead}`, detail: `${left} · ${next}` };
+    default: return { label, title: 'Build', target: `${want} · ${lead}`, detail: `${left} · ${next}` };
   }
-  return { label, title: 'Hold your rhythm', target: s.brood.cue, detail: next };
 }
 
 export function constructionStatus(s: TdSnapshot): { title: string; detail: string } {
-  return s.lull > 0
-    ? { title: 'Recovery · build now', detail: `${s.scrap} scrap · A opens Construction` }
+  return s.lull > 0 || s.flow?.stage === 'trough'
+    ? { title: 'Build now', detail: `${s.scrap} scrap · D-pad a pad · A builds` }
     : { title: 'Construction', detail: `${s.scrap} scrap · build any time with A` };
 }

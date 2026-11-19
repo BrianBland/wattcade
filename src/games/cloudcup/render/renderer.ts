@@ -221,15 +221,13 @@ export class Renderer implements GameRenderer {
     g.stroke();
     this.resize(host.clientWidth, host.clientHeight);
     this.assets = Promise.all(
-      ['slag-road', 'yard-0', 'yard-1', 'yard-2'].map((name) =>
-        loader.loadAsync('/scrapjet/' + name + '.webp'),
-      ),
-    ).then(([road, ...props]) => {
+      ['slag-road', 'salvage-enamel'].map((name) => loader.loadAsync('/scrapjet/' + name + '.webp')),
+    ).then(([road, enamel]) => {
       if (this.disposed) {
-        [road, ...props].forEach((t) => t.dispose());
+        [road, enamel].forEach((t) => t.dispose());
         return;
       }
-      this.animateYard = buildYard(this.scene, road, props, this.gl.capabilities.getMaxAnisotropy());
+      this.animateYard = buildYard(this.scene, road, enamel, this.gl.capabilities.getMaxAnisotropy());
     });
     this.assets = Promise.all([this.assets, ...skinLoads]).then(() => undefined);
   }

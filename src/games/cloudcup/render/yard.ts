@@ -13,9 +13,10 @@ import {
 } from '../sim/deck';
 import { buildRails, launchPlate } from './viaduct';
 import { buildFoundry } from './foundry';
+import { buildSalvage } from './salvage';
 import { pads } from '../sim/race';
 
-export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[], anisotropy: number) {
+export function buildYard(scene: T.Scene, roadMap: T.Texture, enamel: T.Texture, anisotropy: number) {
   roadMap.colorSpace = T.SRGBColorSpace;
   roadMap.wrapT = T.RepeatWrapping;
   roadMap.anisotropy = Math.min(8, anisotropy);
@@ -225,33 +226,9 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
   beams.castShadow = true;
   beams.receiveShadow = true;
   scene.add(beams);
-  // Painted salvage is placed at fixed track coordinates. The nearer heaps
-  // sweep past the camera; taller landmarks stay visible through the turn.
-  props.forEach((tex, type) => {
-    tex.colorSpace = T.SRGBColorSpace;
-    const mat = new T.SpriteMaterial({
-      map: tex,
-      transparent: true,
-      alphaTest: 0.3,
-      depthWrite: true,
-    });
-    for (let i = 0; i < 23; i++) {
-      const at = (i * 47 + type * 16) % LAP,
-        side = (i + type) % 2 ? 1 : -1;
-      if (side > 0 && at > LIP - 23 && at < LAND + 20) continue;
-      const p = world(at, side * (2.8 + ((i * 7 + type) % 6) * 0.68), -2.8);
-      const prop = new T.Sprite(mat);
-      prop.center.set(0.5, 0);
-      const height = [5.8, 10, 14][type] * (0.82 + (i % 3) * 0.17);
-      prop.scale.set(
-        (height * (tex.image as HTMLImageElement).width) / (tex.image as HTMLImageElement).height,
-        height,
-        1,
-      );
-      prop.position.set(p.x, p.y, p.z);
-      scene.add(prop);
-    }
-  });
+  enamel.colorSpace = T.SRGBColorSpace;
+  enamel.anisotropy = Math.min(8, anisotropy);
+  buildSalvage(scene, enamel);
   // Two counter-rotating breaker drums hang over the entrance to the crusher.
   // Their teeth catch the sun and cast moving shadows across the apex.
   const machines: T.Group[] = [];

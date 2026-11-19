@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { LAP, world } from '../sim/track';
+import { deck as deckSpan, forkWidth, missing, rises, LIP, LAND, LAUNCH_SPEED, salvage } from '../sim/deck';
 import { pads } from '../sim/race';
 
 export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[], anisotropy: number) {
@@ -9,15 +10,19 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
   const pos: number[] = [],
     uv: number[] = [],
     index: number[] = [];
-  for (let i = 0; i <= 540; i++) {
-    for (const side of [-1.32, 1.32]) {
-      const p = world(i * 2, side);
-      pos.push(p.x, p.y, p.z);
-      uv.push(side < 0 ? 0 : 1, i / 10);
-    }
-    if (i < 540) {
-      const a = 2 * i;
-      index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  for (let at = 0; at < LAP; at += 2) {
+    for (const right of [false, true]) {
+      if (missing(at + 1, right)) continue;
+      const first = pos.length / 3;
+      for (const d of [at, at + 2]) {
+        const span = deckSpan(d, right);
+        for (const x of [span.lo, span.hi]) {
+          const p = world(d, x, right ? rises(d) : 0);
+          pos.push(p.x, p.y, p.z);
+          uv.push((x + 2) / 4, d / 20);
+        }
+      }
+      index.push(first, first + 1, first + 2, first + 1, first + 3, first + 2);
     }
   }
   const geometry = new T.BufferGeometry();
@@ -52,10 +57,21 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
   // give a reliable speed reference even where a bend hides the skyline.
   for (let at = 0; at < LAP; at += 4) {
     for (const side of [-1, 1]) {
-      block(at, side * 1.34, -0.1, 0.32, 0.4, 4.45, at % 12 === 0 ? '#b07844' : '#504047');
+      const d = at + 2,
+        right = side > 0,
+        span = deckSpan(d, right),
+        lift = right ? rises(d) : 0;
+      if (missing(d, right)) continue;
+      const edge = right ? span.hi : span.lo,
+        fork = forkWidth(d);
+      block(d, edge, -0.22 + lift, 0.22, 0.45, 4.2, at % 12 === 0 ? '#b07844' : '#504047');
+      if (fork > 0.05) {
+        const inner = right ? span.lo : span.hi;
+        block(d, inner, lift - 0.19, 0.19, 0.44, 4.18, right ? '#e6a345' : '#64c5bd');
+      }
       if (at % 8 === 0) {
-        block(at, side * 1.34, 0.123, 0.12, 0.025, 2.5, '#ffce78');
-        block(at, side * 1.43, -1, 0.2, 2.8, 0.21, '#534653', side * -0.13);
+        block(d, edge, lift + 0.02, 0.12, 0.035, 2.5, '#ffce78');
+        block(d, edge, -1.2 + lift, 0.2, 2.8, 0.21, '#534653', side * -0.13);
       }
     }
   }
@@ -125,6 +141,51 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
       }
     }
   }
+  // Rebar and incandescent scrap far below the severed jump deck make the
+  // missing road legible before the riding surface drops out of view.
+  for (let d = LIP; d <= LAND; d += 2) {
+    block(d, 0.96, -8, 5.9, 0.5, 2.45, '#422d32');
+    for (let k = 0; k < 3; k++)
+      block(d, 0.5 + k * 0.37, -7.67, 0.13, 0.12, 1.45, k % 2 ? '#ffbe52' : '#f46b30', 0.23);
+  }
+  for (const d of [LIP - 0.35, LAND + 0.35]) {
+    block(d, 0.95, 1.68, 5.18, 0.17, 0.39, '#f4b643');
+    for (let j = 0; j < 7; j++) block(d, 0.43 + 0.16 * j, 1.79, 0.34, 0.035, 0.41, '#383039');
+  }
+  for (let d = 222; d < 240; d += 4) {
+    for (const side of [-1, 1]) block(d, 0.94 + side * 0.16, rises(d) + 0.06, 0.34, 0.06, 1.95, '#ffd171');
+  }
+  function board(at: number, x: number, label: string, w: number, color: string) {
+    const p = world(at, x, 2.4);
+    block(at, x, 1.15, 0.14, 2.5, 0.17, color);
+    const panel = new T.Mesh(new T.PlaneGeometry(w, 0.88), sign(label));
+    panel.position.set(p.x, p.y, p.z);
+    panel.rotation.set(0, -p.yaw, p.bank, 'YXZ');
+    scene.add(panel);
+  }
+  board(171, -1.65, '← SERVICE BRIDGE', 3.9, '#5dbcb1');
+  board(171, 1.68, 'JUMP  ' + Math.ceil(LAUNCH_SPEED * 3.6) + '  →', 3.6, '#d79b43');
+  board(627, 1.74, 'SINGLE SPAN', 3.5, '#d79b43');
+  const crates = salvage.map(({ at, x }) => {
+    const box = new T.Group(),
+      label = sign('?');
+    const shell = new T.Mesh(
+      new T.BoxGeometry(1.05, 1.05, 1.05),
+      new T.MeshStandardMaterial({ color: '#e1a348', metalness: 0.45, roughness: 0.4 }),
+    );
+    box.add(shell);
+    for (let i = 0; i < 4; i++) {
+      const plate = new T.Mesh(new T.PlaneGeometry(0.83, 0.78), label);
+      const a = i * Math.PI * 0.5;
+      plate.position.set(Math.sin(a) * 0.533, 0, Math.cos(a) * 0.533);
+      plate.rotation.y = a;
+      box.add(plate);
+    }
+    const p = world(at, x, 0.95);
+    box.position.set(p.x, p.y, p.z);
+    scene.add(box);
+    return { box, y: p.y };
+  });
   const beams = new T.InstancedMesh(
     new T.BoxGeometry(),
     new T.MeshStandardMaterial({ roughness: 0.85 }),
@@ -187,7 +248,12 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
     scene.add(motor);
     machines.push(wheel);
   }
-  return (time: number) => {
+  return (time: number, distance: number) => {
+    crates.forEach(({ box, y }, i) => {
+      box.visible = distance % LAP < salvage[i].at;
+      box.rotation.y = time * 1.7;
+      box.position.y = y + Math.sin(time * 3 + i) * 0.13;
+    });
     machines[0].rotation.z = time * 0.76;
     machines[1].rotation.z = -time * 0.76;
   };

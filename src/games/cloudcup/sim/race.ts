@@ -1,14 +1,28 @@
 import type { GameContext, GameSim } from '../../../contracts';
+import {
+  chassis,
+  recover,
+  crossDeck,
+  deck,
+  forkWidth,
+  narrowWidth,
+  safeLine,
+  rampLine,
+  packPace,
+  prize,
+  salvage,
+  LAUNCH_SPEED,
+} from './deck';
 import { LAP, WIDTH, track } from './track';
 export { LAP };
 export const FINISH = LAP * 3;
 export const classes = ['Rookie', 'Hotshot', 'Outlaw'] as const;
 export const pilots = ['Rivet', 'Mantis', 'Switch'];
-export const pads = [78, 218, 375, 536, 729, 931].map((at, i) => ({
+export const pads = [78, 334, 375, 536, 729, 931].map((at, i) => ({
   at,
   x: [-0.78, 0.52, 0.82, -0.62, 0.15, -0.92][i],
 }));
-export type Rival = {
+export type Rival = ReturnType<typeof chassis> & {
   at: number;
   x: number;
   lean: number;
@@ -49,6 +63,7 @@ export function createRace(ctx: GameContext) {
   const purge = ctx.tuning.num('purgeFtp', 1.1, 0.9, 1.4, 0.05);
   const purgeSeconds = ctx.tuning.num('purgeSeconds', 2, 1, 4, 0.25);
   const rivals: Rival[] = [-0.55, 0.72, 0.05].map((x, i) => ({
+    ...chassis(),
     at: [1.6, 4, 9][i],
     x,
     lean: 0,
@@ -60,6 +75,7 @@ export function createRace(ctx: GameContext) {
     finish: null,
   }));
   const s = {
+    ...chassis(),
     menu: true,
     tier: 1,
     at: 0,
@@ -77,6 +93,11 @@ export function createRace(ctx: GameContext) {
     hits: 0,
     strikes: 0,
     counters: 0,
+    ringOuts: 0,
+    tow: 0,
+    shield: 0,
+    crates: 0,
+    nextCrate: 0,
     swings: 0,
     draft: 0,
     swing: 0,
@@ -96,7 +117,14 @@ export function createRace(ctx: GameContext) {
     s.message = message;
     s.notice = 1.35;
   }
-  function damage() {
+  function damage(side: number) {
+    if (s.shield > 0) {
+      s.shield = 0;
+      s.grace = 1;
+      say('Armour held');
+      return;
+    }
+    s.shove = side * 3.6;
     s.slow = 7;
     s.purge = 0;
     s.hits++;
@@ -126,8 +154,12 @@ export function createRace(ctx: GameContext) {
     s.notice -= dt;
     s.impact = Math.max(0, s.impact - dt);
     s.reload = Math.max(0, s.reload - dt);
+    const rescuing = recover(s, dt);
+    const previousJumps = s.jumps;
+    s.shield = Math.max(0, s.shield - dt);
+    s.tow = Math.max(0, s.tow - dt);
     const attack = Number(input.pressed.has('b')) - Number(input.pressed.has('a'));
-    if (attack && !s.reload) {
+    if (attack && !s.reload && !rescuing && !s.flight) {
       s.side = attack;
       s.swing = SWING;
       s.reload = 0.96;
@@ -141,12 +173,24 @@ export function createRace(ctx: GameContext) {
     const effort = clamp(ctx.bike().ftpFraction, 0, 2);
     const drift = -turn * 0.58 * Math.pow(s.speed / cruise(), 2);
     s.lateralSpeed += (steer * 1.95 + drift - s.lateralSpeed) * (1 - Math.exp(-dt * (steer ? 5 : 9)));
-    s.x = clamp(s.x + s.lateralSpeed * dt, -1.19, 1.19);
+    if (!rescuing) {
+      s.x += (s.lateralSpeed * (s.flight ? 0.32 : 1) + s.shove) * dt;
+      s.shove *= Math.exp(-dt * 4);
+    } else {
+      s.lateralSpeed = 0;
+      s.speed = 0;
+    }
     s.lean += (clamp(-steer * 0.38 - turn * 0.3, -0.64, 0.64) - s.lean) * (1 - Math.exp(-dt * 6));
     s.cameraX += (s.x * 0.76 - s.cameraX) * (1 - Math.exp(-dt * 3.7));
     const inWake = rivals.some(
       (r) =>
-        r.finish === null && !r.stun && r.at - s.at > 2.8 && r.at - s.at < 18 && Math.abs(r.x - s.x) < 0.25,
+        r.finish === null &&
+        !r.fall &&
+        !r.flight &&
+        !r.stun &&
+        r.at - s.at > 2.8 &&
+        r.at - s.at < 18 &&
+        Math.abs(r.x - s.x) < 0.25,
     );
     s.draft = clamp(s.draft + dt * (inWake ? 1.3 : -2.4), 0, 1);
     const target =
@@ -154,11 +198,32 @@ export function createRace(ctx: GameContext) {
       Math.sqrt(effort) *
       (1 + s.draft * 0.16) *
       (s.boost > 0 ? 1.36 : 1) *
+      (s.tow > 0 ? 1.23 : 1) *
       (s.slow > 0 ? 0.72 : 1) *
-      (Math.abs(s.x) > 1.13 ? 0.86 : 1);
+      (Math.abs(s.x) > Math.max(Math.abs(deck(s.at, s.x > 0).lo), Math.abs(deck(s.at, s.x > 0).hi)) - 0.13
+        ? 0.86
+        : 1);
     s.speed += (target - s.speed) * (1 - Math.exp(-dt * (target > s.speed ? 1.25 : 0.75)));
+    if (rescuing) s.speed = 0;
+    else if (s.flight) s.speed = s.launchSpeed;
     const last = s.at;
     s.at = Math.min(FINISH, s.at + s.speed * dt);
+    if (!rescuing) crossDeck(s, last, s.speed, dt);
+    if (s.fall && !rescuing) {
+      if (s.at === FINISH) s.at = last;
+      s.boost = 0;
+      s.draft = 0;
+      s.swing = 0;
+      s.speed = 0;
+      s.slow = 0;
+      s.purge = 0;
+      ctx.resistance.clear('overload');
+      say('Recovery magnet');
+    }
+    if (s.jumps > previousJumps) {
+      s.boost = 2.8;
+      say('Gap cleared · landing boost');
+    }
     const finishTime = s.time - dt + (FINISH - last) / Math.max(0.001, s.speed);
     s.lap = Math.min(3, 1 + Math.floor(s.at / LAP));
     s.boost = Math.max(0, s.boost - dt);
@@ -175,15 +240,36 @@ export function createRace(ctx: GameContext) {
       marker = pad.at + Math.floor(s.next / pads.length) * LAP;
     if (last < marker && s.at >= marker) {
       s.next++;
-      if (Math.abs(s.x - pad.x) < 0.31) {
+      if (!s.fall && Math.abs(s.x - pad.x) < 0.31) {
         s.boost = 2.8;
         s.boosts++;
         say('Afterburner');
       }
     }
+    const crate = salvage[s.nextCrate % salvage.length],
+      crateAt = crate.at + Math.floor(s.nextCrate / salvage.length) * LAP;
+    if (last < crateAt && s.at >= crateAt) {
+      s.nextCrate++;
+      if (!s.fall && Math.abs(s.x - crate.x) < 0.35) {
+        const reward = prize(Math.max(...rivals.map((r) => r.at)) - s.at, ctx.rng());
+        s.crates++;
+        if (reward === 'tow') {
+          s.tow = 6;
+          say('Tow cell · pedal for boost');
+        } else if (reward === 'shield') {
+          s.shield = 15;
+          say('Scrap armour · one hit');
+        } else {
+          s.boost = 3;
+          say('Overdrive cell');
+        }
+      }
+    }
     const lead = Math.floor(s.time / 12) % 3;
     rivals.forEach((r, i) => {
-      if (r.finish !== null) return;
+      if (r.finish !== null || recover(r, dt)) return;
+      const oldAt = r.at,
+        oldJumps = r.jumps;
       const gap = r.at - s.at,
         flank = i !== lead,
         flankSide = (i + 3 - lead) % 3 === 1 ? -1 : 1;
@@ -192,27 +278,55 @@ export function createRace(ctx: GameContext) {
       // The point rider contests the wake. Wing riders try to draw level, within
       // a bounded pace envelope: actual rider effort can break the formation.
       const nearby = Math.abs(gap) < 32;
-      const wantedX = nearby
+      let wantedX = nearby
         ? flank
           ? s.x + flankSide * 0.5
           : s.x + 0.24 * Math.sin(s.time * 0.65)
         : Math.sin(s.time * 0.27 + i * 2) * 0.88;
-      const vx = r.stun || r.windup ? 0 : clamp((clamp(wantedX, -1.08, 1.08) - r.x) * 1.7, -0.85, 0.85);
-      r.x += vx * dt;
+      const ahead = r.at + 14,
+        fork = Math.max(forkWidth(ahead), forkWidth(r.at));
+      if (fork > 0) {
+        const takeRamp = i === 2 && paceSpeed >= LAUNCH_SPEED * 1.02;
+        const line = takeRamp ? rampLine(ahead) : safeLine(ahead);
+        wantedX = wantedX * (1 - fork) + line * fork;
+      } else if (narrowWidth(ahead) > 0 || narrowWidth(r.at) > 0) wantedX = clamp(wantedX, -0.38, 0.38);
+      const vx = r.stun || r.windup ? 0 : clamp((clamp(wantedX, -1.65, 1.3) - r.x) * 1.7, -0.85, 0.85);
+      r.x += (vx + r.shove) * dt;
+      r.shove *= Math.exp(-dt * 4);
       r.lean += (clamp(-vx * 0.36 - turn * 0.2, -0.6, 0.6) - r.lean) * dt * 5;
       const wantedGap = flank ? 1.5 : 9;
       const tactical = nearby
         ? clamp(s.speed + (wantedGap - gap) * 0.85, paceSpeed * 0.8, paceSpeed * 1.13)
         : paceSpeed;
-      const speed = tactical * (r.stun ? 0.54 : 1) * Math.min(1, s.time * 1.35);
-      if (r.at + speed * dt >= FINISH) r.finish = s.time - dt + (FINISH - r.at) / Math.max(0.001, speed);
+      const speed = r.flight
+        ? r.launchSpeed
+        : tactical * packPace(gap) * (r.stun ? 0.54 : 1) * Math.min(1, s.time * 1.35);
+
       r.at = Math.min(FINISH, r.at + speed * dt);
+      crossDeck(r, oldAt, speed, dt);
+      if (r.fall) {
+        if (r.at === FINISH) r.at = oldAt;
+        if (r.stun > 0) {
+          s.ringOuts++;
+          say(pilots[i] + ' went over!');
+        }
+        r.windup = 0;
+        r.strike = 0;
+        r.stun = 0;
+        return;
+      }
+      if (r.at === FINISH) r.finish = s.time - dt + (FINISH - oldAt) / Math.max(0.001, speed);
+      if (r.jumps > oldJumps) r.cooldown = 1;
       r.strike = Math.max(0, r.strike - dt);
       r.stun = Math.max(0, r.stun - dt);
       r.cooldown = Math.max(0, r.cooldown - dt);
       const dx = r.x - s.x,
         dz = r.at - s.at;
       if (
+        !s.fall &&
+        !s.flight &&
+        !r.flight &&
+        !r.grace &&
         s.swing > 0.035 &&
         s.swing < 0.42 &&
         !s.contact &&
@@ -225,11 +339,21 @@ export function createRace(ctx: GameContext) {
         r.windup = 0;
         r.cooldown = 4;
         r.stun = 2.4;
-        r.x = clamp(r.x + s.side * 0.25, -1.19, 1.19);
+        r.shove = s.side * 3.6;
+        r.strike = 0;
         s.impact = 0.26;
         s.impactX = dx;
       }
-      if (r.strike > 0 && !s.slow && swingConnects(-dz, -dx, r.side, 1 - r.strike / 0.34)) damage();
+      if (
+        r.strike > 0 &&
+        !s.fall &&
+        !s.flight &&
+        !s.grace &&
+        !r.flight &&
+        !s.slow &&
+        swingConnects(-dz, -dx, r.side, 1 - r.strike / 0.34)
+      )
+        damage(r.side);
       if (r.windup) {
         r.windup = Math.max(0, r.windup - dt);
         if (!r.windup) {
@@ -237,6 +361,10 @@ export function createRace(ctx: GameContext) {
           r.cooldown = 6;
         }
       } else if (
+        !s.fall &&
+        !s.flight &&
+        !s.grace &&
+        !r.flight &&
         flank &&
         !s.slow &&
         !r.stun &&
@@ -251,13 +379,14 @@ export function createRace(ctx: GameContext) {
     });
     for (let i = 0; i < rivals.length; i++) {
       const a = rivals[i];
-      if (a.finish !== null) continue;
+      if (a.finish !== null || a.fall || a.flight) continue;
       for (const b of [s, ...rivals.slice(i + 1)]) {
+        if (b.fall || b.flight || ('finish' in b && b.finish !== null)) continue;
         const dx = a.x - b.x;
         if (Math.abs(a.at - b.at) > 2.25 || Math.abs(dx) > 0.27) continue;
         const shove = (Math.sign(dx) || 1) * (0.27 - Math.abs(dx)) * 0.6;
-        a.x = clamp(a.x + shove, -1.19, 1.19);
-        b.x = clamp(b.x - shove, -1.19, 1.19);
+        a.x += shove;
+        b.x -= shove;
       }
     }
     s.place =
@@ -292,6 +421,10 @@ export function createRace(ctx: GameContext) {
       Boosts: s.boosts,
       Strikes: s.strikes,
       Counters: s.counters,
+      Falls: s.falls,
+      Jumps: s.jumps,
+      RingOuts: s.ringOuts,
+      Salvage: s.crates,
       Hits: s.hits,
     }),
     dispose: () => ctx.resistance.clear('overload'),

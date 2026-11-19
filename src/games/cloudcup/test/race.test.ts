@@ -3,19 +3,34 @@ import { createGameSession, NullInput, testProfile } from '../../../core';
 import type { Button } from '../../../contracts';
 import { module } from '..';
 import { FINISH, swingConnects, type RaceView } from '../sim/race';
+import {
+  chassis,
+  crossDeck,
+  recover,
+  RESCUE,
+  LAUNCH_SPEED,
+  LIP,
+  LAND,
+  safeLine,
+  forkWidth,
+  supported,
+  packPace,
+  prize,
+} from '../sim/deck';
 import { LAP, track, world } from '../sim/track';
 import { playBounds } from '../render/renderer';
 function race(ftp = 200) {
   const profile = { ...testProfile(), ftp },
     base = new NullInput().state();
   const pressed = new Set<Button>();
-  let paddleR = 0;
+  let paddleR = 0,
+    paddleL = 0;
   const session = createGameSession({
     profile,
     game: module,
     seed: 3,
     fake: { script: 'z2' },
-    input: { beginTick() {}, state: () => ({ ...base, pressed, paddleR }) },
+    input: { beginTick() {}, state: () => ({ ...base, pressed, paddleR, paddleL }) },
   });
   const snap = () => session.sim.snapshot() as RaceView;
   const press = (b: Button) => {
@@ -33,7 +48,8 @@ function race(ftp = 200) {
     press,
     until,
     paddle: (value: number) => {
-      paddleR = value;
+      paddleR = Math.max(0, value);
+      paddleL = Math.max(0, -value);
     },
   };
 }
@@ -51,7 +67,13 @@ it('takes a partial line, banks under held input, and eases out on release', () 
   expect(r.snap().lateralSpeed).toBeGreaterThan(0);
   r.paddle(0.8);
   r.session.step(75);
-  expect(r.snap().x).toBe(1.19);
+  expect(r.snap().falls).toBe(1);
+  expect(r.snap().fall).toBeGreaterThan(0);
+  const progress = r.snap().at;
+  r.paddle(0);
+  r.until((s) => s.fall === 0);
+  expect(r.snap().at).toBe(progress);
+  expect(supported(r.snap().at, r.snap().x)).toBe(true);
 });
 it('keeps the mesh and handling coordinates continuous at lap boundaries', () => {
   expect(track(LAP)).toEqual(track(0));
@@ -136,4 +158,102 @@ it('lets the trainer load expire at ordinary effort', () => {
   r.session.step(211);
   expect(r.snap().slow).toBe(0);
   expect(r.session.mixer.debug().activeEffects.some((e) => e.id === 'overload')).toBe(false);
+});
+
+it('shares one fork, ramp threshold and recovery rule for bikes across all laps', () => {
+  for (const origin of [0, LAP, 2 * LAP]) {
+    for (const [x, speed, clear] of [
+      [0.94, LAUNCH_SPEED + 0.01, true],
+      [0.94, LAUNCH_SPEED, true],
+      [0.94, LAUNCH_SPEED - 0.1, false],
+      [-1.1, 12, true],
+    ] as const) {
+      const bike = { ...chassis(), at: origin + LIP - 0.2, x };
+      while (bike.at < origin + LAND + 2 && !bike.fall) {
+        const prev = bike.at;
+        bike.at += speed / 30;
+        crossDeck(bike, prev, speed, 1 / 30);
+      }
+      expect(!bike.fall).toBe(clear);
+      expect(bike.jumps).toBe(clear && x > 0 ? 1 : 0);
+      if (bike.fall) {
+        const where = bike.at;
+        recover(bike, RESCUE);
+        expect(bike.at).toBe(where);
+        expect(supported(where, bike.x)).toBe(true);
+      }
+    }
+  }
+  expect(supported(695, 0.7)).toBe(false);
+  expect(supported(695, 0.5)).toBe(true);
+  expect(supported(250, 0)).toBe(false);
+});
+it('weights salvage toward trailers and caps both directions of crew pace adjustment', () => {
+  expect(prize(50, 0.5)).toBe('tow');
+  expect(prize(-50, 0.5)).toBe('shield');
+  expect(packPace(500)).toBe(0.8);
+  expect(packPace(-500)).toBe(1.2);
+  expect(packPace(0)).toBe(1);
+});
+
+function balanceRide() {
+  const r = race();
+  r.press('a');
+  const fake = r.session.fakeBike!;
+  fake.useScript(null);
+  function ride(seconds: number, ftpFraction: number) {
+    fake.manual = { cadence: ftpFraction ? 90 : 0, power: 200 * ftpFraction, hr: null };
+    for (let i = 0; i < seconds * 30; i++) {
+      const s = r.snap(),
+        x = forkWidth(s.at + 10) || forkWidth(s.at) ? safeLine(s.at + 10) : 0;
+      const error = x - s.x - s.lateralSpeed * 0.13;
+      r.paddle(Math.abs(error) > 0.045 ? Math.sign(error) : 0);
+      const attacker = s.rivals.find((p) => p.windup > 0.18 && p.windup < 0.65);
+      if (attacker && !s.reload) r.press(attacker.x < s.x ? 'a' : 'b');
+      else r.session.step(1);
+    }
+    return r.snap();
+  }
+  return ride;
+}
+it('brings back a strong early leader who stops pedaling', () => {
+  const ride = balanceRide(),
+    lead = ride(24, 1.7);
+  expect(lead.place).toBe(1);
+  const coast = ride(18, 0);
+  expect(coast.place).toBe(4);
+  expect(coast.speed).toBeLessThan(1);
+});
+it('allows an eight-second late start to reach the pack again at class effort', () => {
+  const ride = balanceRide(),
+    late = ride(8, 0);
+  expect(Math.max(...late.rivals.map((r) => r.at)) - late.at).toBeGreaterThan(70);
+  const resumed = ride(46, 0.78);
+
+  expect(Math.min(...resumed.rivals.map((r) => Math.abs(r.at - resumed.at)))).toBeLessThan(25);
+});
+
+it('can shove a rival over the edge or get knocked off by the crew', () => {
+  for (const attack of [false, true]) {
+    const r = race();
+    r.press('a');
+    // Hold a rideable line near the outside shoulder. One pass contests it,
+    // the other leaves the flanker free to complete its attack.
+    for (let i = 0; i < 300; i++) {
+      const s = r.snap(),
+        error = (attack ? 0.75 : 0.95) - s.x - s.lateralSpeed * 0.15;
+      r.paddle(Math.abs(error) > 0.04 ? Math.sign(error) : 0);
+      if (attack && !s.reload && s.rivals.some((p) => p.x > s.x && Math.abs(p.at - s.at) < 2.9 && !p.stun))
+        r.press('b');
+      else r.session.step(1);
+      if (r.snap().ringOuts || r.snap().fall) break;
+    }
+    if (attack) {
+      expect(r.snap().ringOuts).toBe(1);
+      expect(r.snap().rivals.some((p) => p.fall > 0)).toBe(true);
+    } else {
+      expect(r.snap().fall).toBeGreaterThan(0);
+      expect(r.snap().hits).toBe(1);
+    }
+  }
 });

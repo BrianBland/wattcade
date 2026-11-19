@@ -46,7 +46,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-k
   button.addEventListener('lostpointercapture', (e) => sources.delete('pointer' + e.pointerId));
 }
 window.addEventListener('keydown', (e) => {
-  if (keys[e.code] || e.code === 'Space') {
+  if (keys[e.code] || e.code === 'Space' || e.code === 'KeyC') {
     e.preventDefault();
     down(e.code, e.code);
   }
@@ -62,10 +62,12 @@ session.fakeBike!.useScript(null);
 let previous = performance.now(),
   frameId = 0;
 function draw(time: number) {
-  const sprint = [...sources.values()].includes('Space');
+  const controls = [...sources.values()];
+  const sprint = controls.includes('Space'),
+    coast = controls.includes('KeyC');
   session.fakeBike!.manual = {
-    power: profile.ftp * (sprint ? 1.35 : 0.78),
-    cadence: sprint ? 105 : 86,
+    power: coast ? 0 : profile.ftp * (sprint ? 1.35 : 0.78),
+    cadence: coast ? 0 : sprint ? 105 : 86,
     hr: null,
   };
   session.frame(Math.min(0.1, (time - previous) / 1000));

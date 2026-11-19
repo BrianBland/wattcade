@@ -31,6 +31,8 @@ export class RallySound {
       glide: 0.22,
     });
     if (!prev) return;
+    if (s.jumps > prev.jumps) play('ignite', { vol: 0.54 });
+    if (s.falls > prev.falls) play('whoosh', { pitch: 0.56, vol: 0.62 });
     if (s.swings > prev.swings) play('whoosh', { pitch: 1.45, vol: 0.46 });
     if (s.strikes > prev.strikes) play('clank', { pitch: 0.73, vol: 0.9 });
     if (s.hits > prev.hits) play('wreck', { pitch: 0.83, vol: 0.65 });

@@ -3,6 +3,7 @@ import * as T from 'three';
 import { NO_INSETS, type GameRenderer, type Insets } from '../../../contracts';
 import { chainTip, classes, FINISH, LAP, SWING, type RaceView } from '../sim/race';
 import { track, world } from '../sim/track';
+import { lapAt, LIP, LAUNCH_SPEED } from '../sim/deck';
 import { buildBike } from './bike';
 import { buildYard } from './yard';
 import './rally.css';
@@ -42,7 +43,7 @@ export class Renderer implements GameRenderer {
   private insets = NO_INSETS;
   private width = 1;
   private height = 1;
-  private animateYard?: (time: number) => void;
+  private animateYard?: (time: number, distance: number) => void;
   private sound = new RallySound();
   private sun = new T.DirectionalLight('#fff1bd', 2.15);
   private lastHud = '';
@@ -255,19 +256,37 @@ export class Renderer implements GameRenderer {
   }
   render(s: RaceView) {
     const f = track(s.at);
-    const actors = [{ at: s.at, x: s.x, lean: s.lean, stun: s.slow, finish: null }, ...s.rivals];
+    const actors = [
+      {
+        at: s.at,
+        x: s.x,
+        lean: s.lean,
+        stun: s.slow,
+        finish: null,
+        lift: s.lift,
+        fall: s.fall,
+        flight: s.flight,
+        grace: s.grace,
+      },
+      ...s.rivals,
+    ];
     actors.forEach((r, i) => {
       const p = world(r.at, r.x);
       const obj = this.bikes[i].group;
       const rebound = i && r.stun ? Math.sin(r.stun * 17) * Math.min(0.16, r.stun * 0.18) : 0;
-      obj.visible = r.finish === null;
-      obj.position.set(p.x, p.y + 0.26 + Math.sin(s.time * 8 + i) * 0.045, p.z);
-      obj.rotation.set(Math.sin(s.time * 6 + i) * 0.015, -p.yaw, p.bank + r.lean + rebound, 'YXZ');
+      obj.visible = r.finish === null && (!r.grace || Math.sin(s.time * 30) > -0.65);
+      obj.position.set(p.x, p.y + r.lift + 0.26 + Math.sin(s.time * 8 + i) * 0.045, p.z);
+      obj.rotation.set(
+        (r.flight ? (r.flight - 0.5) * 0.44 : 0) + Math.sin(s.time * 6 + i) * 0.015,
+        -p.yaw,
+        p.bank + r.lean + rebound + (r.fall ? (2.15 - r.fall) * 2 : 0),
+        'YXZ',
+      );
       const thrust = i ? (r.stun ? 0.52 : 1) : 0.7 + s.speed / 35 + (s.boost ? 1 : 0);
       this.bikes[i].flame.scale.z = thrust * (1.1 + 0.15 * Math.sin(s.time * 43 + i));
       const shade = this.shades[i];
-      shade.visible = obj.visible;
-      shade.position.set(p.x, p.y + 0.063, p.z);
+      shade.visible = obj.visible && !r.fall && !r.flight;
+      shade.position.set(p.x, p.y + r.lift + 0.063, p.z);
       shade.rotation.set(-Math.PI / 2, -p.yaw, p.bank, 'YXZ');
       const r2 = s.rivals[i - 1],
         wind = r2?.windup ?? 0;
@@ -286,10 +305,10 @@ export class Renderer implements GameRenderer {
     const eye = world(s.at - back, s.cameraX + (s.menu ? 0.65 : 0), s.menu ? 3.1 : 2.55 + s.speed * 0.017);
     const focus = world(s.at + 8 + s.speed * 0.11, s.cameraX * 0.72, 1.1);
     const j = s.impact * Math.sin(s.time * 97) * 0.23;
-    this.camera.position.set(eye.x + j, eye.y + j, eye.z);
+    this.camera.position.set(eye.x + j, eye.y + j + Math.max(0, s.lift) * 0.67, eye.z);
     const roll = s.lean * 0.15 + f.turn * 0.065;
     this.camera.up.set(Math.cos(f.yaw) * Math.sin(roll), Math.cos(roll), Math.sin(f.yaw) * Math.sin(roll));
-    this.camera.lookAt(focus.x, focus.y, focus.z);
+    this.camera.lookAt(focus.x, focus.y + Math.max(0, s.lift) * 0.36, focus.z);
     const fov = 55 + Math.min(15, s.speed * 0.38);
     if (Math.abs(fov - this.camera.fov) > 0.06) {
       this.camera.fov = fov;
@@ -326,7 +345,7 @@ export class Renderer implements GameRenderer {
       }
       pos.needsUpdate = true;
     }
-    this.animateYard?.(s.time);
+    this.animateYard?.(s.time, s.at);
     this.sun.target.position.set(f.x, f.y, f.z);
     this.sun.position.set(f.x - 25, f.y + 37, f.z + 18);
     this.gl.render(this.scene, this.camera);
@@ -345,20 +364,41 @@ export class Renderer implements GameRenderer {
       g.fill();
     }
     const danger = s.rivals.find((r) => r.windup > 0);
+    const d = lapAt(s.at);
+    const routeCue =
+      d >= 145 && d < LIP
+        ? s.x > 0.1
+          ? 'RAMP   /   ' + Math.ceil(LAUNCH_SPEED * 3.6) + ' KM/H'
+          : '← BRIDGE     /     RAMP →'
+        : d >= 610 && d < 672
+          ? 'SINGLE SPAN   /   EXPOSED EDGES'
+          : '';
     const cue =
       s.at >= FINISH
         ? places[s.place - 1] + ' · FINISH'
-        : s.slow
-          ? 'OVERLOAD   /   ' + Math.round(s.purgeFtp * 100) + '% FTP   ' + Math.floor(s.purge * 100) + '%'
-          : danger
-            ? (danger.x < s.x ? '‹ LEFT' : 'RIGHT ›') + '   /   INCOMING'
-            : s.notice > 0
-              ? s.message
-              : s.draft > 0.7
-                ? 'IN THE SLIPSTREAM'
-                : '';
+        : s.fall
+          ? 'MAGNET RECOVERY   /   ' + Math.ceil(s.fall) + 's'
+          : s.flight
+            ? 'AIRBORNE'
+            : s.slow
+              ? 'OVERLOAD   /   ' +
+                Math.round(s.purgeFtp * 100) +
+                '% FTP   ' +
+                Math.floor(s.purge * 100) +
+                '%'
+              : danger
+                ? (danger.x < s.x ? '‹ LEFT' : 'RIGHT ›') + '   /   INCOMING'
+                : s.notice > 0
+                  ? s.message
+                  : routeCue
+                    ? routeCue
+                    : s.draft > 0.7
+                      ? 'IN THE SLIPSTREAM'
+                      : '';
     const speed = Math.round(s.speed * 3.6);
-    const key = [s.menu, s.tier, s.place, s.lap, cue, speed, !!s.reload].join('|');
+    const key = [s.menu, s.tier, s.place, s.lap, cue, speed, !!s.reload, !!s.shield, Math.ceil(s.tow)].join(
+      '|',
+    );
     if (key === this.lastHud) return;
     this.lastHud = key;
     this.info.classList.toggle('on-grid', s.menu);
@@ -368,7 +408,13 @@ export class Renderer implements GameRenderer {
     this.gauge.innerHTML = '<b>' + speed + '</b><small> KM/H</small>';
     this.cue.textContent = cue;
     this.cue.classList.toggle('danger', !!danger || s.slow > 0);
-    this.combat.textContent = s.reload ? 'CHAIN REELING' : 'A ‹   CHAIN   › B';
+    this.combat.textContent = s.shield
+      ? 'SCRAP ARMOUR'
+      : s.tow
+        ? 'TOW CELL  ·  ' + Math.ceil(s.tow) + 's'
+        : s.reload
+          ? 'CHAIN REELING'
+          : 'A ‹   CHAIN   › B';
   }
   unmount() {
     this.disposed = true;

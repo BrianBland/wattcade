@@ -1,4 +1,5 @@
 import type { GameModule } from '../contracts';
+import { module as cloudcup } from './cloudcup';
 import { module as dungeon } from './dungeon';
 import { module as lighthouse } from './lighthouse';
 import { module as towerdefense } from './towerdefense';
@@ -17,7 +18,7 @@ export const games: GameModule[] = [cadenza, hamster, watershed, dungeon, lighth
  * Games still under construction: always in the picker and playable, but their card wears caution tape
  * (`isWip`) and they sort after finished games on ties. The headless runner has them too.
  */
-export const wipGames: GameModule[] = [seaside, penrose];
+export const wipGames: GameModule[] = [seaside, penrose, cloudcup];
 /** True for a game whose picker card should show the under-construction tape. */
 export const isWip = (id: string): boolean => wipGames.some((g) => g.id === id);
 /** The picker's list: finished games, then the ones under construction. */

@@ -24,6 +24,7 @@ import { BAKED_LEVELS, specKey } from '../sim/baked';
 import { knownLevel } from '../sim/levelCache';
 import { LevelArt, type ArtWish } from './levelArt';
 import { levelKey } from './ground/bake';
+import { SQUASH, drawBurnFlames, drawBurnGround, fireShares, flameHeat, prepareBurnSprites, trackPatches, type Patch } from './burnFx';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -37,7 +38,7 @@ const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: num
   surge: { s: 'surge' }, emp: { s: 'emp' }, overdrive: { s: 'overdrive' }, spin: { s: 'chime' }, overclock: { s: 'overdrive', pitch: 1.5 }, alarm: { s: 'alarm' }, go: { s: 'go' }, gameOver: { s: 'gameOver' },
 };
 
-interface Particle { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; color: string; kind: 'spark' | 'flame' | 'smoke' | 'ring' | 'text' | 'shard' | 'streak'; text?: string; grow?: number; rot?: number; spin?: number; key?: string }
+interface Particle { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; color: string; kind: 'spark' | 'flame' | 'ember' | 'smoke' | 'ring' | 'text' | 'shard' | 'streak'; text?: string; grow?: number; rot?: number; spin?: number; key?: string }
 const hash = (n: number) => { let h = (n * 374761393) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
 export class TdRenderer implements GameRenderer {
@@ -61,6 +62,8 @@ export class TdRenderer implements GameRenderer {
   private hits: Hit[] = [];
   private hud!: TdHud;
   private dynamo = new DynamoSound();
+  /** Burning-road patches being drawn, including cooling scars. */
+  private patches: Patch[] = [];
   private particles: Particle[] = [];
   private lastCue = -1; private lastFx = 0;
   private heading = new Map<number, { x: number; y: number; h: number }>();
@@ -136,7 +139,7 @@ export class TdRenderer implements GameRenderer {
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
   async ready() {
-    await Promise.all([this.battlefield.loaded, this.machinery.loaded, this.aliens!.loaded]);
+    await Promise.all([this.battlefield.loaded, this.machinery.loaded, this.aliens!.loaded, prepareBurnSprites(() => !this.mounted)]);
     if (!this.mounted) return;
     let scale: number;
     do {
@@ -407,6 +410,8 @@ export class TdRenderer implements GameRenderer {
       p.age += dt; p.x += p.vx * dt; p.y += p.vy * dt;
       if (p.kind === 'spark' || p.kind === 'shard') { const d = Math.exp(-5 * dt); p.vx *= d; p.vy *= d; }
       else if (p.kind === 'flame') { const d = Math.exp(-3 * dt); p.vx *= d; p.vy *= d; p.size *= 1 + dt * 1.6; }
+      else if (p.kind === 'ember') { p.vy *= Math.exp(-0.8 * dt); p.vx += Math.sin(p.age * 6 + (p.spin ?? 0)) * 6 * this.k * dt; }
+      else if (p.kind === 'smoke' && p.color === 'soot') { p.vx *= Math.exp(-0.5 * dt); p.size *= 1 + dt * 0.9; }
       else if (p.kind === 'smoke') { p.vy -= 8 * dt; p.size *= 1 + dt * 1.2; }
       else if (p.kind === 'text') p.vy *= 0.94;
     }
@@ -426,11 +431,17 @@ export class TdRenderer implements GameRenderer {
         g.strokeStyle = p.color; g.globalAlpha = f; g.lineWidth = Math.max(1, 0.25 * this.k); g.lineCap = 'round';
         g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x - p.vx / sp * p.size * 3, p.y - p.vy / sp * p.size * 3); g.stroke(); g.globalAlpha = 1;
       } else if (p.kind === 'smoke') {
-        g.fillStyle = p.color === 'steam' ? `rgba(225,230,236,${0.3 * f})` : `rgba(40,40,48,${0.35 * f})`; g.beginPath(); g.arc(p.x, p.y, p.size, 0, TAU); g.fill();
+        g.fillStyle = p.color === 'steam' ? `rgba(225,230,236,${0.3 * f})` : p.color === 'soot' ? `rgba(38,32,30,${0.22 * f * Math.min(1, p.age * 3)})` : `rgba(40,40,48,${0.35 * f})`; g.beginPath(); g.arc(p.x, p.y, p.size, 0, TAU); g.fill();
       } else if (p.kind === 'text') {
         g.globalAlpha = Math.min(1, f * 2); g.font = `800 ${Math.round(p.size)}px system-ui, sans-serif`; g.textAlign = 'center';
         g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.7)'; g.strokeText(p.text ?? '', p.x, p.y); g.fillStyle = p.color; g.fillText(p.text ?? '', p.x, p.y);
         g.textAlign = 'left'; g.globalAlpha = 1;
+      } else if (p.kind === 'ember') {
+        g.globalCompositeOperation = 'lighter';
+        const tw = 0.6 + 0.4 * Math.sin(p.age * 23 + (p.spin ?? 0));
+        glowAt(g, f > 0.5 ? '#ffb347' : '#ff6a20', p.x, p.y, p.size * 4, f * 0.5 * tw);
+        g.globalAlpha = f * tw; g.fillStyle = f > 0.4 ? '#fff1c0' : '#ffae50'; g.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); g.globalAlpha = 1;
+        g.globalCompositeOperation = 'source-over';
       } else if (p.kind === 'flame') {
         g.globalCompositeOperation = 'lighter';
         const c = f > 0.65 ? '#fff0b0' : f > 0.35 ? '#ff9a3a' : '#c0301a';
@@ -453,7 +464,13 @@ export class TdRenderer implements GameRenderer {
         const c = COL[f.color], { x, y } = this.P(f.x, f.y);
         if (allowHitStop && !f.big) play('chitinCrunch', { minGapS: 0.05, vol: 0.7, pitch: 0.85 + Math.random() * 0.3 });
         this.burst(x, y, c, f.big ? (this.aliens?.ready ? 10 : 26) : 8, (f.big ? 40 : 26) * k, (f.big && !this.aliens?.ready ? 1 : 0.6) * k, f.big ? 0.6 : 0.45); // puppets: gibs carry heavy deaths
-        if (f.big) { this.ring(x, y, c, 1 * k, 9 * k, 0.45); for (let i = 0; i < 4; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' }); }
+        if (f.big) {
+          this.ring(x, y, c, 1 * k, 9 * k, 0.45);
+          // Killed in the fire: the smoke climbs away with the fire's soot instead of parking a grey cloud over the flames.
+          for (let i = 0; i < 4; i++) this.particles.push(f.fire
+            ? { x: x + (Math.random() - 0.5) * 3 * k, y, vx: (Math.random() - 0.5) * 4 * k, vy: -(5 + Math.random() * 4) * k, age: 0, life: 1.1, size: 1.4 * k, color: 'soot', kind: 'smoke' }
+            : { x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' });
+        }
         if (f.color === 'gold') { // the Hive Tyrant comes apart in a gold shard shower
           this.shake = Math.max(this.shake, 1.2); this.flash = { color: COL.gold, a: 0.5 };
           for (let i = 0; i < 46 && this.particles.length < 600; i++) {
@@ -477,9 +494,13 @@ export class TdRenderer implements GameRenderer {
         if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
         const { x, y } = this.P(f.x, f.y);
-        this.ring(x, y, '#ffb070', f.r * k * 0.3, f.r * k * 0.8, 0.35);
-        this.burst(x, y, '#ff9a50', 8, 26 * k, 0.6 * k, 0.4);
-        for (let i = 0; i < 3; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 6 * k, vy: -Math.random() * 4 * k, age: 0, life: 1, size: 2.5 * k, color: '', kind: 'smoke' });
+        // A fireball splashes burning embers outward; the ground fire (burnFx) and a hot flash (drawFx) do the rest.
+        for (let i = 0; i < 10 && this.particles.length < 600; i++) {
+          const a = Math.random() * TAU, v = (8 + Math.random() * 16) * k;
+          this.particles.push({ x, y: y - k, vx: Math.cos(a) * v, vy: Math.sin(a) * v * SQUASH - 6 * k, age: 0, life: 0.45 + Math.random() * 0.35, size: (0.25 + Math.random() * 0.25) * k, color: '', kind: 'ember', spin: Math.random() * TAU });
+        }
+        // The impact throws up a little soot that climbs away, so it doesn't park a grey disc over the burning road.
+        for (let i = 0; i < 2; i++) this.particles.push({ x: x + (Math.random() - 0.5) * 3 * k, y: y - k, vx: (Math.random() - 0.5) * 4 * k, vy: -(6 + Math.random() * 4) * k, age: 0, life: 0.9, size: 1.3 * k, color: 'soot', kind: 'smoke' });
         this.shake = Math.max(this.shake, 0.25);
       } else if (f.kind === 'emp') {
         const { x, y } = this.P(this.geo.base.x, this.geo.base.y);
@@ -570,7 +591,7 @@ export class TdRenderer implements GameRenderer {
       this.drawCables(g, s, bike);
       this.drawCulverts(g);
       this.drawRoadFx(g, s, t);
-      this.drawBurns(g, s, t);
+      this.drawBurns(g, s, dt);
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
       this.aliens?.drawGround(g, this.view, t);
       this.odBlend = stepBlend(this.odBlend, s.overdrive && !s.over, realDt);
@@ -607,6 +628,7 @@ export class TdRenderer implements GameRenderer {
         if (e.dazed) this.daze(g, e, x, y, t);
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
+      drawBurnFlames(g, this.patches, this.view.P, k, s.t);
       this.drawDecks(g, s, t, puppets);
       this.drawFx(g, s, muzzle, t);
       this.drawParticles(g);
@@ -754,20 +776,23 @@ export class TdRenderer implements GameRenderer {
       for (let d = from * lane.length, i = 0; d <= lane.length; d += 2, i++) { const p = lane.at(d), q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }
     g.stroke(); g.restore();
   }
-  /** Burning road left by the fireballs: a scorched patch with flame tongues licking up across it. */
-  private drawBurns(g: CanvasRenderingContext2D, s: TdSnapshot, _t: number) {
+  /** Burning road left by the fireballs: a charred scorch with glowing coals (layered flames draw over the actors). */
+  private drawBurns(g: CanvasRenderingContext2D, s: TdSnapshot, dt: number) {
+    this.patches = trackPatches(this.patches, s.burns, s.t);
+    drawBurnGround(g, this.patches, this.view.P, this.k, s.t);
+    // Embers spark up and drift; smoke rises as the fire dies. Rates are per second, so frame rate doesn't matter.
     const k = this.k;
-    for (const b of s.burns) {
-      const { x, y } = this.P(b.x, b.y), r = b.r * k, f = Math.min(1, b.k * 1.5), seed = Math.round(b.x * 7 + b.y * 13);
-      g.fillStyle = `rgba(18,10,6,${0.5 * f})`; g.beginPath();
-      for (let i = 0; i < 10; i++) { const a = i / 10 * TAU, q = r * (0.75 + 0.25 * hash(seed + i)); i ? g.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q * 0.85) : g.moveTo(x + Math.cos(a) * q, y + Math.sin(a) * q * 0.85); }
-      g.closePath(); g.fill();
-      g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, '#ff6a20', x, y, r * 0.8, 0.12 * f); g.restore();
-      // a few flame tongues per frame, rising and fading
-      for (let i = 0; i < 2 && this.particles.length < 600; i++) {
-        if (Math.random() > 0.6 * f) continue;
-        const a = Math.random() * TAU, d = r * 0.8 * Math.sqrt(Math.random());
-        this.particles.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.85, vx: (Math.random() - 0.5) * k, vy: -(2 + Math.random() * 3) * k, age: 0, life: 0.35 + Math.random() * 0.3, size: 0.8 * k, color: '', kind: 'flame' });
+    const shares = fireShares(this.patches);
+    for (const [i, p] of this.patches.entries()) {
+      const share = shares[i], heat = p.outT == null ? flameHeat(p.k) : 0, { x, y } = this.P(p.x, p.y), r = p.r * k;
+      const embers = heat * share * 7 * dt, smoke = (p.outT == null ? (0.2 + 0.8 * (1 - p.k)) * share : Math.max(0, 0.8 - (s.t - p.outT) * 0.4)) * dt;
+      if (Math.random() < embers && this.particles.length < 600) {
+        const a = Math.random() * TAU, d = r * 0.6 * Math.sqrt(Math.random());
+        this.particles.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * SQUASH - r * 0.3, vx: (Math.random() - 0.5) * 4 * k, vy: -(5 + Math.random() * 7) * k, age: 0, life: 0.8 + Math.random() * 0.8, size: (0.18 + Math.random() * 0.2) * k, color: '', kind: 'ember', spin: Math.random() * TAU });
+      }
+      if (Math.random() < smoke && this.particles.length < 560) {
+        const a = Math.random() * TAU, d = r * 0.5 * Math.sqrt(Math.random());
+        this.particles.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * SQUASH - r * 0.5, vx: (Math.random() - 0.5) * 1.5 * k, vy: -(4 + 2 * Math.random()) * k, age: 0, life: 1.4 + Math.random() * 0.8, size: r * 0.2, color: 'soot', kind: 'smoke' });
       }
     }
   }

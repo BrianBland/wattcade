@@ -73,7 +73,7 @@ it('the landscape card shows the set, the stage, the suggested tier and an uprig
   const radar = card.querySelector('.td-radar.v')!;
   expect(radar.querySelectorAll('.td-blip')).toHaveLength(4);
   expect(radar.querySelectorAll('.td-blip.air')).toHaveLength(1);
-  expect([...radar.querySelectorAll('.td-radar-lanes small')].map((n) => n.textContent)).toEqual(['Road 1', 'Road 2', 'Air']);
+  expect([...radar.querySelectorAll('.td-radar-lanes small')].map((n) => n.textContent)).toEqual(['Road 1', 'Road 2']);
   expect(hud.root.querySelector('.td-next .td-radar')).toBeNull(); // not twice
   expect(hud.root.querySelector<HTMLElement>('.td-event')!.hidden).toBe(true);
   draw({ ...s, flow: { ...s.flow!, stage: 'trough' }, suggestedTier: 2 });
@@ -103,10 +103,10 @@ it('the radar places blips by arrival and road, sizes them against the recent pe
   expect(v(0, '--k')).toBeCloseTo(1, 3); // at the peak
   expect(v(2, '--k')).toBeCloseTo(0.3 + 0.7 * Math.sqrt(0.1), 3); // 40 of 400
   expect(v(3, '--k')).toBeCloseTo(1, 3); // capped
-  // roads then the air, left to right, each blip near its column's centre
-  expect(Math.abs(v(0, '--x') - 1 / 6)).toBeLessThan(1 / 6);
-  expect(Math.abs(v(1, '--x') - 3 / 6)).toBeLessThan(1 / 6);
-  expect(Math.abs(v(2, '--x') - 5 / 6)).toBeLessThan(1 / 6);
+  // one column per road, each blip near its column's centre; Gliders share a road column (key 10 -> road 1)
+  expect(Math.abs(v(0, '--x') - 1 / 4)).toBeLessThan(1 / 4);
+  expect(Math.abs(v(1, '--x') - 3 / 4)).toBeLessThan(1 / 4);
+  expect(Math.abs(v(2, '--x') - 1 / 4)).toBeLessThan(1 / 4);
   expect(blips[1].classList.contains('blue')).toBe(true);
 });
 

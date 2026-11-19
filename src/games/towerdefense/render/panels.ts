@@ -76,8 +76,8 @@ const CSS = `
 .td-objective .bar { height:6px; }
 .td-crew { border-top:1px solid var(--line); padding-top:12px; }
 /* Enemy radar: one fuzzy blip per spawn group, placed by when it comes into the turret's reach and sized by its HP; overlapping
-   blips add up. Horizontal: now on the left, +90 s on the right, roads as rows; vertical (the landscape card): now at
-   the bottom, roads (and the air) as columns. */
+   blips add up. Horizontal: in reach on the left, +90 s on the right, roads as rows; vertical (the landscape card): in reach
+   at the bottom, roads as columns. Gliders share the road columns, marked with a chevron. */
 .td-radar { position:relative; display:flex; flex-direction:column; gap:3px; min-width:0; }
 .td-radar-head { display:flex; justify-content:space-between; gap:8px; }
 .td-hud .td-radar-head small { margin:0; font-size:10px; letter-spacing:.08em; }
@@ -97,16 +97,16 @@ const CSS = `
 .td-radar.v .td-scope::after, .td-radar.h .td-scope::after { content:''; position:absolute; background:#e8b24a8c; }
 .td-radar.v .td-scope::after { left:0; right:0; bottom:0; height:2px; }
 .td-radar.h .td-scope::after { top:0; bottom:0; left:0; width:2px; }
-.td-blip { --c:var(--td-blue); position:absolute; width:calc(var(--k) * var(--bmax)); aspect-ratio:1; border-radius:50%; mix-blend-mode:screen;
-  background:radial-gradient(circle, #fff8e8e0 0 7%, var(--c) 20%, color-mix(in srgb, var(--c) 40%, transparent) 42%, transparent 70%); }
-.td-radar.v .td-blip { --bmax:44px; left:calc(var(--x) * 100%); bottom:calc(var(--p) * 100%); transform:translate(-50%, 50%); }
-.td-radar.h .td-blip { --bmax:24px; left:calc(var(--p) * 100%); top:calc(var(--x) * 100%); transform:translate(-50%, -50%); }
-.td-blip.red { --c:var(--td-red); } .td-blip.purple { --c:var(--td-purple); } .td-blip.prism { --c:#efe6ff; }
-.td-blip.air { background:radial-gradient(circle, color-mix(in srgb, var(--c) 55%, transparent) 0, transparent 68%); }
-.td-blip.air::after { content:''; position:absolute; left:50%; top:50%; width:5px; height:5px; border:solid #e6f8ff; border-width:1.5px 0 0 1.5px; }
+.td-blip { --c:var(--td-blue); position:absolute; width:calc(var(--k) * var(--bmax)); aspect-ratio:1; border-radius:50%; mix-blend-mode:screen; opacity:.62;
+  background:radial-gradient(circle, color-mix(in srgb, var(--c) 85%, #fff) 0 9%, color-mix(in srgb, var(--c) 55%, transparent) 26%, color-mix(in srgb, var(--c) 16%, transparent) 50%, transparent 70%); }
+.td-radar.v .td-blip { --bmax:36px; left:calc(var(--x) * 100%); bottom:calc(var(--p) * 100%); transform:translate(-50%, 50%); }
+.td-radar.h .td-blip { --bmax:20px; left:calc(var(--p) * 100%); top:calc(var(--x) * 100%); transform:translate(-50%, -50%); }
+.td-blip.red { --c:var(--td-red); } .td-blip.purple { --c:var(--td-purple); } .td-blip.prism { --c:#b9a8d8; }
+.td-blip.air { opacity:.8; background:radial-gradient(circle, color-mix(in srgb, var(--c) 35%, transparent) 0, transparent 65%); }
+.td-blip.air::after { content:''; position:absolute; left:50%; top:50%; width:5px; height:5px; border:solid #cfeefc; border-width:1.5px 0 0 1.5px; }
 .td-radar.v .td-blip.air::after { transform:translate(-50%, -25%) rotate(225deg); }
 .td-radar.h .td-blip.air::after { transform:translate(-25%, -50%) rotate(-45deg); }
-.td-blip.boss { width:var(--bmax); border:2px dashed var(--td-gold, #ffd24a); mix-blend-mode:normal; box-shadow:0 0 12px #ffd24a99;
+.td-blip.boss { width:var(--bmax); border:2px dashed var(--td-gold, #ffd24a); mix-blend-mode:normal; box-shadow:0 0 8px #ffd24a66; opacity:.9;
   background:radial-gradient(circle, #fff8e8 0 8%, var(--c) 26%, transparent 70%); }
 .td-radar.v .td-blip.boss { --bmax:30px; } .td-radar.h .td-blip.boss { --bmax:18px; }
 .td-radar-axis { display:flex; justify-content:space-between; }
@@ -235,27 +235,28 @@ const color = (e: Element) => `var(--td-${e})`;
 
 /**
  * The enemy radar (sim `radar`): one fuzzy blip per spawn group, placed by when it comes into the turret's reach
- * (the base line) and across by where it comes from (each road, then the air), sized by its HP against the recent peak
+ * (the base line) and across by which road it takes (Gliders share the road columns, with a chevron), sized by its HP against the recent peak
  * blip. A boss is a gold ringed blip. Every blip enters at the far edge, so a peak reads as a growing smear.
  */
 export function radarHtml(s: TdSnapshot, dir: 'h' | 'v'): string {
   const r = s.radar;
   if (!r) return '';
-  const horizon = r.horizonS, cols = r.roads + (r.air ? 1 : 0), cw = 1 / cols;
-  const colAt = (lane: number) => ((lane < 0 ? r.roads : Math.min(lane, r.roads - 1)) + 0.5) * cw;
+  const horizon = r.horizonS, cols = Math.max(1, r.roads), cw = 1 / cols;
+  // Gliders fly over the roads, so they share the road columns (marked with a chevron) rather than a lane of their own
+  const colAt = (lane: number, key: number) => (Math.min(lane < 0 ? key % cols : lane, cols - 1) + 0.5) * cw;
   const f3 = (n: number) => n.toFixed(3);
   const lanes = Array.from({ length: cols }, (_, i) => `<i class="td-rlane" style="--x:${f3((i + 0.5) * cw)};--w:${f3(cw * 0.8)}"></i>`).join('');
   const ticks = [30, 60].filter((x) => x < horizon).map((x) => `<i class="td-rtick" style="--p:${f3(x / horizon)}"></i>`).join('');
   const blips = r.blips.map((b) => {
     const p = f3(Math.min(1, b.etaS / horizon));
-    if (b.boss) return `<b class="td-blip boss ${b.color}" style="--p:${p};--x:${f3(colAt(b.lane))}" title="Boss"></b>`;
+    if (b.boss) return `<b class="td-blip boss ${b.color}" style="--p:${p};--x:${f3(colAt(b.lane, b.key))}" title="Boss"></b>`;
     const jitter = ((b.key * 0.618034 + (b.lane + 1) * 0.37) % 1) - 0.5; // stable per group, keeps overlaps readable
     const k = 0.3 + 0.7 * Math.sqrt(Math.min(1, b.hp / Math.max(1, r.scale)));
-    return `<i class="td-blip ${b.color}${b.lane < 0 ? ' air' : ''}" style="--p:${p};--x:${f3(colAt(b.lane) + jitter * cw * 0.5)};--k:${f3(k)}"></i>`;
+    return `<i class="td-blip ${b.color}${b.lane < 0 ? ' air' : ''}" style="--p:${p};--x:${f3(colAt(b.lane, b.key) + jitter * cw * 0.6)};--k:${f3(k)}"></i>`;
   }).join('');
   const head = `<div class="td-radar-head"><small>${dir === 'h' ? `Incoming · ${horizon}s` : 'Incoming'}</small><b>${r.boss && r.boss.inS > 0 ? `Boss in ${Math.ceil(r.boss.inS)}s` : r.lead ? `${r.lead} leads` : 'Clear'}</b></div>`;
   const axis = `<div class="td-radar-axis"><small>+${horizon}s</small><small>in reach</small></div>`;
-  const names = cols > 1 ? `<div class="td-radar-lanes">${Array.from({ length: cols }, (_, i) => `<small>${i >= r.roads ? 'Air' : r.roads > 1 ? `Road ${i + 1}` : 'Road'}</small>`).join('')}</div>` : '';
+  const names = cols > 1 ? `<div class="td-radar-lanes">${Array.from({ length: cols }, (_, i) => `<small>Road ${i + 1}</small>`).join('')}</div>` : '';
   return `<div class="td-radar ${dir}" role="img" aria-label="Enemy radar, next ${horizon} seconds, ${r.blips.length} groups incoming${r.lead ? `, ${r.lead} leads` : ''}">${head}`
     + `${dir === 'v' ? axis : ''}<div class="td-radar-well"><div class="td-scope">${lanes}${ticks}${blips}</div></div>${dir === 'v' ? names : ''}</div>`;
 }

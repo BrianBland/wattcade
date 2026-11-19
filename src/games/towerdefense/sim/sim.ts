@@ -203,7 +203,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const levelPeak = T.num('levelPeakWave', 7, 2, 30, 1, 'a level\'s last wave fights like this endless wave (+ the level\'s depth)');
   const firstLullS = T.num('firstLullS', 15, 0, 120, 1, 'quiet start of a level or run: time to pick a first tower, then the flow starts and never stops');
   const radarS = T.num('radarS', 90, 20, 240, 5, 'how far ahead the enemy radar looks');
-  const radarGroupS = T.num('radarGroupS', 5, 1, 20, 1, 'aliens spawning on one road in one colour within this many seconds share a radar blip');
+  const radarGroupS = T.num('radarGroupS', 12, 1, 30, 1, 'aliens spawning on one road in one colour within this many seconds share a radar blip');
   const broodShare = T.num('broodShare', 0.8, 0.34, 1, 0.05, 'share of a wave\'s heavies in its brood colour (the rest are for the towers)');
   const broodMaxRun = T.num('broodMaxRun', 2, 1, 5, 1, 'no brood colour more than N waves in a row');
   const swarmPack = T.num('swarmPackSize', 5, 1, 12, 1, 'blue slots are swarm packs of N darts or drones');

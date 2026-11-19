@@ -19,19 +19,23 @@ export class RallySound {
     setVoice('scrapjet.turbine', {
       wave: 'sawtooth',
       freq: 44 + load * 74 + (s.boost ? 17 : 0),
-      gain: 0.026 + load * 0.018,
+      gain: (0.026 + load * 0.018) * (s.flight ? 0.48 : 1),
       filter: { type: 'lowpass', freq: 145 + load * 560, q: 1.2 },
       glide: 0.14,
     });
     setVoice('scrapjet.air', {
       wave: 'noise',
       freq: 0,
-      gain: load * (s.draft > 0.65 ? 0.015 : 0.038),
+      gain: load * (s.flight ? 0.072 : s.draft > 0.65 ? 0.015 : 0.038),
       filter: { type: 'bandpass', freq: 450 + load * 1230, q: 0.75 },
       glide: 0.22,
     });
     if (!prev) return;
-    if (s.jumps > prev.jumps) play('ignite', { vol: 0.54 });
+    if (s.flight && !prev.flight) play('whoosh', { pitch: 0.86, vol: 0.35 });
+    if (s.jumps > prev.jumps) {
+      play('mortarThump', { pitch: 0.82, vol: 0.6 });
+      play('ignite', { vol: 0.38 });
+    }
     if (s.falls > prev.falls) play('whoosh', { pitch: 0.56, vol: 0.62 });
     if (s.swings > prev.swings) play('whoosh', { pitch: 1.45, vol: 0.46 });
     if (s.strikes > prev.strikes) play('clank', { pitch: 0.73, vol: 0.9 });

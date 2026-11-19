@@ -132,3 +132,62 @@
 .on-grid > .sj-cue {
   display: none;
 }
+
+.sj-speed {
+  --dial-color: #f2bc6c;
+  width: clamp(7em, 12vw, 10em);
+  padding: 0.45em 0.65em 0.52em 1.15em;
+  background: linear-gradient(105deg, transparent 7%, #211f29ea 8%, #171922ef 91%, #4d4342e8);
+  border-right: 0.17em solid #ac9680;
+  font-variant-numeric: tabular-nums;
+}
+.sj-speed b {
+  display: inline-block;
+  margin-right: 0.12em;
+}
+.sj-speed small {
+  font-size: 0.55em;
+}
+.sj-speed.over {
+  --dial-color: #99f1d9;
+}
+.sj-dial {
+  position: relative;
+  height: 0.28em;
+  margin-top: 0.2em;
+  background: #5e5759;
+  transform: skewX(-14deg);
+}
+.sj-dial i {
+  display: block;
+  width: var(--speed);
+  height: 100%;
+  background: var(--dial-color);
+}
+.sj-dial em {
+  position: absolute;
+  left: var(--launch);
+  top: -0.14em;
+  bottom: -0.14em;
+  width: 2px;
+  background: white;
+  display: none;
+}
+.approach .sj-dial em {
+  display: block;
+}
+.sj-speed span:not(:empty) {
+  display: block;
+  margin-top: 0.55em;
+  font:
+    800 0.55em/1.1 system-ui,
+    sans-serif;
+  letter-spacing: 0.09em;
+  color: var(--dial-color);
+}
+.sj-map {
+  top: 3.5%;
+  right: 2.5%;
+  width: clamp(72px, 11%, 125px);
+  background: linear-gradient(110deg, transparent 7%, #201d26c2 8%, #201d2699 100%);
+}

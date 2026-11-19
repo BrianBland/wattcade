@@ -180,19 +180,49 @@ export function buildBike(id: number, skin: T.Texture) {
   shell.castShadow = true;
   shell.receiveShadow = true;
   group.add(shell);
-  const flame = new T.Mesh(
-    new T.ConeGeometry(0.19, 1, 12),
-    new T.MeshBasicMaterial({
-      color: 0x8efffa,
-      transparent: true,
-      opacity: 0.62,
-      depthWrite: false,
-      blending: T.AdditiveBlending,
-    }),
+  // A short shock-diamond plume rooted inside the turbine. UV.y runs from
+  // nozzle to tip. The falloff blends into the yard without a hard cone edge.
+  const jet = new T.LatheGeometry(
+    [
+      [0.19, 0],
+      [0.24, 0.08],
+      [0.198, 0.29],
+      [0.15, 0.45],
+      [0.154, 0.52],
+      [0.085, 0.74],
+      [0.01, 1],
+    ].map(([radius, length]) => new T.Vector2(radius, length)),
+    16,
   );
-  flame.geometry.rotateX(Math.PI / 2);
-  flame.geometry.translate(0, 0, 0.5);
+  jet.rotateX(Math.PI / 2);
+  const jetTime = { value: id * 0.39 };
+  const flameMaterial = new T.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    depthWrite: false,
+    blending: T.AdditiveBlending,
+  });
+  flameMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.jetTime = jetTime;
+    shader.vertexShader =
+      'varying vec2 vJetUv;\n' +
+      shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvJetUv=uv;');
+    shader.fragmentShader =
+      'uniform float jetTime; varying vec2 vJetUv;\n' +
+      shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `
+      #include <color_fragment>
+      float z=vJetUv.y;
+      float cell=.5+.5*cos(z*30.-sin(jetTime*13.)*.45);
+      float flicker=.87+.13*sin(vJetUv.x*37.7-z*29.+jetTime*19.);
+      diffuseColor.rgb=mix(vec3(.11,.72,.86),vec3(.89,1.,.91),cell*(1.-z));
+      diffuseColor.a*=flicker*(1.-smoothstep(.22,1.,z))*(.40+.45*cell);
+    `,
+      );
+  };
+  const flame = new T.Mesh(jet, flameMaterial);
   flame.position.set(0, 0.49, 1.61);
   group.add(flame);
-  return { group, flame };
+  return { group, flame, jetTime };
 }

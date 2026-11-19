@@ -1,17 +1,18 @@
 import * as T from 'three';
-import { LAP, world } from '../sim/track';
+import { LAP, WIDTH, world } from '../sim/track';
 import {
   deck as deckSpan,
   forkWidth,
   missing,
   rises,
-  FORK,
   JOIN,
   LIP,
   LAND,
   LAUNCH_SPEED,
   salvage,
 } from '../sim/deck';
+import { buildRails, launchPlate } from './viaduct';
+import { buildFoundry } from './foundry';
 import { pads } from '../sim/race';
 
 export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[], anisotropy: number) {
@@ -20,66 +21,42 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
   roadMap.anisotropy = Math.min(8, anisotropy);
   const pos: number[] = [],
     uv: number[] = [],
-    index: number[] = [];
+    index: number[] = [],
+    plates: number[] = [];
   for (let at = 0; at < LAP; at += 2) {
     for (const right of [false, true]) {
       if (missing(at + 1, right)) continue;
       const first = pos.length / 3;
+      const launch = right && at >= LIP - 20 && at < LIP;
       for (const d of [at, at + 2]) {
         const span = deckSpan(d, right);
         for (const x of [span.lo, span.hi]) {
           const p = world(d, x, right ? rises(d) : 0);
           pos.push(p.x, p.y, p.z);
-          uv.push((x + 2) / 4, d / 20);
+          uv.push(
+            launch ? (x - span.lo) / (span.hi - span.lo) : (x + 2) / 4,
+            launch ? (d - LIP) / 5 : d / 20,
+          );
         }
       }
-      index.push(first, first + 1, first + 2, first + 1, first + 3, first + 2);
+      (launch ? plates : index).push(first, first + 1, first + 2, first + 1, first + 3, first + 2);
     }
   }
   const geometry = new T.BufferGeometry();
   geometry.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
   geometry.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
-  geometry.setIndex(index);
+  geometry.setIndex([...index, ...plates]);
+  geometry.addGroup(0, index.length, 0);
+  geometry.addGroup(index.length, plates.length, 1);
   geometry.computeVertexNormals();
-  const deck = new T.Mesh(geometry, new T.MeshStandardMaterial({ map: roadMap, roughness: 0.93 }));
+  const deck = new T.Mesh(geometry, [
+    new T.MeshStandardMaterial({ map: roadMap, roughness: 0.93 }),
+    launchPlate(anisotropy),
+  ]);
   deck.receiveShadow = true;
   scene.add(deck);
-  // A low steel fascia with a painted shoulder follows the same banked
-  // cross-sections as the left deck, including the widening and merge.
-  const trimPoints: number[] = [],
-    trimIndices: number[] = [],
-    trimColors: number[] = [];
-  const shoulderColor = new T.Color('#77c5ad'),
-    girderColor = new T.Color('#304448');
-  for (const outer of [true, false]) {
-    const start = trimPoints.length / 3;
-    for (let at = FORK; at <= JOIN; at += 2) {
-      const span = deckSpan(at, false),
-        edge = outer ? span.lo : span.hi;
-      const taper = forkWidth(at);
-      const inside = edge + (outer ? 1 : -1) * 0.06 * taper;
-      const section = [world(at, inside, 0.022), world(at, edge, 0.022), world(at, edge, -0.46 * taper)];
-      for (const [i, v] of section.entries()) {
-        trimPoints.push(v.x, v.y, v.z);
-        const color = i === 2 ? girderColor : shoulderColor;
-        trimColors.push(color.r, color.g, color.b);
-      }
-      if (at === JOIN) continue;
-      const row = start + 3 * ((at - FORK) / 2);
-      for (const k of [row, row + 1]) trimIndices.push(k, k + 1, k + 3, k + 1, k + 4, k + 3);
-    }
-  }
-  const trimGeometry = new T.BufferGeometry();
-  trimGeometry.setAttribute('position', new T.Float32BufferAttribute(trimPoints, 3));
-  trimGeometry.setAttribute('color', new T.Float32BufferAttribute(trimColors, 3));
-  trimGeometry.setIndex(trimIndices);
-  trimGeometry.computeVertexNormals();
-  const fascia = new T.Mesh(
-    trimGeometry,
-    new T.MeshStandardMaterial({ vertexColors: true, side: T.DoubleSide }),
-  );
-  fascia.receiveShadow = true;
-  scene.add(fascia);
+  buildRails(scene);
+  const animatePour = buildFoundry(scene);
   const blocks: { matrix: T.Matrix4; color: T.Color }[] = [];
   const scratch = new T.Object3D();
   function block(
@@ -109,16 +86,9 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
         span = deckSpan(d, right),
         lift = right ? rises(d) : 0;
       if (missing(d, right)) continue;
-      const edge = right ? span.hi : span.lo,
-        fork = forkWidth(d);
-      if (right || !fork)
-        block(d, edge, -0.22 + lift, 0.22, 0.45, 4.2, at % 12 === 0 ? '#b07844' : '#504047');
-      if (right && fork > 0.05) {
-        const inner = span.lo;
-        block(d, inner, lift - 0.19, 0.19, 0.44, 4.18, '#e6a345');
-      }
+      const edge = right ? span.hi : span.lo;
       if (at % 8 === 0) {
-        block(d, edge, lift + 0.02, 0.12, 0.035, 2.5, '#ffce78');
+        if (!forkWidth(d)) block(d, edge - side * 0.055, lift + 0.034, 0.12, 0.035, 0.48, '#ffd295');
         block(d, edge, -1.2 + lift, 0.2, 2.8, 0.21, '#534653', side * -0.13);
       }
     }
@@ -185,23 +155,28 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
         scratch.rotation.set(0, -p.yaw + d * 0.62, p.bank, 'YXZ');
         scratch.scale.set(0.32, 0.075, 1.6);
         scratch.updateMatrix();
-        blocks.push({ matrix: scratch.matrix.clone(), color: new T.Color('#88fff0') });
+        blocks.push({
+          matrix: scratch.matrix.clone(),
+          color: new T.Color('#88fff0'),
+        });
       }
     }
   }
-  // Rebar and incandescent scrap far below the severed jump deck make the
-  // missing road legible before the riding surface drops out of view.
-  for (let d = LIP; d <= LAND; d += 2) {
-    block(d, 0.96, -8, 5.9, 0.5, 2.45, '#422d32');
-    for (let k = 0; k < 3; k++)
-      block(d, 0.5 + k * 0.37, -7.67, 0.13, 0.12, 1.45, k % 2 ? '#ffbe52' : '#f46b30', 0.23);
-  }
-  for (const d of [LIP - 0.35, LAND + 0.35]) {
-    block(d, 0.95, 1.68, 5.18, 0.17, 0.39, '#f4b643');
-    for (let j = 0; j < 7; j++) block(d, 0.43 + 0.16 * j, 1.79, 0.34, 0.035, 0.41, '#383039');
-  }
-  for (let d = 222; d < 240; d += 4) {
-    for (const side of [-1, 1]) block(d, 0.94 + side * 0.16, rises(d) + 0.06, 0.34, 0.06, 1.95, '#ffd171');
+  // Full-width plates are flush with the two severed ends. Reflectors
+  // across the far sill pick out the landing against the hot slag below.
+  for (const at of [LIP - 0.24, LAND + 0.24]) {
+    const { lo, hi } = deckSpan(at, true);
+    block(
+      at,
+      (lo + hi) / 2,
+      rises(at) + 0.045,
+      (hi - lo) * WIDTH,
+      0.09,
+      0.43,
+      at < LIP ? '#edac4d' : '#b5dbcb',
+    );
+    for (let j = 1; j < 10; j += 2)
+      block(at, lo + ((hi - lo) * j) / 10, rises(at) + 0.098, 0.32, 0.018, 0.44, '#353539');
   }
   function board(at: number, x: number, label: string, w: number, color: string) {
     const p = world(at, x, 2.4);
@@ -219,7 +194,11 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
       label = sign('?');
     const shell = new T.Mesh(
       new T.BoxGeometry(1.05, 1.05, 1.05),
-      new T.MeshStandardMaterial({ color: '#e1a348', metalness: 0.45, roughness: 0.4 }),
+      new T.MeshStandardMaterial({
+        color: '#e1a348',
+        metalness: 0.45,
+        roughness: 0.4,
+      }),
     );
     box.add(shell);
     for (let i = 0; i < 4; i++) {
@@ -250,10 +229,16 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
   // sweep past the camera; taller landmarks stay visible through the turn.
   props.forEach((tex, type) => {
     tex.colorSpace = T.SRGBColorSpace;
-    const mat = new T.SpriteMaterial({ map: tex, transparent: true, alphaTest: 0.3, depthWrite: true });
+    const mat = new T.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      alphaTest: 0.3,
+      depthWrite: true,
+    });
     for (let i = 0; i < 23; i++) {
       const at = (i * 47 + type * 16) % LAP,
         side = (i + type) % 2 ? 1 : -1;
+      if (side > 0 && at > LIP - 23 && at < LAND + 20) continue;
       const p = world(at, side * (2.8 + ((i * 7 + type) % 6) * 0.68), -2.8);
       const prop = new T.Sprite(mat);
       prop.center.set(0.5, 0);
@@ -277,8 +262,16 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
     motor.rotation.y = -p.yaw;
     const wheel = new T.Group();
     motor.add(wheel);
-    const steel = new T.MeshStandardMaterial({ color: '#655359', roughness: 0.72, metalness: 0.34 });
-    const safety = new T.MeshStandardMaterial({ color: '#dba652', roughness: 0.68, metalness: 0.23 });
+    const steel = new T.MeshStandardMaterial({
+      color: '#655359',
+      roughness: 0.72,
+      metalness: 0.34,
+    });
+    const safety = new T.MeshStandardMaterial({
+      color: '#dba652',
+      roughness: 0.68,
+      metalness: 0.23,
+    });
     const drum = new T.Mesh(new T.CylinderGeometry(2.4, 2.4, 1.18, 18), steel);
     drum.rotation.x = Math.PI / 2;
     wheel.add(drum);
@@ -297,6 +290,7 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
     machines.push(wheel);
   }
   return (time: number, distance: number) => {
+    animatePour(time, distance);
     crates.forEach(({ box, y }, i) => {
       box.visible = distance % LAP < salvage[i].at;
       box.rotation.y = time * 1.7;

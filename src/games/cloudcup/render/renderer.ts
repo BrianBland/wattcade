@@ -5,11 +5,17 @@ import { chainTip, classes, FINISH, LAP, SWING, type RaceView } from '../sim/rac
 import { track, world } from '../sim/track';
 import { lapAt, LIP, LAUNCH_SPEED } from '../sim/deck';
 import { buildBike } from './bike';
+import { buildWake } from './wake';
 import { buildYard } from './yard';
 import './rally.css';
 
 export function playBounds(w: number, h: number, i: Insets) {
-  return { x: i.left, y: i.top, w: Math.max(1, w - i.left - i.right), h: Math.max(1, h - i.top - i.bottom) };
+  return {
+    x: i.left,
+    y: i.top,
+    w: Math.max(1, w - i.left - i.right),
+    h: Math.max(1, h - i.top - i.bottom),
+  };
 }
 const places = ['1st', '2nd', '3rd', '4th'];
 function glowMap() {
@@ -35,6 +41,9 @@ export class Renderer implements GameRenderer {
   private assets?: Promise<void>;
   private disposed = false;
   private bikes: ReturnType<typeof buildBike>[] = [];
+  private wakes: ReturnType<typeof buildWake>[] = [];
+  private touchdowns = [0, 0, 0, 0];
+  private jumpCounts = [0, 0, 0, 0];
   private shades: T.Mesh[] = [];
   private chain: T.InstancedMesh[] = [];
   private warning: T.Sprite[] = [];
@@ -63,7 +72,11 @@ export class Renderer implements GameRenderer {
     this.stage.className = 'scrapjet-stage';
     this.root.append(this.stage);
     host.append(this.root);
-    this.gl = new T.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    this.gl = new T.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance',
+    });
     this.gl.setPixelRatio(Math.min(1.6, window.devicePixelRatio || 1));
     this.gl.setClearColor(0, 0);
     this.gl.outputColorSpace = T.SRGBColorSpace;
@@ -74,7 +87,14 @@ export class Renderer implements GameRenderer {
     const sun = this.sun;
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
-    Object.assign(sun.shadow.camera, { left: -23, right: 23, top: 23, bottom: -23, near: 1, far: 95 });
+    Object.assign(sun.shadow.camera, {
+      left: -23,
+      right: 23,
+      top: 23,
+      bottom: -23,
+      near: 1,
+      far: 95,
+    });
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.035;
     this.gl.shadowMap.enabled = true;
@@ -101,6 +121,7 @@ export class Renderer implements GameRenderer {
     for (let i = 0; i < 4; i++) {
       const bike = buildBike(i, skins[i]);
       this.bikes.push(bike);
+      this.wakes.push(buildWake(this.scene, [0x8af9ed, 0xff86aa, 0xd3f087, 0x82beff][i]));
       this.scene.add(bike.group);
       const shadow = new T.Mesh(
         new T.PlaneGeometry(2.4, 4.6),
@@ -159,14 +180,18 @@ export class Renderer implements GameRenderer {
     streakGeo.setAttribute('position', new T.Float32BufferAttribute(new Float32Array(32 * 6), 3));
     this.streak = new T.LineSegments(
       streakGeo,
-      new T.LineBasicMaterial({ color: '#fff0c3', transparent: true, opacity: 0.43 }),
+      new T.LineBasicMaterial({
+        color: '#fff0c3',
+        transparent: true,
+        opacity: 0.43,
+      }),
     );
     this.streak.frustumCulled = false;
     this.scene.add(this.streak);
     this.info = document.createElement('div');
     this.info.className = 'scrapjet-dash';
     this.info.innerHTML =
-      '<div class="sj-rank"><b></b><span></span></div><canvas class="sj-map" width="180" height="114"></canvas><div class="sj-combat"></div><div class="sj-speed"></div><div class="sj-cue"></div><div class="sj-grid"><small>MAGNET MILE &nbsp; / &nbsp; THREE LAPS</small><strong>SCRAPJET<br>RALLY</strong><span></span><small>Hold paddles to lean · A to launch</small></div>';
+      '<div class="sj-rank"><b></b><span></span></div><canvas class="sj-map" width="180" height="114"></canvas><div class="sj-combat"></div><div class="sj-speed"><div><b>0</b><small>KM/H</small></div><div class="sj-dial"><i></i><em></em></div><span></span></div><div class="sj-cue"></div><div class="sj-grid"><small>MAGNET MILE &nbsp; / &nbsp; THREE LAPS</small><strong>SCRAPJET<br>RALLY</strong><span></span><small>Hold paddles to lean · A to launch</small></div>';
     this.stage.append(this.info);
     this.label = this.info.querySelector('b')!;
     this.lap = this.info.querySelector('.sj-rank span')!;
@@ -267,6 +292,7 @@ export class Renderer implements GameRenderer {
         fall: s.fall,
         flight: s.flight,
         grace: s.grace,
+        jumps: s.jumps,
       },
       ...s.rivals,
     ];
@@ -274,16 +300,22 @@ export class Renderer implements GameRenderer {
       const p = world(r.at, r.x);
       const obj = this.bikes[i].group;
       const rebound = i && r.stun ? Math.sin(r.stun * 17) * Math.min(0.16, r.stun * 0.18) : 0;
+      if (r.jumps > this.jumpCounts[i]) this.touchdowns[i] = s.time;
+      this.jumpCounts[i] = r.jumps;
+      const age = s.time - this.touchdowns[i];
+      const settle = this.touchdowns[i] && age < 0.55 ? Math.sin(age * 17) * Math.exp(-age * 7) : 0;
       obj.visible = r.finish === null && (!r.grace || Math.sin(s.time * 30) > -0.65);
-      obj.position.set(p.x, p.y + r.lift + 0.26 + Math.sin(s.time * 8 + i) * 0.045, p.z);
+      obj.position.set(p.x, p.y + r.lift + 0.26 - settle * 0.34 + Math.sin(s.time * 8 + i) * 0.045, p.z);
       obj.rotation.set(
-        (r.flight ? (r.flight - 0.5) * 0.44 : 0) + Math.sin(s.time * 6 + i) * 0.015,
+        (r.flight ? (r.flight - 0.5) * 0.44 : 0) - settle * 0.12 + Math.sin(s.time * 6 + i) * 0.015,
         -p.yaw,
         p.bank + r.lean + rebound + (r.fall ? (2.15 - r.fall) * 2 : 0),
         'YXZ',
       );
       const thrust = i ? (r.stun ? 0.52 : 1) : 0.7 + s.speed / 35 + (s.boost ? 1 : 0);
-      this.bikes[i].flame.scale.z = thrust * (1.1 + 0.15 * Math.sin(s.time * 43 + i));
+      this.bikes[i].jetTime.value = s.time + i * 0.39;
+      this.bikes[i].flame.scale.z = thrust * (1.15 + 0.06 * Math.sin(s.time * 31 + i));
+      this.wakes[i](obj, s.time, thrust, obj.visible && !s.menu && !r.fall && !r.grace);
       const shade = this.shades[i];
       shade.visible = obj.visible && !r.fall && !r.flight;
       shade.position.set(p.x, p.y + r.lift + 0.063, p.z);
@@ -304,12 +336,14 @@ export class Renderer implements GameRenderer {
     const back = s.menu ? 8.5 : 6.65 + s.speed * 0.033;
     const eye = world(s.at - back, s.cameraX + (s.menu ? 0.65 : 0), s.menu ? 3.1 : 2.55 + s.speed * 0.017);
     const focus = world(s.at + 8 + s.speed * 0.11, s.cameraX * 0.72, 1.1);
+    const age = s.time - this.touchdowns[0];
+    const compression = this.touchdowns[0] && age < 0.55 ? Math.sin(age * 15) * Math.exp(-age * 7) : 0;
     const j = s.impact * Math.sin(s.time * 97) * 0.23;
-    this.camera.position.set(eye.x + j, eye.y + j + Math.max(0, s.lift) * 0.67, eye.z);
+    this.camera.position.set(eye.x + j, eye.y + j - compression * 0.32 + Math.max(0, s.lift) * 0.67, eye.z);
     const roll = s.lean * 0.15 + f.turn * 0.065;
     this.camera.up.set(Math.cos(f.yaw) * Math.sin(roll), Math.cos(roll), Math.sin(f.yaw) * Math.sin(roll));
     this.camera.lookAt(focus.x, focus.y + Math.max(0, s.lift) * 0.36, focus.z);
-    const fov = 55 + Math.min(15, s.speed * 0.38);
+    const fov = 55 + Math.min(15, s.speed * 0.38) + (s.flight ? 2.8 * Math.sin(Math.PI * s.flight) : 0);
     if (Math.abs(fov - this.camera.fov) > 0.06) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
@@ -368,8 +402,10 @@ export class Renderer implements GameRenderer {
     const routeCue =
       d >= 145 && d < LIP
         ? s.x > 0.1
-          ? 'RAMP   /   ' + Math.ceil(LAUNCH_SPEED * 3.6) + ' KM/H'
-          : '← BRIDGE     /     RAMP →'
+          ? ''
+          : d < 208
+            ? '← BRIDGE     /     RAMP →'
+            : ''
         : d >= 610 && d < 672
           ? 'SINGLE SPAN   /   EXPOSED EDGES'
           : '';
@@ -396,16 +432,38 @@ export class Renderer implements GameRenderer {
                       ? 'IN THE SLIPSTREAM'
                       : '';
     const speed = Math.round(s.speed * 3.6);
-    const key = [s.menu, s.tier, s.place, s.lap, cue, speed, !!s.reload, !!s.shield, Math.ceil(s.tow)].join(
-      '|',
-    );
+    const ramp = d >= 145 && d < LIP && s.x > 0.1 && !s.fall;
+    const enough = s.speed >= LAUNCH_SPEED;
+    const key = [
+      ramp,
+      enough,
+      !!s.boost,
+      s.menu,
+      s.tier,
+      s.place,
+      s.lap,
+      cue,
+      speed,
+      !!s.reload,
+      !!s.shield,
+      Math.ceil(s.tow),
+    ].join('|');
     if (key === this.lastHud) return;
     this.lastHud = key;
     this.info.classList.toggle('on-grid', s.menu);
     this.menu.querySelector('span')!.textContent = '‹  ' + classes[s.tier] + '  ›';
     this.label.textContent = places[s.place - 1];
     this.lap.textContent = 'LAP ' + s.lap + ' / 3';
-    this.gauge.innerHTML = '<b>' + speed + '</b><small> KM/H</small>';
+    this.gauge.querySelector('b')!.textContent = String(speed);
+    this.gauge.style.setProperty('--speed', Math.min(100, speed / 1.4) + '%');
+    this.gauge.style.setProperty('--launch', (LAUNCH_SPEED * 3.6) / 1.4 + '%');
+    this.gauge.classList.toggle('approach', ramp);
+    this.gauge.classList.toggle('over', (ramp && enough) || !!s.boost);
+    this.gauge.querySelector('span')!.textContent = ramp
+      ? Math.ceil(LAUNCH_SPEED * 3.6) + ' KM/H TO CLEAR'
+      : s.boost
+        ? 'AFTERBURNER'
+        : '';
     this.cue.textContent = cue;
     this.cue.classList.toggle('danger', !!danger || s.slow > 0);
     this.combat.textContent = s.shield

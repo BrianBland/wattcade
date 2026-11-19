@@ -74,7 +74,8 @@ describe('headless rides unlock game achievements', () => {
   }, RIDE_TIMEOUT);
   it('dynamo defense', async () => {
     // Deep fixture opts into combat actions and a reinforced base; survival is tested by the game's passive scenarios.
-    expect(await unlocked('towerdefense', 'surge-ready-deep')).toEqual(expect.arrayContaining(['td_kindling']));
+    // An ignition chain of 3 is luck on a 40 min ride now that the Mortar takes neutral kills; achievements.test covers Kindling.
+    expect(await unlocked('towerdefense', 'surge-ready-deep')).toEqual(expect.arrayContaining(['td_overbuilt']));
     await counted('towerdefense', 'surge-ready-deep', ['bosses', 'kills', 'calls', 'strongKills', 'scrap']);
   }, RIDE_TIMEOUT);
   it('sprocket squadron', async () => {

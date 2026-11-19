@@ -1,0 +1,219 @@
+{
+  "size": [
+    224,
+    224
+  ],
+  "centerX": 112,
+  "root": "pad",
+  "light": "reference-matched",
+  "mountCenter": [
+    112,
+    112
+  ],
+  "aim": {
+    "enabled": true,
+    "part": "head"
+  },
+  "view": "steep overhead with visible machinery depth, matching the approved concept",
+  "inGameDiameterPx": 68,
+  "padDiameterPx": 136,
+  "paddingPx": 4,
+  "angleConvention": "clockwise degrees in image coordinates; zero aims up",
+  "coordinates": "offset, pivot and anchor position are absolute assembled rest-frame pixels; inherit parent transforms",
+  "upgrades": "include every part with minLevel <= level; valid levels 1 through 5",
+  "glowBlend": "additive RGB weighted by alpha; base art remains complete without glow",
+  "anchors": {
+    "muzzle": {
+      "parent": "barrel",
+      "position": [
+        112,
+        46
+      ]
+    },
+    "cable": {
+      "parent": "pad",
+      "position": [
+        177,
+        112
+      ]
+    },
+    "range_center": {
+      "parent": "pad",
+      "position": [
+        112,
+        112
+      ]
+    }
+  },
+  "parts": [
+    {
+      "name": "pad",
+      "file": "../parts/pad.png",
+      "glow": "../parts/pad_glow.png",
+      "offset": [
+        43,
+        49
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": null,
+      "z": 0,
+      "minLevel": 1,
+      "outlineCenter": [
+        112.15926892950391,
+        112.32185628742515
+      ],
+      "outlineBounds": [
+        55.52219321148824,
+        53.712574850299404,
+        168.79634464751956,
+        170.9311377245509
+      ]
+    },
+    {
+      "name": "base",
+      "file": "parts/base.png",
+      "glow": "parts/base_glow.png",
+      "offset": [
+        55,
+        60
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "pad",
+      "z": 10,
+      "minLevel": 1,
+      "outlineCenter": [
+        111.5450643776824,
+        111.54394299287411
+      ],
+      "outlineBounds": [
+        65.14163090128756,
+        64.22802850356294,
+        157.94849785407723,
+        158.85985748218528
+      ]
+    },
+    {
+      "name": "head",
+      "file": "parts/head.png",
+      "glow": "parts/head_glow.png",
+      "offset": [
+        67,
+        78
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 40,
+      "minLevel": 1,
+      "mountPosition": [
+        111.73684210526315,
+        111.58579881656804
+      ],
+      "aims": true
+    },
+    {
+      "name": "upgrade_l2",
+      "file": "parts/upgrade_l2.png",
+      "glow": "parts/upgrade_l2_glow.png",
+      "offset": [
+        65,
+        73
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 30,
+      "minLevel": 2
+    },
+    {
+      "name": "upgrade_l3",
+      "file": "parts/upgrade_l3.png",
+      "glow": "parts/upgrade_l3_glow.png",
+      "offset": [
+        75,
+        110
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "head",
+      "z": 45,
+      "minLevel": 3
+    },
+    {
+      "name": "upgrade_l4",
+      "file": "parts/upgrade_l4.png",
+      "glow": "parts/upgrade_l4_glow.png",
+      "offset": [
+        48,
+        96
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 20,
+      "minLevel": 4
+    },
+    {
+      "name": "upgrade_l5",
+      "file": "parts/upgrade_l5.png",
+      "glow": "parts/upgrade_l5_glow.png",
+      "offset": [
+        50,
+        70
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "head",
+      "z": 35,
+      "minLevel": 5,
+      "visualDetails": {
+        "redIndicators": 4,
+        "hotVentPods": 2
+      },
+      "glowScale": 1.8
+    },
+    {
+      "name": "barrel",
+      "file": "parts/barrel.png",
+      "glow": "parts/barrel_glow.png",
+      "offset": [
+        87,
+        25
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "head",
+      "z": 50,
+      "minLevel": 1,
+      "mountPosition": [
+        112.10619469026548,
+        111.61640798226163
+      ],
+      "recoil": {
+        "axis": [
+          0,
+          1
+        ],
+        "distancePx": 8
+      }
+    }
+  ]
+}

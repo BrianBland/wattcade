@@ -145,6 +145,15 @@ describe('endurance music combat', () => {
       expect(changes).toBeGreaterThan(1);
     }
   }, 60_000);
+  it('flies the last song out in its own place: no new biome as the set ends', () => {
+    const tl = synthTimeline({ style: 'edm', songs: 2, seed: 4 }), last = tl.songs[tl.songs.length - 1];
+    const r = rig({}, 'z2', tl); r.seconds(last.t0 + 20);
+    const s0 = r.snap(); expect(s0.segment.nextBiome).toBe(s0.segment.biome);
+    expect(s0.frames.next.s - s0.world.s).toBeGreaterThan(5e4);
+    let banners = 0;
+    while (!r.s.sim.isOver()) { r.s.step(1); const s = r.snap(); expect(s.segment.index).toBe(s0.segment.index); if (/New airspace|Now entering/.test(s.banner) && s.banner !== s0.banner) banners++; }
+    expect(banners).toBe(0);
+  }, 60_000);
   it('same seed and rider produce identical results', () => {
     const run = () => { const r = rig({}, 'z2', longMusic()); r.seconds(100); return r.s.sim.summary(); };
     expect(run()).toEqual(run());

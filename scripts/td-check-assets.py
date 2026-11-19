@@ -45,7 +45,7 @@ def main():
     index = KIT / 'towers/manifest.json'
     use(index)
     towers = json.loads(index.read_text())['towers']
-    assert set(towers) == {'tesla', 'prism', 'flamer'}, 'Index must contain the three live tower rigs'
+    assert set(towers) == {'tesla', 'prism', 'flamer', 'mortar'}, 'Index must contain the four live tower rigs'
     for file in towers.values():
         manifest(index.parent / file)
     for path in (KIT / 'aliens').glob('*/manifest.json'):

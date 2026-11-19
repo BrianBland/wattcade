@@ -38,6 +38,15 @@ describe('segments', () => {
     const none = createSegmenter(undefined, () => 360, () => 150);
     expect(none.at(10).segment).toMatchObject({ t0: 0, t1: 360, bossAt: 150 }); expect(none.at(400).segment.t0).toBe(360);
   });
+  it('stays in the last place when the set ends, unless the ride is endless', () => {
+    const tl = mix(600, [[0, 300], [300, 600]]), seg = createSegmenter(tl, () => 360, () => 150);
+    seg.at(10); expect(seg.peek()).not.toBeNull();
+    const last = seg.at(310).segment; expect(last.t1).toBe(600);
+    expect(seg.peek()).toBeNull();
+    expect(seg.at(600).segment).toBe(last); expect(seg.at(620)).toEqual({ segment: last, changed: false });
+    const endless = createSegmenter(mix(600, [[0, 300], [300, 600]]), () => 360, () => 150, { endless: true });
+    endless.at(310); expect(endless.peek()).not.toBeNull(); expect(endless.at(600).changed).toBe(true);
+  });
   it('grades steady riding generously and idle riding as D, never asking for extra watts', () => {
     expect(gradeSegment({ onTargetFrac: 0.95, clearRate: 0.5, perfectFrac: 0.1, eliteFrac: null, boss: null }).grade).toBe('B');
     expect(gradeSegment({ onTargetFrac: 0.95, clearRate: 1, perfectFrac: 0.9, eliteFrac: 0.6, boss: 'defeated' }).grade).toBe('S');

@@ -3,7 +3,8 @@
   "towers": {
     "tesla": "tesla/manifest.json",
     "prism": "prism/manifest.json",
-    "flamer": "flamer/manifest.json"
+    "flamer": "flamer/manifest.json",
+    "mortar": "mortar/manifest.json"
   },
   "sharedPad": "parts/pad.png",
   "preview": "preview.png"

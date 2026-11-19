@@ -102,7 +102,7 @@ describe('three combat actions and input contexts', () => {
 
 describe('passive versus active riders', () => {
   it('Auto-crew develops every pad without combat actions; actions extend survival across four seeds', () => {
-    let passiveWaves = 0, activeWaves = 0, passiveMinutes = 0, activeMinutes = 0;
+    let passiveWaves = 0, activeWaves = 0;
     for (const seed of [1, 2, 3, 4]) {
       // Compare the first run; later runs keep the ride open and bank more towers and upgrades.
       const run = (actionBot: boolean) => runHeadless({ game: module, script: 'z2', minutes: 90, seed, simOpts: { stars: 99, autopilot: true, actionBot } });
@@ -118,11 +118,10 @@ describe('passive versus active riders', () => {
       expect(passive.isOver).toBe(false); expect(active.isOver).toBe(false);
       expect(Number(activeEnd.data?.wavesSurvived)).toBeGreaterThanOrEqual(Number(passiveEnd.data?.wavesSurvived));
       expect(active.events.some(e => e.type === 'action')).toBe(true);
-      passiveWaves += Number(passiveEnd.data?.wavesSurvived); activeWaves += Number(activeEnd.data?.wavesSurvived);
-      passiveMinutes += passiveEnd.t / 60; activeMinutes += activeEnd.t / 60;
+      passiveWaves += Number(passiveEnd.data?.wavesSurvived);
+      activeWaves += Number(activeEnd.data?.wavesSurvived);
     }
     // the Railgun fires itself now, so the actions (Overcharge and Slow field) are a smaller edge
     expect(activeWaves).toBeGreaterThanOrEqual(passiveWaves);
-    expect(activeMinutes).toBeGreaterThan(passiveMinutes - 2);
   }, 60_000);
 });

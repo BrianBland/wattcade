@@ -3,7 +3,7 @@ import { createGameSession, makeRng, testProfile, TimelineInput } from '../../..
 import type { Button, GameEvent, InputState } from '../../../contracts';
 import { module } from '../index';
 import { advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossTricks } from '../sim/boss';
-import { ELEMENTS, MATCHUP, suggestedTower, TOWER_KINDS, TOWER_WEAPON, WEAPONS } from '../sim/defs';
+import { ELEMENTS, MATCHUP, suggestedTower, TOWER_KINDS, TOWER_WEAPON, towerMatch, WEAPONS } from '../sim/defs';
 import { effortMet, scheduleCall, type EffortView } from '../sim/efforts';
 import { waveRole } from '../sim/waves';
 import type { TdSnapshot } from '../sim/types';
@@ -17,7 +17,7 @@ describe('element matchups', () => {
   it('has exactly one strong, neutral and resisted element per weapon, with towers sharing their row', () => {
     expect(MATCHUP).toEqual({ gatling: { blue: 1.5, red: 1, purple: 0.5 }, flame: { blue: 0.5, red: 1.5, purple: 1 }, rail: { blue: 1, red: 0.5, purple: 1.5 } });
     for (const w of WEAPONS) expect(Object.values(MATCHUP[w]).sort()).toEqual([0.5, 1, 1.5]);
-    expect(TOWER_KINDS.map((k) => TOWER_WEAPON[k])).toEqual(['gatling', 'flame', 'rail']);
+    expect(TOWER_KINDS.map((k) => TOWER_WEAPON[k])).toEqual(['gatling', 'flame', 'rail', null]);
   });
   it('registers all nine live tunables and exposes overrides to the UI', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' } });
@@ -35,7 +35,7 @@ describe('element matchups', () => {
     for (const brood of ELEMENTS) for (const target of ELEMENTS.filter((e) => e !== brood)) {
       const counts = { blue: 0, red: 0, purple: 0, [brood]: 100, [target]: 20 };
       const k = suggestedTower(counts, brood);
-      expect(MATCHUP[TOWER_WEAPON[k]][target]).toBe(1.5);
+      expect(towerMatch(k, target)).toBe(1.5);
     }
     const tuned = { ...MATCHUP, gatling: { ...MATCHUP.gatling, red: 2 }, flame: { ...MATCHUP.flame, red: 0.5 } };
     expect(suggestedTower({ blue: 100, red: 20, purple: 0 }, 'blue', tuned)).toBe('tesla');

@@ -4,7 +4,7 @@ import { LEVEL_0, levelGeometry } from './level';
 export type Element = 'blue' | 'red' | 'purple';
 export type Weapon = 'gatling' | 'flame' | 'rail';
 export type Kind = 'mini' | 'dart' | 'brute' | 'charger' | 'armor' | 'carrier' | 'prism' | 'boss';
-export type TowerKind = 'tesla' | 'flamer' | 'lens';
+export type TowerKind = 'tesla' | 'flamer' | 'lens' | 'mortar';
 
 export const ELEMENTS: Element[] = ['blue', 'red', 'purple'];
 export const WEAPONS: Weapon[] = ['gatling', 'flame', 'rail'];
@@ -17,15 +17,21 @@ export const MATCHUP: Matchup = {
   flame: { blue: 0.5, red: 1.5, purple: 1 },
   rail: { blue: 1, red: 0.5, purple: 1.5 },
 };
-export const TOWER_WEAPON: Record<TowerKind, Weapon> = { tesla: 'gatling', flamer: 'flame', lens: 'rail' };
+/** Which weapon's matchup row a tower uses; `null` = neutral (x1 against every brood). */
+export const TOWER_WEAPON: Record<TowerKind, Weapon | null> = { tesla: 'gatling', flamer: 'flame', lens: 'rail', mortar: null };
+/** A tower's damage multiplier against an element under a matchup matrix. */
+export function towerMatch(kind: TowerKind, el: Element, matrix: Matchup = MATCHUP): number {
+  const w = TOWER_WEAPON[kind];
+  return w ? matrix[w][el] : 1;
+}
 
 /** Cover the largest off-colour push with a strong tower; never suggest resistance to that push. */
 export function suggestedTower(counts: Record<Element, number>, brood: Element, matrix: Matchup = MATCHUP): TowerKind {
   const off = ELEMENTS.filter((e) => e !== brood);
   const target = off.reduce((a, b) => counts[b] > counts[a] ? b : a);
-  const safe = TOWER_KINDS.filter((k) => matrix[TOWER_WEAPON[k]][target] >= 1);
+  const safe = TOWER_KINDS.filter((k) => towerMatch(k, target, matrix) >= 1);
   return (safe.length ? safe : TOWER_KINDS).reduce((a, b) =>
-    matrix[TOWER_WEAPON[b]][target] > matrix[TOWER_WEAPON[a]][target] ? b : a);
+    towerMatch(b, target, matrix) > towerMatch(a, target, matrix) ? b : a);
 }
 export const WEAPON_NAME: Record<Weapon, string> = { gatling: 'Gatling', flame: 'Fireball', rail: 'Railgun' };
 
@@ -48,14 +54,20 @@ export const KINDS: Record<Kind, KindDef> = {
 /** First wave each kind can appear in. */
 export const KIND_FROM: Record<Kind, number> = { mini: 1, dart: 2, brute: 1, charger: 3, armor: 2, carrier: 4, prism: 6, boss: 4 };
 
-/** `air`: can hit flying Gliders. `cone`: half-angle of a continuous cone (flamer), hitting everything inside. */
-export interface TowerDef { name: string; element: Element; cost: number; range: number; period: number; dmg: number; desc: string; air: boolean; cone?: number }
+/**
+ * `element`: the brood colour the tower is strong against, or `null` for a neutral tower. `air`: can hit flying
+ * Gliders. `cone`: half-angle of a continuous cone (flamer), hitting everything inside. `splash`: blast radius of a
+ * lobbed shell (mortar), hitting every ground alien inside where it lands.
+ */
+export interface TowerDef { name: string; element: Element | null; cost: number; range: number; period: number; dmg: number; desc: string; air: boolean; cone?: number; splash?: number }
 export const TOWERS: Record<TowerKind, TowerDef> = {
   tesla:  { name: 'Tesla Coil',  element: 'blue',   cost: 60,  range: 24, period: 0.8, dmg: 2.1,  desc: 'Chain lightning (3 targets)', air: true },
   flamer: { name: 'Flamethrower', element: 'red',    cost: 80,  range: 15, period: 0.25, dmg: 1.2, desc: 'Short fire cone · ground only', air: false, cone: 0.55 },
   lens:   { name: 'Prism Lens',  element: 'purple', cost: 100, range: 44, period: 3.2, dmg: 17, desc: 'Charged beam at the toughest', air: true },
+  mortar: { name: 'Mortar',      element: null,     cost: 90,  range: 38, period: 2.6, dmg: 9,   desc: 'Splash shells · any colour · ground only', air: false, splash: 7 },
 };
-export const TOWER_KINDS: TowerKind[] = ['tesla', 'flamer', 'lens'];
+/** Workshop order: the radial puts these top, left, right, bottom. */
+export const TOWER_KINDS: TowerKind[] = ['tesla', 'flamer', 'lens', 'mortar'];
 export const TOWER_MAX_LEVEL = 5;
 /** Damage / range multipliers per tower level (index = level - 1). */
 export const LEVEL_DMG = [1, 1.8, 3, 4.6, 6.6];

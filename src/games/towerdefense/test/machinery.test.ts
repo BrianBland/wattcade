@@ -45,3 +45,27 @@ describe('machinery attachment poses', () => {
     }
   });
 });
+
+describe('tower shots leave the art and land on its attack flash', async () => {
+  const { attackClock } = await import('../render/machinery');
+  const towers = {
+    tesla: (await import('../../../../public/td/towers/tesla/manifest.json')).default,
+    prism: (await import('../../../../public/td/towers/prism/manifest.json')).default,
+    flamer,
+  };
+  it('puts each tower muzzle on its emitter: Prism crystal centre, Tesla orb, above the pad centre', () => {
+    expect(towers.prism.anchors.muzzle).toMatchObject({ parent: 'head', position: [112, 54] });
+    expect(towers.tesla.anchors.muzzle).toMatchObject({ parent: 'head', position: [112, 44] });
+    for (const m of Object.values(towers)) expect(m.anchors.muzzle.position[1]).toBeLessThan(m.anchors.range_center.position[1] - 40);
+  });
+  it('shows the attack strip at its brightest the instant the shot is drawn, then fades with it', () => {
+    for (const m of Object.values(towers)) {
+      const a = m.animations.attack, opacityAt = (ms: number) => {
+        const k = a.effectOpacity; for (let i = 1; i < k.length; i++) if (ms <= k[i][0]) return k[i - 1][1] + (k[i][1] - k[i - 1][1]) * (ms - k[i - 1][0]) / (k[i][0] - k[i - 1][0]);
+        return k[k.length - 1][1];
+      };
+      expect(opacityAt(attackClock(a, 0))).toBe(Math.max(...a.effectOpacity.map((k) => k[1])));
+      expect(opacityAt(attackClock(a, 0.2))).toBeLessThan(opacityAt(attackClock(a, 0)));
+    }
+  });
+});

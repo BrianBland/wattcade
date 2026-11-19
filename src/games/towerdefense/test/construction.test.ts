@@ -21,7 +21,16 @@ function session(input = new TimelineInput(), extra: Record<string, unknown> = {
 describe('build bot recommendation (headless only)', () => {
   it('follows live matchup overrides and excludes towers resisted by the off-colour push', () => {
     const matchup = { ...MATCHUP, gatling: { ...MATCHUP.gatling, red: 2 }, flame: { ...MATCHUP.flame, red: 0.5 } };
-    expect(suggestBuild(state({ matchup }))?.tower).toBe('tesla');
+    // 85 scrap affords the Flamethrower (now resisted by red) but not the neutral Mortar.
+    expect(suggestBuild(state({ matchup, scrap: 85 }))?.tower).toBe('tesla');
+    expect(suggestBuild(state({ matchup }))?.tower).not.toBe('flamer');
+  });
+  it('treats the neutral Mortar as filler: never preferred over a strong specialist', () => {
+    for (const brood of ['blue', 'red', 'purple'] as const) for (const push of ['blue', 'red', 'purple'] as const) {
+      if (push === brood) continue;
+      const order = suggestBuild(state({ brood, counts: { ...forecast(), [push]: 8 }, scrap: 100 }));
+      expect(order?.tower).not.toBe('mortar');
+    }
   });
   it('covers the off-colour heavies from the pad that sees the most road, without spending beyond scrap', () => {
     const s = state({ scrap: 80 }), a = suggestBuild(s)!;

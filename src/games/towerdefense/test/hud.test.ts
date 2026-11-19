@@ -111,9 +111,9 @@ it('the radar places blips by arrival and road, sizes them against the recent pe
 });
 
 it('prioritizes boss phases and sprint windows in a boss peak', () => {
-  const { snapshot: s0, draw, card } = hudFixture();
+  const { snapshot: s0, draw, card, hud } = hudFixture();
   const s: TdSnapshot = { ...s0, flow: { ...s0.flow!, stage: 'boss' } };
-  const boss: NonNullable<TdSnapshot['boss']> = { id: 1, name: 'Bulwark Tyrant', phase: 1, phaseCount: 3, color: 'purple', weapon: 'rail', pending: false, countdownS: 0, telegraph: true, exposed: false, windowLeftS: 4, sprintBoost: false, charge: null, shield: 0 };
+  const boss: NonNullable<TdSnapshot['boss']> = { id: 1, name: 'Bulwark Tyrant', phase: 1, phaseCount: 3, color: 'purple', weapon: 'rail', pending: false, countdownS: 0, telegraph: true, exposed: false, windowLeftS: 4, sprintBoost: false, charge: null, shield: 0, hp: 0.8, escapeS: 150 };
   draw({ ...s, boss });
   expect(card.textContent).toContain('Bulwark Tyrant · phase 1/3');
   expect(card.textContent).toContain('Shift to tier V');
@@ -129,6 +129,21 @@ it('prioritizes boss phases and sprint windows in a boss peak', () => {
   draw({ ...s, boss: { ...boss, telegraph: false } });
   expect(card.textContent).toContain('Boss peak');
   expect(card.textContent).not.toMatch(/called effort|ERG push/i);
+  // the boss bar runs along the top of the field: name, phase notches, HP, plates and a gold flash when Exposed
+  draw({ ...s, boss: { ...boss, telegraph: false, shield: 0.5 } });
+  const hb = hud.root.querySelector<HTMLElement>('.td-bossbar')!;
+  expect(hb.hidden).toBe(false);
+  expect(hb.classList.contains('purple')).toBe(true);
+  expect(hb.textContent).toContain('Bulwark Tyrant');
+  expect(hb.textContent).toContain('Phase 1/3 · breaks through in 2:30');
+  expect(hb.querySelector<HTMLElement>('.td-bb-track > i')!.style.getPropertyValue('--k')).toBe('0.8000');
+  expect(hb.querySelectorAll('.td-bb-track > s')).toHaveLength(2);
+  expect(hb.querySelector('.td-bb-track > u')).not.toBeNull();
+  draw({ ...s, boss: { ...boss, telegraph: false, exposed: true, windowLeftS: 3, escapeS: 40 } });
+  expect(hb.classList.contains('exposed')).toBe(true);
+  expect(hb.textContent).toContain('Exposed · 3s · tier V · breaks through in 40s');
+  draw({ ...s, boss: { ...boss, id: 0 } });
+  expect(hb.hidden).toBe(true); // not on the field yet
   draw({ ...s, phase: 'garage' });
   expect(card.hidden).toBe(true);
   draw({ ...s, workshop: { pad: 1, row: 0, rows: [], idleLeft: 10, revision: 1 } });

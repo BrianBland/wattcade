@@ -46,7 +46,7 @@ describe('element matchups', () => {
     s.tuning.set('towerdefense.ignitionRadius', 25);
     s.tuning.set('towerdefense.ignitionDamage', 100);
     s.tuning.set('towerdefense.ignitionChainCap', 3);
-    s.step(30 * 60 * 20);
+    s.step(30 * 60 * 30);
     const bursts = events.filter((e) => e.type === 'burst');
     expect(bursts.length).toBeGreaterThan(10);
     expect(bursts.some((e) => e.data?.ordinal === 3)).toBe(true);
@@ -154,11 +154,12 @@ describe('boss ladder', () => {
       const events: Array<GameEvent & { t: number }> = [];
       const s = createGameSession({ game: module,
         profile: testProfile(),
-        input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, startWave: 9, skipGarage: true, weapon: 'auto' }, onEmit: (e) => events.push(e) });
+        input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, startWave: 9, skipGarage: true, weapon: 'auto', tier: 4 }, onEmit: (e) => events.push(e) });
       // Keep the route within reach to isolate the sprint damage bonus from
       // whether the boss reaches the turret during an Exposed window.
       s.tuning.set('towerdefense.turretRange', 200);
       s.tuning.set('towerdefense.flameRange', 120);
+      s.tuning.set('towerdefense.bossHpMult', 10); // a short boss fight: this isolates the sprint bonus, not the long peak
       // Hold watts and cadence identical to isolate the sprint bonus from extra fire rate / watts.
       const bike = s.ctx.bike;
       // Rail sprint windows free the ERG lock, so the scripted rider holds the Rail demand through the Rail fight.

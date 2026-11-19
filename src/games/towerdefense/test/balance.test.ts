@@ -66,7 +66,7 @@ describe('balance comparisons', () => {
         const field = s.sim.snapshot() as TdSnapshot;
         if (field.wave !== wave) {
           wave = field.wave;
-          out.push({ wave, brood: field.brood?.color, forecast: field.forecast });
+          out.push({ wave, forecast: field.forecast }); // brood.color follows the mounted weapon now (a combat choice); the plan is in the forecast
         }
       }
       expect(s.sim.summary().runsFallen).toBe(0);

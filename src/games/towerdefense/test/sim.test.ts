@@ -270,9 +270,36 @@ describe('brood waves', () => {
     expect(entries.length).toBeGreaterThan(50);
     expect(late).toBeGreaterThan(0.85);
   });
+  it('a boss peak: a big, slow boss with a thin escort of the other colours; if it outlasts the peak it breaks through', () => {
+    const events: Array<{ type: string; data?: Record<string, unknown> }> = [];
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3,
+      simOpts: { autopilot: true, baseHp: 1000 }, onEmit: (e) => events.push(e) });
+    for (const [key, value] of Object.entries({ segmentS: 30, troughS: 20, bossPeakMaxS: 150 })) s.tuning.set(`towerdefense.${key}`, value);
+    let peak: TdSnapshot | null = null, crawl = 0, hp = 0;
+    for (let i = 0; i < 30 * 60 * 6 && !events.some((e) => e.type === 'bossEscaped' || e.type === 'bossKilled'); i++) {
+      s.step(1);
+      const v = snap(s), boss = v.enemies.find((e) => e.kind === 'boss');
+      if (boss) {
+        peak ??= v; hp = Math.max(hp, boss.maxHp);
+        if (boss.dist < 70) crawl = Math.max(crawl, v.boss!.escapeS);
+        expect(v.boss!.hp).toBeCloseTo(boss.hp / boss.maxHp, 5);
+      }
+    }
+    expect(peak).not.toBeNull();
+    expect(peak!.boss!.name).toBeTruthy();
+    // the escort skips the boss's colour (the boss is the peak)
+    const escort = planWave(8, makeRng(2), { spawnWindowS: 100, countScale: 1, brood: 'red', broodShare: 0, swarmPack: 4, routes: 2, role: 'boss' });
+    expect(escort.spawns.filter((x) => KINDS[x.kind].color === 'red')).toEqual([]);
+    expect(escort.spawns.some((x) => x.kind === 'boss')).toBe(true);
+    expect(hp).toBeGreaterThan(20_000);
+    expect(crawl).toBeGreaterThan(0);
+    const escaped = events.find((e) => e.type === 'bossEscaped');
+    expect(escaped, 'z2 cannot kill a full boss in 150 s').toBeDefined();
+    expect(events.some((e) => e.type === 'baseHit' && e.data?.kind === 'boss' && Number(e.data.dmg) >= 30)).toBe(true);
+  });
   it('segments roll straight into each other on time, with the field still busy; a trough heals at its end', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { autopilot: true, baseHp: 1000 } });
-    for (const [key, value] of Object.entries({ segmentS: 30, troughS: 20, spawnTailS: 2 })) s.tuning.set(`towerdefense.${key}`, value);
+    for (const [key, value] of Object.entries({ segmentS: 30, troughS: 20, spawnTailS: 2, bossHpMult: 2.5, bossPeakMaxS: 90 })) s.tuning.set(`towerdefense.${key}`, value);
     const stages: string[] = [];
     let busy = 0;
     for (let i = 0; i < 30 * 60 * 6; i++) {

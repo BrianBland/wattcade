@@ -96,8 +96,8 @@ interface Tower { pad: number; kind: TowerKind; level: number; cd: number; angle
  * A lobbed shell. The turret's fireball bursts for `dmg`, then the ground burns at `burnDps` for burnS. A Mortar
  * round (`tower` = its pad) bursts neutral and concusses: everything it hits on the road is slowed briefly.
  */
-interface Shell { x0: number; y0: number; x1: number; y1: number; t: number; flight: number; dmg: number; r: number; burnS: number; burnDps: number; tower?: number }
-interface Burn { x: number; y: number; r: number; left: number; total: number; dps: number }
+interface Shell { x0: number; y0: number; x1: number; y1: number; t: number; flight: number; dmg: number; r: number; burnS: number; burnDps: number; tower?: number; tier?: number }
+interface Burn { x: number; y: number; r: number; left: number; total: number; dps: number; /** turret tier that lit it (0 = a Mortar) */ tier: number }
 
 const WORKSHOP_IDLE_S = 10;
 /** Face buttons mount the turret's weapons. */
@@ -187,7 +187,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // The flow: a level is one continuous stream in segments (build, peak, boss peak, trough); nothing waits for the field to clear.
   const segmentS = T.num('segmentS', 120, 10, 400, 5, 'a build or peak segment of the flow lasts this long, then the next one rolls straight in');
   const troughS = T.num('troughS', 100, 10, 400, 5, 'a trough (easy recovery segment, and the warm-up) lasts this long');
-  const bossPeakMaxS = T.num('bossPeakMaxS', 240, 30, 600, 10, 'a boss peak ends when the boss dies, or by this time (the boss escapes)');
+  const bossPeakMaxS = T.num('bossPeakMaxS', 300, 30, 600, 10, 'a boss peak ends when the boss dies, or by this time (the boss escapes)');
   const spawnTail = T.num('spawnTailS', 10, 0, 60, 1, 'the last seconds of a segment send no new heavies (its spawns spread over the rest)');
   const buildLow = T.num('buildPressure', 0.75, 0.3, 1.5, 0.05, 'the first build segment of a set sends this share of a peak; the set ramps up to the peak');
   // levels (docs/towerdefense/LEVELS-DESIGN.md §1–2)
@@ -209,6 +209,16 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const swarmPack = T.num('swarmPackSize', 5, 1, 12, 1, 'blue slots are swarm packs of N darts or drones');
   const broodCover = T.num('broodCoverWaves', 4, 0, 8, 1, 'all three brood colours in every N waves (< 3 = off)');
   const bossPhases = T.num('bossPhases', 3, 2, 3, 1);
+  // Boss peaks (continuous-combat phase 4): a bigger boss with a thin escort, so the boss is the peak
+  const bossHpMult = T.num('bossHpMult', 80, 1, 200, 0.1, 'boss HP multiplier: the right weapon at tier IV–V plus towers should take ~2.5 min');
+  const bossSize = T.num('bossSize', 1.5, 1, 2.5, 0.05, 'boss body size multiplier');
+  const bossEscort = T.num('bossEscort', 0.5, 0, 1.5, 0.05, 'heavies in a boss peak, as a share of a work segment\'s (all from the other two colours)');
+  const bossStreamGap = T.num('bossStreamGap', 1.6, 1, 4, 0.1, 'drone stream gap multiplier during a boss peak');
+  const bossClearD = T.num('bossClearD', 25, 0, 60, 1, 'nothing spawns on the road while the boss is within this many units of the entrance');
+  const bossScrap = T.num('bossScrap', 500, 0, 2000, 10, 'scrap for killing a boss');
+  const bossCrawl = T.num('bossCrawl', 0.35, 0.1, 1, 0.05, 'boss speed multiplier once inside the turret\'s reach (the fight takes ~2.5 min)');
+  const bossFireSlow = T.num('bossFireSlow', 0.45, 0.1, 1, 0.05, 'Ram Tyrant: charge speed multiplier while in tier IV+ Fireball ground fire');
+  const bossPlateTierLow = T.num('bossPlateTierLow', 0.4, 0, 1, 0.05, 'Bulwark Tyrant: share of the rail plate bonus a pulse below tier IV gets');
   const bossCountdown = T.num('bossPhaseCountdownS', 3, 1, 8, 0.5);
   const exposedEvery = T.num('bossExposedEveryS', 20, 8, 60, 1);
   const exposedTelegraph = T.num('bossTelegraphS', 3, 1, 6, 0.5);
@@ -375,7 +385,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const p = e.kind === 'prism' ? 4 : 0;
     return p ? p - ((t + e.phase) % p) : 0;
   };
-  const radiusOf = (e: Enemy) => e.kind === 'boss' ? geo.bossRadius : KINDS[e.kind].radius;
+  const radiusOf = (e: Enemy) => e.kind === 'boss' ? geo.bossRadius * bossSize() : KINDS[e.kind].radius;
 
   function place(e: Enemy) {
     const p = e.route < 0 ? geo.lanes[e.lane].at(e.d) : flightAt(e.route, e.d);
@@ -389,7 +399,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function hpFor(kind: Kind, w: number, route: number): number {
     const w1 = dw(w) - 1;
     const hs = (1 + hpScale() * w1 + hpScale2() * w1 * w1) * (kind === 'boss' ? 1 + Math.floor(dw(w) / 5) * 0.35 : 1);
-    return KINDS[kind].hp * hs * hpK() * (route < 0 && geo.lanes.length > 1 ? splitRoadHp() : 1);
+    return KINDS[kind].hp * hs * hpK() * (kind === 'boss' ? bossHpMult() : 1) * (route < 0 && geo.lanes.length > 1 ? splitRoadHp() : 1);
   }
   /** Walkers take the level's roads in turn (one road: always lane 0). */
   let laneTurn = 0;
@@ -410,7 +420,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       const b = e.boss;
       ctx.emit({ type: 'bossSpawned', data: { wave, id: e.id, color: b.color } });
       addFx({ kind: 'bossIntro', life: 3, wave, color: b.color });
-      say(`${BOSS_NAME[b.color]} incoming`, `Wave ${wave} boss · ${BOSS_TRICK[b.color]} · sprint when Exposed`, '#ffd24a', true);
+      say(`${BOSS_NAME[b.color]} incoming`, `${BOSS_TRICK[b.color]} · shift to V when Exposed`, '#ffd24a', true);
       cue('bossStart');
       bossEvents(e, openBoss(b, e.maxHp, bossTricks()));
     }
@@ -421,9 +431,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (e.dead) return;
     const element = elementOf(e);
     const mult = el == null ? 1 : match[ELEMENT_WEAPON[el]][element]();
-    const exposure = e.boss?.exposed ? exposedMult() * (ctx.bike().sprinting ? exposedSprintMult() : 1) : 1;
+    const exposure = e.boss?.exposed ? exposedMult() * (ctx.bike().sprinting || tier >= 5 ? exposedSprintMult() : 1) : 1;
     const floor = e.boss ? bossHpFloor(e.boss, e.maxHp) : 0;
-    const raw = e.boss ? shieldHit(e.boss, base * mult * exposure, railVolley, bossShieldRail(), bossShieldOther()) : base * mult * exposure;
+    const raw = e.boss ? shieldHit(e.boss, base * mult * exposure, railVolley, tier >= 4 ? bossShieldRail() : 1 + (bossShieldRail() - 1) * bossPlateTierLow(), bossShieldOther()) : base * mult * exposure;
     if (e.boss && e.boss.shieldMax > 0 && e.boss.shield <= 0) { e.boss.shieldMax = 0; bossEvents(e, ['shieldBroken']); }
     const damage = Math.min(Math.max(0, e.hp - floor), raw);
     if (src === 'player') dealtW[weapon] += damage;
@@ -455,11 +465,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const def = KINDS[e.kind];
     const key = e.kind === 'boss' ? 'gold' : elementOf(e);
     if (cls === 'strong') strongKills++;
-    addFx({ kind: 'death', life: def.heavy ? 0.7 : 0.4, x: e.x, y: e.y, color: e.kind === 'boss' ? 'gold' : key as Element, big: def.heavy, eid: e.id, ekind: e.kind, fire: e.lastEl === 'red' });
+    addFx({ kind: 'death', life: def.heavy ? 0.7 : 0.4, x: e.x, y: e.y, color: e.kind === 'boss' ? 'gold' : key as Element, big: def.heavy, eid: e.id, ekind: e.kind, fire: e.lastEl === 'red', r: radiusOf(e) });
     kills[key]++;
     if (src === 'tower') stats.towerKills++;
     if (src === 'player') stats.turretKills++;
-    const got = gainScrap(def.scrap);
+    const got = gainScrap(e.kind === 'boss' ? bossScrap() : def.scrap); // a boss peak's thin escort pays little, so the boss pays for the peak
     if (def.heavy) {
       stats.heavyKills++;
       addFx({ kind: 'text', life: 1, x: e.x, y: e.y - 3, text: `+${got}`, color: '#ffd24a' });
@@ -506,7 +516,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (boss) lastBoss = brood;
     broods.push(brood);
     const window = Math.max(3, (boss ? segmentS() : segLen(role)) - spawnTail() - 1);
-    const p = planWave(dw(w), waveRng, { spawnWindowS: window, countScale: countScale() * pressureOf(w), brood, broodShare: broodShare(), swarmPack: swarmPack(), routes: geo.routes, role });
+    const p = planWave(dw(w), waveRng, { spawnWindowS: window, countScale: countScale() * pressureOf(w) * (boss ? bossEscort() / 0.6 : 1), brood, broodShare: boss ? 0 : broodShare(), swarmPack: swarmPack(), routes: geo.routes, role });
     return { ...p, wave: w };
   }
   /** Plans segment `wave` and starts it: straight away, or after the short quiet start of a fresh level or run. */
@@ -572,7 +582,21 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return (!bossLeft && waveElapsed >= 5) || waveElapsed >= bossPeakMaxS();
   }
   /** Seconds between stream drones (they thicken as the level goes on; half rate in troughs). */
-  const miniGap = () => (miniInterval() / (1 + 0.1 * (wave - 1))) * (plan?.role === 'easy' ? 2 : 1);
+  const miniGap = () => (miniInterval() / (1 + 0.1 * (wave - 1))) * (plan?.role === 'easy' ? 2 : plan?.role === 'boss' ? bossStreamGap() : 1);
+  let reachCache: { geo: typeof geo | null; range: number; d: Map<number, number> } = { geo: null, range: 0, d: new Map() };
+  /** How far along a road (lane >= 0) or a Glider flight (-1 - route) an alien is when the turret can first reach it. */
+  function reach(path: number): number {
+    const range = turretRange();
+    if (reachCache.geo !== geo || reachCache.range !== range) reachCache = { geo, range, d: new Map() };
+    let d = reachCache.d.get(path);
+    if (d === undefined) {
+      const len = path >= 0 ? geo.lanes[path].length : flightLength(-1 - path), at = (x: number) => path >= 0 ? geo.lanes[path].at(x) : flightAt(-1 - path, x);
+      d = len;
+      for (let x = 0; x <= len; x += 1) { const q = at(x); if (distTo(q.x, q.y) <= range) { d = x; break; } }
+      reachCache.d.set(path, d);
+    }
+    return d;
+  }
   /**
    * The enemy radar: one blip per spawn group over the next radarS seconds, placed by when it comes into the
    * turret's reach (most aliens die around there, so "reaches the base" would leave the near end of the scope empty).
@@ -584,19 +608,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
    */
   function radarView(dt: number): RadarView {
     const horizon = radarS(), G = radarGroupS(), L = geo.lanes.length;
-    const range = turretRange();
-    if (reachCache.geo !== geo || reachCache.range !== range) reachCache = { geo, range, d: new Map() };
-    /** How far along a road (lane >= 0) or a Glider flight (-1 - route) an alien is when the turret can first reach it. */
-    const reach = (path: number): number => {
-      let d = reachCache.d.get(path);
-      if (d === undefined) {
-        const len = path >= 0 ? geo.lanes[path].length : flightLength(-1 - path), at = (x: number) => path >= 0 ? geo.lanes[path].at(x) : flightAt(-1 - path, x);
-        d = len;
-        for (let x = 0; x <= len; x += 1) { const q = at(x); if (distTo(q.x, q.y) <= range) { d = x; break; } }
-        reachCache.d.set(path, d);
-      }
-      return d;
-    };
     const groups = new Map<string, { eta: number; hp: number; color: Element | 'prism'; lane: number; n: number; key: number; boss?: boolean }>();
     let boss: RadarView['boss'] = null;
     const put = (eta: number, hp: number, color: Element | 'prism', lane: number, born: number, bossBlip = false) => {
@@ -654,7 +665,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** The road the `i`th walker of segment `w`'s plan takes (fixed when planned, so the radar can show it). */
   const spawnLane = (i: number, w: number) => (i + w) % geo.lanes.length;
-  let reachCache: { geo: typeof geo | null; range: number; d: Map<number, number> } = { geo: null, range: 0, d: new Map() };
   let radar: RadarView | null = null, radarPeak = 1, radarAge = 0, botWeaponT = 0, leadHp = { blue: 0, red: 0, purple: 0 };
   /** Bots read the radar like a rider: switch to the colour leading it when that clearly outweighs the mounted one. */
   function botWeapon(dt: number) {
@@ -896,7 +906,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         hit(e, s.dmg, el, src);
         if (mortar && !e.boss) e.dazed = Math.max(e.dazed, mortarDazeS()); // the Tyrant shrugs it off
       }
-      if (s.burnDps > 0) burns.push({ x: s.x1, y: s.y1, r: s.r, left: s.burnS, total: s.burnS, dps: s.burnDps });
+      if (s.burnDps > 0) burns.push({ x: s.x1, y: s.y1, r: s.r, left: s.burnS, total: s.burnS, dps: s.burnDps, tier: s.tier ?? 0 });
       cue('explode');
     }
     shells = shells.filter((s) => s.t < s.flight);
@@ -910,12 +920,16 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function lobFireball(target: Enemy, damage: number) {
     const flight = fireballFlight(), ahead = target.route < 0 ? geo.lanes[target.lane].at(target.d + travelSpeed(target) * flight) : target;
     const shape = fireballShape(tier), share = clamp(shape.burnShare, 0, 1);
-    shells.push({ x0: BASE_X, y0: BASE_Y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg: damage * (1 - share), r: shape.radius, burnS: shape.burnS, burnDps: damage * share / Math.max(0.1, shape.burnS) });
+    shells.push({ x0: BASE_X, y0: BASE_Y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg: damage * (1 - share), r: shape.radius, burnS: shape.burnS, burnDps: damage * share / Math.max(0.1, shape.burnS), tier });
     cue('fireball');
   }
   /** Where the slow field starts on lane 0 (each road is covered from the same share of its length). */
   function travelSpeed(e: Enemy) {
-    return e.speed * (e.charging ? e.boss ? bossChargeMult() : 2.6 : 1)
+    // a Ram Tyrant charging through tier IV+ ground fire bogs down
+    const bogged = e.charging && e.boss && burns.some((b) => b.tier >= 4 && Math.hypot(e.x - b.x, e.y - b.y) <= b.r + radiusOf(e));
+    // a boss strides in, then crawls once the turret can reach it: the fight happens in range, not on the march
+    const crawl = e.boss && e.route < 0 && e.d >= reach(e.lane) ? bossCrawl() : 1;
+    return e.speed * crawl * (e.charging ? e.boss ? bossChargeMult() * (bogged ? bossFireSlow() : 1) : 2.6 : 1)
       * (e.boss?.pending || (e.boss?.staggerS ?? 0) > 0 ? 0.2 : 1) * (e.dazed > 0 ? 1 - mortarDazeSlow() : 1);
   }
 
@@ -1247,13 +1261,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         ctx.emit({ type: 'bossSwarm', data: { wave, count: n } });
         cue('alarm');
       } else if (event === 'chargeWarn') {
-        say(`${name} charging!`, `Charge in ${Math.ceil(b.warnS)}s · burn it down`, '#ff6a5a', true);
+        say(`${name} charging!`, `Charge in ${Math.ceil(b.warnS)}s · tier IV+ fire bogs it down`, '#ff6a5a', true);
         ctx.emit({ type: 'bossChargeWarn', data: { wave, seconds: b.warnS } });
         cue('alarm');
       } else if (event === 'charge') {
         ctx.emit({ type: 'bossCharge', data: { wave, seconds: b.chargeS } });
       } else if (event === 'shield') {
-        say('Shield plates up', 'Rail shots and openings break plates fast', '#c694ff', true);
+        say('Shield plates up', 'Tier IV+ Railgun pulses crack them', '#c694ff', true);
         ctx.emit({ type: 'bossShield', data: { wave, hp: Math.round(b.shieldMax) } });
         cue('alarm');
       } else if (event === 'shieldBroken') {
@@ -1466,17 +1480,31 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     else {
       waveElapsed += dt;
       if (segOverAt < 0) miniTimer -= dt;
+      // the road entrance stays clear while the boss walks out of it
+      const bossNear = (lane: number | undefined) => enemies.some((e) => !e.dead && e.boss && e.d < bossClearD() && (lane === undefined || e.lane === lane));
+      if (miniTimer <= 0 && bossNear(undefined)) miniTimer = 0.5;
       if (miniTimer <= 0) {
         spawn('mini', -1);
         miniTimer = miniGap() * (0.7 + swarmRng() * 0.6);
       }
-      while (schedule.length && schedule[0].at <= waveElapsed) { const s = schedule.shift()!; spawn(s.kind, s.route, 0, s.route < 0 ? s.lane : undefined); }
+      while (schedule.length && schedule[0].at <= waveElapsed && !(schedule[0].route < 0 && schedule[0].kind !== 'boss' && bossNear(schedule[0].lane))) { const s = schedule.shift()!; spawn(s.kind, s.route, 0, s.route < 0 ? s.lane : undefined); }
     }
     if (spawned.length) { enemies.push(...spawned); spawned.length = 0; }
     trainerSync(dt);
 
     // --- the flow: a segment ends on time (a boss peak: when its boss dies) and the next rolls in; the level's
     // last segment then waits for its field to clear (or segmentTail more seconds) before the level is done
+    // a boss still alive when its peak runs out breaks through: it hits the base and leaves
+    if (baseHp > 0 && lull <= 0 && plan?.boss && waveElapsed >= bossPeakMaxS()) for (const e of enemies) if (!e.dead && e.boss) {
+      e.dead = true;
+      const dmg = e.dmg;
+      baseHp -= dmg; baseHurt = 0; leakDmg += dmg; levelDmg += dmg;
+      addFx({ kind: 'baseHit', life: 0.5, dmg });
+      say(`${BOSS_NAME[e.boss.color]} broke through!`, `−${dmg} base · ride harder next peak`, '#ff6a5a', true);
+      cue('baseHitHeavy');
+      ctx.emit({ type: 'baseHit', data: { dmg, kind: 'boss' } });
+      ctx.emit({ type: 'bossEscaped', data: { wave, color: e.boss.color, hpLeft: Math.round(e.hp / e.maxHp * 100) / 100 } });
+    }
     if (baseHp > 0 && lull <= 0 && segmentDone()) {
       if (!play || wave < play.waves.length) clearWave();
       else {
@@ -1577,12 +1605,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       const b = e.boss, color = b.color;
       return { id: e.id, name: BOSS_NAME[color], phase: b.phase + 1, phaseCount: b.phases, color, weapon: ELEMENT_WEAPON[color],
         pending: b.pending, countdownS: b.countdownS, charge: b.chargeS > 0 ? 'on' : b.warnS > 0 ? 'warn' : null,
-        shield: b.shieldMax > 0 ? b.shield / b.shieldMax : 0,
+        shield: b.shieldMax > 0 ? b.shield / b.shieldMax : 0, hp: Math.max(0, e.hp / e.maxHp), escapeS: plan?.boss ? Math.max(0, bossPeakMaxS() - waveElapsed) : 0,
         telegraph: b.telegraph && !b.pending, exposed: b.exposed && !b.pending, windowLeftS: b.windowLeftS, sprintBoost: false };
     }
     if (plan?.boss && (lull > 0 || schedule.some((s) => s.kind === 'boss'))) {
       return { id: 0, name: BOSS_NAME[plan.brood], phase: 1, phaseCount: Math.max(2, Math.min(3, Math.round(bossPhases()))), color: plan.brood,
-        weapon: ELEMENT_WEAPON[plan.brood], pending: false, charge: null, shield: 0, countdownS: lull, telegraph: false, exposed: false, windowLeftS: 0, sprintBoost: false };
+        weapon: ELEMENT_WEAPON[plan.brood], pending: false, charge: null, shield: 0, hp: 1, escapeS: bossPeakMaxS() - waveElapsed + lull, countdownS: lull, telegraph: false, exposed: false, windowLeftS: 0, sprintBoost: false };
     }
     return null;
   }

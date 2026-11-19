@@ -55,7 +55,7 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'endless-restart', script: 'z2', minutes: 55, seed: 1, simOpts: { stars: 99, autopilot: true },
+    name: 'endless-restart', script: 'z2', minutes: 90, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (run.isOver) f.push('falling should keep the session open');

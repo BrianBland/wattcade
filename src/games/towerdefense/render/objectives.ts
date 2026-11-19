@@ -24,9 +24,9 @@ export function rideObjective(s: TdSnapshot): RideObjective {
   if (b && f?.stage === 'boss') {
     const phase = `${b.name} · phase ${b.phase}/${b.phaseCount}`;
     if (b.pending) return { label: phase, title: `Phase ${b.phase + 1} next`, target: BOSS_ESCALATION[b.color], detail: `Starts in ${seconds(b.countdownS)}` };
-    if (b.exposed) return { label: phase, title: 'Exposed', target: 'Push now · damage window open', detail: `${seconds(b.windowLeftS)} remaining` };
+    if (b.exposed) return { label: phase, title: 'Exposed', target: 'Shift to V · damage window open', detail: `${seconds(b.windowLeftS)} remaining` };
     if (b.telegraph) return { label: phase, title: 'Prepare to sprint', target: 'Shift to tier V · sprint for ×1.5 damage', detail: `Opening in ${seconds(b.windowLeftS)}` };
-    if (b.charge) return { label: phase, title: b.charge === 'warn' ? 'Ram charge incoming' : 'Ram charging', target: 'Burn it down before it reaches the base', detail: `${want} · Fireball counters red` };
+    if (b.charge) return { label: phase, title: b.charge === 'warn' ? 'Ram charge incoming' : 'Ram charging', target: 'Tier IV+ ground fire bogs the charge down', detail: `${want} · Fireball counters red` };
     if (b.shield > 0) return { label: phase, title: 'Shield plates up', target: 'Railgun pulses at tier IV+ crack them', detail: `${Math.round(b.shield * 100)}% plates left · openings break them fast` };
     return { label: phase, title: 'Boss peak', target: `${want} · counter its colour`, detail: 'Watch for the next sprint window' };
   }

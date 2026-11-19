@@ -35,7 +35,7 @@ export type Fx =
   /** the boss arrives: the renderer plays its name card (the HUD banner stays quiet meanwhile) */
   | { id: number; t0: number; life: number; kind: 'bossIntro'; wave: number; color: Element }
   /** `eid`/`ekind`: the alien that died (renderer leaves its corpse); `fire`: its last hit was fire (red brood bursts). */
-  | { id: number; t0: number; life: number; kind: 'death'; x: number; y: number; color: Element | 'gold'; big: boolean; eid: number; ekind: Kind; fire: boolean }
+  | { id: number; t0: number; life: number; kind: 'death'; x: number; y: number; color: Element | 'gold'; big: boolean; eid: number; ekind: Kind; fire: boolean; /** body radius (a boss's is scaled) */ r?: number }
   | { id: number; t0: number; life: number; kind: 'text'; x: number; y: number; text: string; color: string }
   | { id: number; t0: number; life: number; kind: 'baseHit'; dmg: number };
 /** A turret fireball in flight (`k` 0 → 1) toward a road point; it bursts with radius `r`. */
@@ -86,6 +86,8 @@ export interface BossView {
   pending: boolean; countdownS: number; telegraph: boolean; exposed: boolean; windowLeftS: number;
   /** red: a charge is announced ('warn') or under way ('on'); purple: shield plates left (0..1) */
   charge: 'warn' | 'on' | null; shield: number;
+  /** HP left (0..1; 1 before it spawns) and seconds until it breaks through the base if still alive (the peak's cap) */
+  hp: number; escapeS: number;
   /** Optional hold-Up / touch ERG push, preserving the phase's trainer mode; A stays construction. */
   sprintBoost: boolean;
 }

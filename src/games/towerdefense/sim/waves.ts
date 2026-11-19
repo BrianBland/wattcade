@@ -110,7 +110,7 @@ export function planWave(w: number, rng: () => number, o: WaveOpts): WavePlan {
     const at = 2 + rng() * window, r = route();
     for (let i = 0; i < 4; i++) spawns.push({ at: at + i * 0.35, kind: 'dart', route: r });
   }
-  const main = Math.max(1, Math.round(counts.heavies * o.broodShare));
+  const main = o.broodShare > 0 ? Math.max(1, Math.round(counts.heavies * o.broodShare)) : 0; // a boss peak's escort skips the boss's colour
   const off = ELEMENTS.filter((c) => c !== o.brood);
   const pack = Math.max(1, Math.round(o.swarmPack));
   for (let i = 0; i < Math.max(main, counts.heavies); i++) {

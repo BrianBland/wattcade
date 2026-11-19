@@ -120,6 +120,21 @@ const CSS = `
 .td-radar-lanes small { flex:1 1 0; text-align:center; }
 .td-hud .td-radar-axis small, .td-hud .td-radar-lanes small { margin:0; font-size:9px; letter-spacing:.06em; }
 .td-objective .td-radar.v { flex:1 1 140px; }
+.td-bossbar { --bb:var(--td-blue); display:flex; flex-direction:column; justify-content:center; gap:3px; padding:4px 10px 5px; pointer-events:none;
+  background:linear-gradient(#0b0907e6, #0b0907b3); border:1px solid #000; border-bottom-color:color-mix(in srgb, var(--bb) 60%, #000); border-radius:4px; box-shadow:0 3px 10px #0009; }
+.td-bossbar.red { --bb:var(--td-red); } .td-bossbar.purple { --bb:var(--td-purple); }
+.td-bb-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; line-height:1; white-space:nowrap; overflow:hidden; }
+.td-bb-head b { font-size:15px; letter-spacing:.06em; text-transform:uppercase; color:var(--bb); text-shadow:0 1px 0 #000; }
+.td-hud .td-bb-head small { margin:0; font-size:11px; letter-spacing:.05em; color:var(--td-text); opacity:.85; overflow:hidden; text-overflow:ellipsis; }
+.td-bb-track { position:relative; height:12px; background:var(--td-well); border:1px solid #000; border-radius:2px; box-shadow:inset 0 1px 3px #000; overflow:hidden; }
+.td-bb-track > i { position:absolute; left:0; top:0; bottom:0; width:calc(var(--k) * 100%); background:linear-gradient(color-mix(in srgb, var(--bb) 70%, #fff), var(--bb) 45%, color-mix(in srgb, var(--bb) 60%, #000)); transition:width .25s; }
+.td-bb-track > u { position:absolute; left:0; top:0; height:4px; width:calc(var(--k) * 100%); background:#e6d0ffcc; }
+.td-bb-track > s { position:absolute; top:-1px; bottom:-1px; left:calc(var(--at) * 100%); width:2px; margin-left:-1px; background:#000; box-shadow:1px 0 0 #ffdca033; }
+.td-bossbar.telegraph .td-bb-track { box-shadow:inset 0 1px 3px #000, 0 0 0 1px #ffd24a99; }
+.td-bossbar.exposed { border-color:#ffd24a; animation:td-bb-flash .5s ease-in-out infinite alternate; }
+.td-bossbar.exposed .td-bb-track > i { background:linear-gradient(#fff6c8, #ffd24a 45%, #b8861a); }
+@keyframes td-bb-flash { from { box-shadow:0 0 6px #ffd24a66; } to { box-shadow:0 0 18px #ffd24acc; } }
+@media (prefers-reduced-motion: reduce) { .td-bossbar.exposed { animation:none; box-shadow:0 0 14px #ffd24aaa; } }
 .td-crew b { display:block; margin-bottom:5px; font-size:14px; }
 .td-crew p { color:var(--dim); font-size:13px; }
 .td-hud[data-objective-compact=true] .td-objective { gap:8px; }
@@ -318,11 +333,27 @@ export function tierHtml(s: TdSnapshot): string {
     + `${key(1)}<div class="td-tier-read"><strong>${Math.round(s.tierFtp * 100)}%</strong><small>FTP</small></div></div>`;
 }
 
+const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+/**
+ * The boss health bar along the top of the field: its name and phase, HP in its colour with a notch at each phase
+ * gate, purple's plates as a thin band on top, a gold flash while it is Exposed, and how long until it breaks through.
+ */
+export function bossBarHtml(b: NonNullable<TdSnapshot['boss']>): string {
+  const notches = Array.from({ length: b.phaseCount - 1 }, (_, i) => `<s style="--at:${((i + 1) / b.phaseCount).toFixed(3)}"></s>`).join('');
+  const state = b.exposed ? `Exposed · ${Math.ceil(b.windowLeftS)}s · tier V` : b.telegraph ? `Opening in ${Math.ceil(b.windowLeftS)}s`
+    : b.pending ? `Phase ${b.phase + 1} in ${Math.ceil(b.countdownS)}s` : `Phase ${b.phase}/${b.phaseCount}`;
+  const escape = b.escapeS > 0 ? ` · breaks through in ${b.escapeS < 60 ? `${Math.ceil(b.escapeS)}s` : mmss(b.escapeS)}` : '';
+  return `<div class="td-bb-head"><b>${esc(b.name)}</b><small>${esc(state + escape)}</small></div>`
+    + `<div class="td-bb-track" role="progressbar" aria-label="${esc(b.name)} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(b.hp * 100)}">`
+    + `<i style="--k:${b.hp.toFixed(4)}"></i>${b.shield > 0 ? `<u style="--k:${b.shield.toFixed(3)}"></u>` : ''}${notches}</div>`;
+}
+
 export class TdHud {
   readonly root = document.createElement('div');
   private status = this.box('td-status panel');
   private current = this.box('td-current panel');
   private event = this.box('td-event');
+  private bossBar = this.box('td-bossbar');
   private objective = this.box('td-objective panel');
   private menu = this.box('td-menu panel');
   private loadingCard = this.box('td-loading');
@@ -403,7 +434,7 @@ export class TdHud {
         this.root.dataset.column = String(L.column);
     this.root.dataset.compact = String(L.column && L.UH < 360);
     this.root.dataset.objectiveCompact = String(!!L.objective && L.objective.h < 280);
-    for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage], [this.loadingCard, L.garage]] as const) this.place(el, box);
+    for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.bossBar, L.bossBar], [this.menu, L.garage], [this.loadingCard, L.garage]] as const) this.place(el, box);
     if (L.objective) this.place(this.objective, L.objective);
   }
   render(s: TdSnapshot, L: TdLayout, W: number, loading: LoadingView | null = null) {
@@ -439,9 +470,14 @@ export class TdHud {
     let headline = '', sub = '';
     if (boss) {
       headline = boss.pending ? `Phase ${boss.phase + 1} in ${Math.ceil(boss.countdownS)}s` : boss.charge === 'warn' ? 'Ram charge incoming' : boss.charge === 'on' ? 'Ram charging' : boss.exposed ? `Exposed · ${Math.ceil(boss.windowLeftS)}s` : boss.telegraph ? `Sprint in ${Math.ceil(boss.windowLeftS)}s` : '';
-      sub = boss.pending ? BOSS_ESCALATION[boss.color] : boss.charge ? 'Burn it down before it closes' : 'Shift to V · sprint for ×1.5 damage';
+      sub = boss.pending ? BOSS_ESCALATION[boss.color] : boss.charge ? 'Tier IV+ fire bogs the charge down' : 'Shift to V or sprint for ×1.5 damage';
     }
     const intro = s.fx.some((f) => f.kind === 'bossIntro' && s.t - f.t0 < f.life); // the canvas name card owns this moment
+    this.bossBar.hidden = !run || !boss || boss.id === 0 || !!s.workshop;
+    if (boss && boss.id) {
+      this.bossBar.className = `td-box td-bossbar ${boss.color}${boss.exposed ? ' exposed' : boss.telegraph ? ' telegraph' : ''}`;
+      this.html(this.bossBar, bossBarHtml(boss));
+    }
     if (!headline && bn && s.t - bn.t0 < 4 && !intro) { headline = bn.text; sub = bn.sub; }
     this.event.hidden = !!L.objective || !run || incoming || !!s.workshop || !headline;
     this.html(this.event, `<b>${esc(headline)}</b><span>${esc(sub)}</span>`);

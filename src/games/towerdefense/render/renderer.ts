@@ -668,7 +668,7 @@ export class TdRenderer implements GameRenderer {
         g.strokeText(title, 0, 0); const gr = g.createLinearGradient(0, -size, 0, 0); gr.addColorStop(0, '#fff2b0'); gr.addColorStop(1, COL[this.intro.color]);
         g.fillStyle = gr; g.fillText(title, 0, 0);
         g.font = `700 ${Math.round(size * 0.32)}px system-ui, sans-serif`; g.fillStyle = 'rgba(255,236,190,0.9)'; g.lineWidth = 3;
-        const sub = `Wave ${this.intro.wave} boss · ${BOSS_TRICK[this.intro.color]} · sprint when Exposed`;
+        const sub = `${BOSS_TRICK[this.intro.color]} · shift to V when Exposed`;
         g.strokeText(sub, 0, size * 0.62); g.fillText(sub, 0, size * 0.62); g.restore();
       }
     }

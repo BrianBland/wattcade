@@ -6,7 +6,8 @@ import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
 import { BOSS_ART, anim, heroPalette, sprite, sprite2, type AnimState } from './sprites';
-import { heldWeapon, gearSprite, type WeaponLook } from './weapons';
+import { heldWeapon, gearSprite, weaponGrip, type WeaponLook } from './weapons';
+import { holdPose } from './hold';
 import { drawProjectile, drawPixelFx, flameSprite } from './effects';
 import { pixelPanel, pixelMeter, pixelText } from './chrome';
 import { fillText, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
@@ -446,6 +447,9 @@ export function createRenderer(): GameRenderer {
         const bob = p.moving ? -Math.abs(Math.sin(t * 10)) * TS * 0.07 : 0;
         shadow(px, py, TS * 0.32);
         const shot = s.bullets.some((b) => b.friendly && b.age < 0.12 && Math.hypot(b.x - p.x, b.y - p.y) < 1.6);
+        const held = holdPose(p.x * TS, p.y * TS, s.aim.angle, weaponGrip(s.weapon), shot ? 1 : 0);
+        const drawHeld = () => { const ws = heldWeapon(s.weapon, s.aim.angle); gg.drawImage(ws, Math.round(held.x) - Math.floor(ws.width / 2), Math.round(held.y + bob) - Math.floor(ws.height / 2)); };
+        if (held.behind) drawHeld();
         const hst: AnimState = p.hurt < 0.12 ? 'hurt' : shot ? 'attack' : p.moving ? 'walk' : 'idle';
         const hf = anim('hero',hst,t,9),hs=1,hpal=heroPalette(color);
         if (p.rolling) { gg.globalAlpha = 0.3; drawCanvas(sprite2('hero', 'walk', 0, hpal), px - Math.cos(s.aim.angle) * TS * 0.3, py, hs, face); gg.globalAlpha = 1; }
@@ -454,13 +458,8 @@ export function createRenderer(): GameRenderer {
         if (p.hurt < 0.08) { gg.globalAlpha = 0.5; drawCanvas(sprite2('hero', hf.state, hf.idx, undefined, true), px, py, hs, face, bob); }
         gg.globalAlpha = 1;
         if(p.warded)pixelRing(gg,p.x*TS,p.y*TS,TS*0.8,'#7fe7ff',true);
-        // weapon held toward the aim
-        const hx = p.x * TS, hy = p.y * TS, ca=Math.cos(s.aim.angle),sa=Math.sin(s.aim.angle);
-        {
-          const ws=heldWeapon(s.weapon,s.aim.angle),kick=shot?-1:0;
-          const wx=Math.round(hx+ca*(6+kick)),wy=Math.round(hy+sa*(6+kick)+bob);
-          gg.drawImage(ws,wx-Math.floor(ws.width/2),wy-Math.floor(ws.height/2));
-        }
+        // weapon gripped at its handle by the facing hand, pointing along the aim
+        if(!held.behind)drawHeld();
       } });
       actors.sort((a, b) => a.y - b.y);
       for (const a of actors) a.d();

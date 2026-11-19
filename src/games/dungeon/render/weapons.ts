@@ -64,6 +64,14 @@ export function weaponArt(look: WeaponLook): PixelArt {
     pal: weaponPalette(look)
   };
 }
+/** Distance along the barrel from the held art's pivot (square center) back to the hand on the handle. */
+export function weaponGrip(look: WeaponLook): number {
+  const rows = weaponArt(look).rows,
+    size = Math.max(12, rows.length),
+    left = Math.min(...rows.map(r => r.indexOf('b')).filter(i => i >= 0));
+  // Shuriken have no handle: hold them by a point, hub clear of the hand.
+  return Number.isFinite(left) ? Math.round(size / 2 - (left + 1.5)) : 5;
+}
 const cache = new Map<string, HTMLCanvasElement>();
 export function rasterArt(art: PixelArt, outline = true): HTMLCanvasElement {
   const rows = art.rows,
@@ -86,16 +94,20 @@ export function rasterArt(art: PixelArt, outline = true): HTMLCanvasElement {
   }
   return c;
 }
+/** The held art as pixel rows, rotated to the nearest of eight directions about the square's center. */
+export function heldRows(look: WeaponLook, angle = 0): string[] {
+  const dir = heldDir(angle), square = squareRows(weaponArt(look).rows, 12);
+  return dir ? rotateRows(square, dir * Math.PI / 4) : square;
+}
+const heldDir = (angle: number) => (Math.round(angle / (Math.PI / 4)) % 8 + 8) % 8;
 export function heldWeapon(look: WeaponLook, angle = 0): HTMLCanvasElement {
-  const dir = (Math.round(angle / (Math.PI / 4)) % 8 + 8) % 8;
+  const dir = heldDir(angle);
   const key = `${look.base}|${look.element}|${look.rarity}|${look.variant}|${!!look.unique}|${(look.plus ?? 0) > 0}|${dir}`;
   let c = cache.get(key);
   if (c) return c;
-  const art = weaponArt(look),
-    square = squareRows(art.rows, 12);
   c = rasterArt({
-    rows: dir ? rotateRows(square, dir * Math.PI / 4) : square,
-    pal: art.pal
+    rows: heldRows(look, angle),
+    pal: weaponPalette(look)
   });
   cache.set(key, c);
   return c;

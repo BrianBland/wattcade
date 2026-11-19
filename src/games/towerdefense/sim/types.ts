@@ -93,12 +93,19 @@ export interface BossView {
 /** Where the flow is in its set's curve. */
 export type FlowStage = 'warm-up' | 'build' | 'peak' | 'boss' | 'trough';
 /**
- * The enemy radar: incoming HP per colour in `stepS` buckets by when it reaches the base (bucket 0 = now), Glider
- * counts, the colour leading the window (before the drone stream), and a boss on the field (inS 0) or due to spawn. `scale` is the
- * recent peak bucket, so bars read as a share of a peak.
+ * The enemy radar: the next `horizonS` seconds as blips by when they come into the turret's reach, across the level's `roads`
+ * (plus the air when it has Glider routes); the colour leading the window, and a boss on the field (inS 0) or due.
  */
+/** One radar blip: a spawn group (one road or the air, one colour, spawning within a few seconds of each other). */
+export interface RadarBlip {
+  /** seconds until it comes into the turret's reach (0 = in reach now); total HP; `prism` = Stalkers (they cycle colour) */
+  etaS: number; hp: number; color: Element | 'prism';
+  /** the road it walks (0-based), -1 = the air (Gliders); `n` aliens in it; `key` = its spawn window (stable jitter) */
+  lane: number; n: number; key: number; boss?: boolean;
+}
 export interface RadarView {
-  stepS: number; buckets: Array<{ blue: number; red: number; purple: number; air: number }>; scale: number;
+  horizonS: number; roads: number; air: boolean; blips: RadarBlip[];
+  /** a slowly decaying high-water mark of a blip's HP (blips size against it) */ scale: number;
   lead: Element | null; boss: { inS: number; color: Element } | null;
 }
 

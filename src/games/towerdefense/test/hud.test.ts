@@ -34,10 +34,11 @@ it('counts down the quiet start, then shows the mounted weapon and the radar; co
     expect(combat.lull).toBe(0);
     expect(strip.querySelector('.td-count')).toBeNull();
     expect(strip.querySelector('.td-brood b')?.textContent).toBe(WEAPON_NAME[combat.weapon]);
-    // portrait: the radar replaces the old next-brood line, one bar per 10 s bucket
+    // portrait: the radar replaces the old next-brood line, one blip per incoming group
     const radar = hud.root.querySelector('.td-next .td-radar.h')!;
     expect(radar).not.toBeNull();
-    expect(radar.querySelectorAll('.td-rb')).toHaveLength(combat.radar!.buckets.length);
+    expect(combat.radar!.blips.length).toBeGreaterThan(0);
+    expect(radar.querySelectorAll('.td-blip')).toHaveLength(combat.radar!.blips.length);
     expect(hud.root.querySelector('.td-status')?.textContent).toMatch(/SET 1|WARM-UP/);
     // the only buttons over combat are the tier steppers (− / +), for touch riders without shifters
     expect([...hud.root.querySelectorAll<HTMLElement>('button')].map((b) => b.dataset.command)).toEqual(['tier', 'tier']);
@@ -50,8 +51,9 @@ function hudFixture() {
   const session = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 7, simOpts: { skipGarage: true } });
   const initial = session.sim.snapshot() as TdSnapshot;
   session.sim.dispose?.();
-  const radar: NonNullable<TdSnapshot['radar']> = { stepS: 10, scale: 400, lead: 'red', boss: null,
-    buckets: Array.from({ length: 9 }, (_, i) => ({ blue: 40, red: i * 40, purple: i === 4 ? 100 : 0, air: i === 2 ? 4 : 0 })) };
+  const radar: NonNullable<TdSnapshot['radar']> = { horizonS: 90, roads: 2, air: true, scale: 400, lead: 'red', boss: null, blips: [
+    { etaS: 81, hp: 400, color: 'red', lane: 0, n: 3, key: 20 }, { etaS: 45, hp: 100, color: 'blue', lane: 1, n: 5, key: 12 },
+    { etaS: 30, hp: 40, color: 'blue', lane: -1, n: 2, key: 10 }, { etaS: 9, hp: 900, color: 'purple', lane: 0, n: 1, key: 4 }] };
   const snapshot: TdSnapshot = { ...initial, phase: 'run', garage: null, lull: 0, set: { set: 2, pos: 2, of: 3, role: 'work', warmup: false },
     flow: { stage: 'build', set: 2, sets: 4, leftS: 64 }, radar, suggestedTier: 3,
     brood: { ...initial.brood, countdownS: 0 }, boss: null, banner: null, workshop: null };
@@ -69,8 +71,9 @@ it('the landscape card shows the set, the stage, the suggested tier and an uprig
   expect(card.textContent).toContain('64s · then more flow');
   expect(card.textContent).toContain('180 scrap · build any time with A');
   const radar = card.querySelector('.td-radar.v')!;
-  expect(radar.querySelectorAll('.td-rb')).toHaveLength(9);
-  expect(radar.querySelector('.td-rb em')?.textContent).toBe('4✈');
+  expect(radar.querySelectorAll('.td-blip')).toHaveLength(4);
+  expect(radar.querySelectorAll('.td-blip.air')).toHaveLength(1);
+  expect([...radar.querySelectorAll('.td-radar-lanes small')].map((n) => n.textContent)).toEqual(['Road 1', 'Road 2', 'Air']);
   expect(hud.root.querySelector('.td-next .td-radar')).toBeNull(); // not twice
   expect(hud.root.querySelector<HTMLElement>('.td-event')!.hidden).toBe(true);
   draw({ ...s, flow: { ...s.flow!, stage: 'trough' }, suggestedTier: 2 });
@@ -85,16 +88,26 @@ it('the landscape card shows the set, the stage, the suggested tier and an uprig
   expect(hud.root.querySelector('.td-next .td-radar.h')).not.toBeNull();
 });
 
-it('the radar marks a coming boss and scales bars against the recent peak', () => {
+it('the radar places blips by arrival and road, sizes them against the recent peak and rings a coming boss', () => {
   const { snapshot: s, draw, hud } = hudFixture();
-  draw({ ...s, radar: { ...s.radar!, boss: { inS: 45, color: 'purple' } } }, 820, 1180);
+  const boss = { etaS: 72, hp: 5000, color: 'purple' as const, lane: 0, n: 1, key: 30, boss: true };
+  draw({ ...s, radar: { ...s.radar!, boss: { inS: 45, color: 'purple' }, blips: [...s.radar!.blips, boss] } }, 820, 1180);
   const radar = hud.root.querySelector('.td-radar')!;
   expect(radar.textContent).toContain('Boss in 45s');
-  expect((radar.querySelector('.td-rboss') as HTMLElement).style.getPropertyValue('--at')).toBe('0.500');
-  const bars = [...radar.querySelectorAll<HTMLElement>('.td-rb')].map((b) => Number(b.style.getPropertyValue('--k')));
-  expect(bars[0]).toBeCloseTo(0.1, 2); // 40 of 400
-  expect(bars[8]).toBeCloseTo(0.9, 2); // 360 of 400
-  expect(radar.querySelectorAll('.td-rb')[4].querySelectorAll('s')).toHaveLength(3);
+  const ring = radar.querySelector<HTMLElement>('.td-blip.boss')!;
+  expect(ring.style.getPropertyValue('--p')).toBe('0.800');
+  const blips = [...radar.querySelectorAll<HTMLElement>('.td-blip:not(.boss)')];
+  const v = (i: number, k: string) => Number(blips[i].style.getPropertyValue(k));
+  expect(v(0, '--p')).toBeCloseTo(0.9, 3); // 81 of 90 s out
+  expect(v(3, '--p')).toBeCloseTo(0.1, 3);
+  expect(v(0, '--k')).toBeCloseTo(1, 3); // at the peak
+  expect(v(2, '--k')).toBeCloseTo(0.3 + 0.7 * Math.sqrt(0.1), 3); // 40 of 400
+  expect(v(3, '--k')).toBeCloseTo(1, 3); // capped
+  // roads then the air, left to right, each blip near its column's centre
+  expect(Math.abs(v(0, '--x') - 1 / 6)).toBeLessThan(1 / 6);
+  expect(Math.abs(v(1, '--x') - 3 / 6)).toBeLessThan(1 / 6);
+  expect(Math.abs(v(2, '--x') - 5 / 6)).toBeLessThan(1 / 6);
+  expect(blips[1].classList.contains('blue')).toBe(true);
 });
 
 it('prioritizes boss phases and sprint windows in a boss peak', () => {

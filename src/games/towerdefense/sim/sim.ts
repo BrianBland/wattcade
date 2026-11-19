@@ -88,6 +88,7 @@ interface Enemy {
   /** element of the last hit (for death effects: a fire kill bursts a red alien) */ lastEl: Element | null;
   /** last hit for renderer feedback: time, matchup class, damage dealt that tick */ hitT: number; hitCls: HitClass; hitDmg: number;
   spawnT: number; charging: boolean; boss: BossState | null;
+  /** sim time it spawned (groups it into a radar blip) */ born: number;
   /** seconds of Mortar concussion left (slowed by mortarDazeSlow) */ dazed: number;
 }
 interface Tower { pad: number; kind: TowerKind; level: number; cd: number; angle: number; firedAt: number }
@@ -202,6 +203,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const levelPeak = T.num('levelPeakWave', 7, 2, 30, 1, 'a level\'s last wave fights like this endless wave (+ the level\'s depth)');
   const firstLullS = T.num('firstLullS', 15, 0, 120, 1, 'quiet start of a level or run: time to pick a first tower, then the flow starts and never stops');
   const radarS = T.num('radarS', 90, 20, 240, 5, 'how far ahead the enemy radar looks');
+  const radarGroupS = T.num('radarGroupS', 5, 1, 20, 1, 'aliens spawning on one road in one colour within this many seconds share a radar blip');
   const broodShare = T.num('broodShare', 0.8, 0.34, 1, 0.05, 'share of a wave\'s heavies in its brood colour (the rest are for the towers)');
   const broodMaxRun = T.num('broodMaxRun', 2, 1, 5, 1, 'no brood colour more than N waves in a row');
   const swarmPack = T.num('swarmPackSize', 5, 1, 12, 1, 'blue slots are swarm packs of N darts or drones');
@@ -399,7 +401,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       id: nextId++, kind, route, lane, d, len: route < 0 ? geo.lanes[lane].length : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : geo.laneSpread * 2),
       phase: ctx.rng() * 12, x: 0, y: 0, angle: 0, dist: 99,
       hp, maxHp: hp, speed: k.speed * Math.min(1.5, 1 + 0.012 * w1), dmg: k.dmg, dead: false, hurt: 0, lastEl: null, hitT: -1, hitCls: 'neutral', hitDmg: 0,
-      spawnT: 5, charging: false, boss: kind === 'boss' ? createBossState(plan.brood, bossPhases()) : null, dazed: 0,
+      spawnT: 5, born: t, charging: false, boss: kind === 'boss' ? createBossState(plan.brood, bossPhases()) : null, dazed: 0,
     };
     if (e.boss) e.boss.age = exposedEvery() / 2; // first opening is half a cycle in, then every full cycle
     place(e);
@@ -514,7 +516,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (play && !fresh) for (let fw = dw(wave - 1) + 1; fw < dw(wave); fw++) gainScrap(catchUpBase() + catchUpPer() * fw);
     waveElapsed = 0; segOverAt = -1;
     if (fresh) escorts.length = 0;
-    schedule = plan.spawns.map((s) => ({ ...s }));
+    schedule = plan.spawns.map((s, i) => ({ ...s, lane: s.route < 0 ? spawnLane(i, plan.wave) : 0 }));
     lull = lullLen = fresh ? firstLullS() : 0;
     const b = broodInfo(plan);
     ctx.emit({ type: 'broodAnnounced', data: { wave, color: b.color, weapon: b.weapon, mode: b.mode } });
@@ -572,54 +574,87 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   /** Seconds between stream drones (they thicken as the level goes on; half rate in troughs). */
   const miniGap = () => (miniInterval() / (1 + 0.1 * (wave - 1))) * (plan?.role === 'easy' ? 2 : 1);
   /**
-   * The enemy radar: incoming HP per colour over the next radarS seconds, by when it reaches the base. Built from
-   * the aliens on the field (their time to the base), the live segment's remaining spawns, the next segment's
-   * plan and the drone stream. `scale` is a slowly decaying high-water mark so peaks look taller than troughs.
+   * The enemy radar: one blip per spawn group over the next radarS seconds, placed by when it comes into the
+   * turret's reach (most aliens die around there, so "reaches the base" would leave the near end of the scope empty).
+   * A group is what spawns on one road (or in the air) in one colour within radarGroupS of each other, so a pack is
+   * one blip and a lone Brute is one blip; its HP is the group's total. Built from the aliens on the field, the live
+   * segment's remaining spawns, the next segment's plan and the drone stream, which is rolled ahead in the same
+   * windows, so every blip enters at the far edge and slides in. `scale` is a slowly decaying high-water mark of
+   * a blip's HP, so blips size against what the rider has seen lately.
    */
   function radarView(dt: number): RadarView {
-    const stepS = 10, n = Math.max(1, Math.round(radarS() / stepS));
-    const buckets = Array.from({ length: n }, () => ({ blue: 0, red: 0, purple: 0, air: 0 }));
-    let boss: RadarView['boss'] = null;
-    const put = (eta: number, hp: number, color: Element | 'gold' | 'prism', air: boolean) => {
-      const i = Math.floor(Math.max(0, eta) / stepS);
-      if (i >= n || color === 'gold') return;
-      const b = buckets[i];
-      if (color === 'prism') { b.blue += hp / 3; b.red += hp / 3; b.purple += hp / 3; } else b[color] += hp;
-      if (air) b.air++;
+    const horizon = radarS(), G = radarGroupS(), L = geo.lanes.length;
+    const range = turretRange();
+    if (reachCache.geo !== geo || reachCache.range !== range) reachCache = { geo, range, d: new Map() };
+    /** How far along a road (lane >= 0) or a Glider flight (-1 - route) an alien is when the turret can first reach it. */
+    const reach = (path: number): number => {
+      let d = reachCache.d.get(path);
+      if (d === undefined) {
+        const len = path >= 0 ? geo.lanes[path].length : flightLength(-1 - path), at = (x: number) => path >= 0 ? geo.lanes[path].at(x) : flightAt(-1 - path, x);
+        d = len;
+        for (let x = 0; x <= len; x += 1) { const q = at(x); if (distTo(q.x, q.y) <= range) { d = x; break; } }
+        reachCache.d.set(path, d);
+      }
+      return d;
     };
-    // `lead` weighs what is on the field and what spawns within the window (slow heavies arrive late, but they
-    // are what the turret should be ready for); the bars place everything by when it reaches the base
+    const groups = new Map<string, { eta: number; hp: number; color: Element | 'prism'; lane: number; n: number; key: number; boss?: boolean }>();
+    let boss: RadarView['boss'] = null;
+    const put = (eta: number, hp: number, color: Element | 'prism', lane: number, born: number, bossBlip = false) => {
+      if (eta > horizon || hp <= 0) return;
+      const key = Math.floor(born / G), id = bossBlip ? `boss:${born}` : `${lane}:${color}:${key}`;
+      const g = groups.get(id);
+      if (!g) { groups.set(id, { eta: Math.max(0, eta), hp, color, lane, n: 1, key, boss: bossBlip || undefined }); return; }
+      g.eta = (g.eta * g.hp + Math.max(0, eta) * hp) / (g.hp + hp); g.hp += hp; g.n++;
+    };
+    // `lead` weighs what is on the field and what spawns within 60 s (slow heavies arrive late, but they are what the
+    // turret should be ready for); the blips place everything by when it reaches the base
     const soon = { blue: 0, red: 0, purple: 0 };
     const weigh = (hp: number, color: Element | 'gold' | 'prism') => {
       if (color === 'prism') { soon.blue += hp / 3; soon.red += hp / 3; soon.purple += hp / 3; } else if (color !== 'gold') soon[color] += hp;
     };
     for (const e of enemies) {
       if (e.dead) continue;
-      if (e.boss) { boss = { inS: 0, color: e.boss.color }; continue; }
+      const eta = Math.max(0, reach(e.route >= 0 ? -1 - e.route : e.lane) - e.d) / Math.max(0.5, travelSpeed(e));
+      // a boss on the field always shows (pinned to the far edge while it is further out)
+      if (e.boss) { boss = { inS: 0, color: e.boss.color }; put(Math.min(eta, horizon), e.hp, e.boss.color, e.lane, e.born, true); continue; }
       weigh(e.hp, elementOf(e));
-      put((e.len - e.d) / Math.max(0.5, travelSpeed(e)), e.hp, elementOf(e), e.route >= 0);
+      put(eta, e.hp, e.kind === 'prism' ? 'prism' : elementOf(e), e.route >= 0 ? -1 : e.lane, e.born);
     }
     const ahead = (sp: readonly Spawn[], offset: number, w: number, color: Element) => {
-      for (const s of sp) {
+      sp.forEach((s, i) => {
         const inS = offset + s.at;
-        if (inS >= n * stepS) continue;
+        if (inS < 0 || inS >= horizon) return;
         if (s.kind !== 'boss' && inS < 60) weigh(hpFor(s.kind, w, s.route), KINDS[s.kind].color);
-        if (s.kind === 'boss') { if (!boss || inS < boss.inS) boss = { inS, color }; continue; }
-        const len = s.route < 0 ? ROAD_LENGTH : flightLength(s.route);
-        put(inS + len / (KINDS[s.kind].speed * Math.min(1.5, 1 + 0.012 * (dw(w) - 1))), hpFor(s.kind, w, s.route), KINDS[s.kind].color, s.route >= 0);
-      }
+        if (s.kind === 'boss' && (!boss || inS < boss.inS)) boss = { inS, color };
+        const lane = s.route >= 0 ? -1 : s.lane ?? spawnLane(i, w);
+        const len = reach(s.route < 0 ? lane : -1 - s.route);
+        const kc = KINDS[s.kind].color;
+        put(inS + len / (KINDS[s.kind].speed * Math.min(1.5, 1 + 0.012 * (dw(w) - 1))), hpFor(s.kind, w, s.route),
+          s.kind === 'boss' ? color : kc === 'gold' ? color : kc, lane, t + inS, s.kind === 'boss');
+      });
     };
-    if (plan) ahead(schedule, (lull > 0 ? lull : 0) - (lull > 0 ? 0 : waveElapsed), plan.wave, plan.brood);
+    if (plan) ahead(schedule, lull > 0 ? lull : -waveElapsed, plan.wave, plan.brood);
     if (nextPlan && (!play || nextPlan.wave <= play.waves.length)) ahead(nextPlan.spawns, segRemaining(), nextPlan.wave, nextPlan.brood);
-    // the drone stream, once it would have reached the base
-    const miniHp = hpFor('mini', wave, -1), miniEta = ROAD_LENGTH / KINDS.mini.speed;
-    for (let i = 0; i < n; i++) if ((i + 1) * stepS > miniEta + (lull > 0 ? lull : 0)) buckets[i].blue += miniHp * stepS / Math.max(0.2, miniGap());
-    const total = (b: typeof buckets[number]) => b.blue + b.red + b.purple;
-    radarPeak = Math.max(...buckets.map(total), radarPeak * Math.exp(-dt / 180), 1);
+    // the drone stream, rolled ahead in the same windows (it alternates roads, so each road takes an even share)
+    if (segOverAt < 0) {
+      const from = t + (lull > 0 ? lull : 0), gap = Math.max(0.2, miniGap()), miniHp = hpFor('mini', wave, -1);
+      for (let k = Math.floor(from / G); k * G < t + horizon; k++) {
+        const a = Math.max(from, k * G), b = (k + 1) * G;
+        if (b <= a) continue;
+        for (let lane = 0; lane < L; lane++) put((a + b) / 2 - t + reach(lane) / KINDS.mini.speed, miniHp * (b - a) / gap / L, 'blue', lane, k * G);
+      }
+    }
+    const blips = [...groups.values()].filter((g) => g.hp >= 1).sort((a, b) => b.eta - a.eta)
+      .map((g) => ({ etaS: Math.round(g.eta * 10) / 10, hp: Math.round(g.hp), color: g.color, lane: g.lane, n: g.n, key: g.key, ...(g.boss ? { boss: true } : {}) }));
+    const top = blips.reduce((m, b) => b.boss ? m : Math.max(m, b.hp), 0);
+    radarPeak = Math.max(top, radarPeak * Math.exp(-dt / 180), 1);
     leadHp = soon;
     const lead = ELEMENTS.reduce<Element | null>((m, c) => soon[c] > 0 && (!m || soon[c] > soon[m]) ? c : m, null);
-    return { stepS, buckets: buckets.map((b) => ({ blue: Math.round(b.blue), red: Math.round(b.red), purple: Math.round(b.purple), air: b.air })), scale: Math.round(radarPeak), lead, boss };
+    return { horizonS: horizon, roads: L, air: geo.routes > 0, blips, scale: Math.round(radarPeak), lead, boss };
   }
+  /** The road the `i`th walker of segment `w`'s plan takes (fixed when planned, so the radar can show it). */
+  const spawnLane = (i: number, w: number) => (i + w) % geo.lanes.length;
+  let reachCache: { geo: typeof geo | null; range: number; d: Map<number, number> } = { geo: null, range: 0, d: new Map() };
   let radar: RadarView | null = null, radarPeak = 1, radarAge = 0, botWeaponT = 0, leadHp = { blue: 0, red: 0, purple: 0 };
   /** Bots read the radar like a rider: switch to the colour leading it when that clearly outweighs the mounted one. */
   function botWeapon(dt: number) {
@@ -1435,7 +1470,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         spawn('mini', -1);
         miniTimer = miniGap() * (0.7 + swarmRng() * 0.6);
       }
-      while (schedule.length && schedule[0].at <= waveElapsed) { const s = schedule.shift()!; spawn(s.kind, s.route); }
+      while (schedule.length && schedule[0].at <= waveElapsed) { const s = schedule.shift()!; spawn(s.kind, s.route, 0, s.route < 0 ? s.lane : undefined); }
     }
     if (spawned.length) { enemies.push(...spawned); spawned.length = 0; }
     trainerSync(dt);

@@ -2,7 +2,8 @@
 import { ELEMENTS, KIND_FROM, KINDS, type Element, type Kind } from './defs';
 
 /** `route`: -1 walks the road; 0.. is a Glider flight from that level flyer spawn. */
-export interface Spawn { at: number; kind: Kind; route: number }
+/** `lane`: the road a walker takes, fixed by the sim when the segment starts (unset in a plan). */
+export interface Spawn { at: number; kind: Kind; route: number; lane?: number }
 /**
  * The flow comes in segments ("waves" in the code) grouped in sets, like workout intervals: in Endless three work
  * segments build to a boss peak, then an easy trough (a light stream at recovery effort) before the next set.

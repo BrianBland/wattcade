@@ -237,7 +237,11 @@ describe('brood waves', () => {
     expect(b.lullS).toBe(15);
     expect(snap(s).weapon).toBe('gatling'); // a rider keeps their pick; the colour mounts nothing
     expect(snap(s).enemies).toHaveLength(0);
-    expect(snap(s).radar?.buckets.length).toBe(9);
+    // the quiet start already shows what's coming: the drone stream and the first spawns, out at the far edge
+    const quiet = snap(s).radar!;
+    expect(quiet.horizonS).toBe(90);
+    expect(quiet.blips.length).toBeGreaterThan(0);
+    expect(Math.min(...quiet.blips.map((b) => b.etaS))).toBeGreaterThan(14);
     s.step(30 * 15);
     expect(snap(s).brood.countdownS).toBe(0);
     let seen = 0; // the turret can drop a lone drone within a second of its spawn, so watch every frame
@@ -245,6 +249,26 @@ describe('brood waves', () => {
     expect(seen).toBeGreaterThan(0);
     const evs = s.finish().events.map((e) => e.type);
     expect(evs.indexOf('broodAnnounced')).toBeLessThan(evs.indexOf('waveStart'));
+  });
+  it('radar blips enter at the far edge and slide in: groups are planned a full window ahead', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { autopilot: true } });
+    const seen = new Set<string>(), entries: number[] = [];
+    for (let i = 0; i < 6 * 60 * 2; i++) {
+      s.step(15);
+      const r = snap(s).radar;
+      if (!r) continue;
+      for (const b of r.blips) {
+        if (b.boss) continue;
+        const id = `${b.lane}:${b.color}:${b.key}`;
+        if (!seen.has(id)) { seen.add(id); entries.push(b.etaS); }
+        expect(b.etaS).toBeLessThanOrEqual(r.horizonS);
+        expect(b.hp).toBeGreaterThan(0);
+      }
+    }
+    // Carrier broods and Stalker colour shifts start blips mid-scope; nearly everything else enters at the edge
+    const late = entries.filter((e) => e > 75).length / entries.length;
+    expect(entries.length).toBeGreaterThan(50);
+    expect(late).toBeGreaterThan(0.85);
   });
   it('segments roll straight into each other on time, with the field still busy; a trough heals at its end', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { autopilot: true, baseHp: 1000 } });

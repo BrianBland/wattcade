@@ -15,6 +15,7 @@ import { getDriveIn } from '../drivein/store';
 import { HUD_LAYOUT_EVENT, readHudInsets } from '../hud/insets';
 import type { LobbyEntrance } from '../../games/warmup/render/entrance';
 import { holdX, spawnAheadM, type StageEntrance } from './entrance';
+import { keepScreenAwake } from '../wakeLock';
 
 /** Stop pedalling this long after a creditable ride and it is saved on its own (a fresh ride starts). */
 export const AUTO_SAVE_IDLE_S = 180;
@@ -85,17 +86,15 @@ export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible
   }, [profile?.id, lookKey, profile?.settings.units]);
   useEffect(() => { renderer.current?.setInsets?.(readInsets()); }, [hud]);
 
-  // frame loop, input, wake lock (once)
+  // frame loop, input, screen kept awake
   useEffect(() => {
     setExternalMenuDriver(true);
     const detachKeys = input.attachKeyboard(window);
     const detachPad = input.attachGamepad();
     const detachFake = attachFakeKeys();
-    let lock: { release(): Promise<void> } | null = null;
-    const wake = () => { if (!lock && document.visibilityState === 'visible') (navigator as any).wakeLock?.request?.('screen').then((l: any) => { lock = l; l.addEventListener?.('release', () => { lock = null; }); }).catch(() => {}); };
-    const onVis = () => { if (document.visibilityState === 'hidden') checkpointLobby(); else wake(); };
-    wake();
-    window.addEventListener('pointerdown', wake); document.addEventListener('visibilitychange', onVis); window.addEventListener('pagehide', checkpointLobby);
+    const releaseWake = keepScreenAwake();
+    const onVis = () => { if (document.visibilityState === 'hidden') checkpointLobby(); };
+    document.addEventListener('visibilitychange', onVis); window.addEventListener('pagehide', checkpointLobby);
     const el = mount.current!;
     const hudLayout = () => renderer.current?.setInsets?.(readInsets());
     window.addEventListener(HUD_LAYOUT_EVENT, hudLayout);
@@ -158,8 +157,8 @@ export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible
     return () => {
       cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener(HUD_LAYOUT_EVENT, hudLayout); setExternalMenuDriver(false);
       detachKeys(); detachPad(); detachFake();
-      window.removeEventListener('pointerdown', wake); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', checkpointLobby);
-      void lock?.release();
+      document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', checkpointLobby);
+      releaseWake();
       lastWant?.dispose?.();
     };
   }, []);

@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
-import { TdHud, tierHtml } from '../render/panels';
+import { TdHud, layoutRadar, radarHtml, tierHtml } from '../render/panels';
 import { layout } from '../render/layout';
 import type { TdSnapshot } from '../sim/types';
 import { WEAPON_NAME } from '../sim/defs';
@@ -149,4 +149,26 @@ it('the gearbox lights tiers up to the current one, marks the called tier and cu
   el.innerHTML = tierHtml({ ...snapshot, tier: 4, suggestedTier: 4, tierFtp: 0.9, tierOutput: 1.1 });
   expect(el.querySelectorAll('.cue')).toHaveLength(0);
   expect(el.querySelector('.td-load')!.classList.contains('short')).toBe(false);
+});
+
+it('lays radar blips out without overlaps when the column has room, keeping arrival times; Stalkers cycle colour', () => {
+  const { snapshot } = hudFixture();
+  // a peak: 14 groups crowding one road over 90 s, several arriving together
+  const blips = Array.from({ length: 14 }, (_, i) => ({ etaS: 20 + (i % 7) * 10 + (i % 3), hp: 150 + 60 * (i % 4), color: (['blue', 'red', 'purple'] as const)[i % 3], lane: 0, n: 3, key: i }));
+  const r = { ...snapshot.radar!, roads: 1, scale: 330, blips };
+  const size = { w: 220, h: 110 }, placed = layoutRadar(r, 'v', size);
+  expect(placed).toHaveLength(14);
+  for (const q of placed) expect(q.p).toBeCloseTo(q.blip.etaS / 90, 5); // time never moves
+  const rad = (k: number) => k * 36 * 0.32;
+  for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) {
+    const a = placed[i], b = placed[j];
+    const d = Math.hypot((a.p - b.p) * size.h, (a.x - b.x) * size.w);
+    expect(d, `${i}/${j}`).toBeGreaterThanOrEqual(rad(a.k) + rad(b.k));
+  }
+  // with two roads every blip stays inside its own column
+  const two = layoutRadar({ ...r, roads: 2, blips: blips.map((b) => ({ ...b, lane: b.key % 2 })) }, 'v', size);
+  for (const q of two) expect(q.blip.lane === 0 ? q.x <= 0.5 : q.x >= 0.5).toBe(true);
+  const el = document.createElement('div');
+  el.innerHTML = radarHtml({ ...snapshot, radar: { ...r, blips: [{ etaS: 40, hp: 90, color: 'prism', lane: 0, n: 1, key: 3 }] } }, 'v');
+  expect(el.querySelector('.td-blip')!.classList.contains('prism')).toBe(true);
 });

@@ -2,7 +2,7 @@
 import { knownLevel } from '../sim/levelCache';
 import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
-import type { TdSnapshot } from '../sim/types';
+import type { RadarBlip, RadarView, TdSnapshot } from '../sim/types';
 import { roman } from '../sim/tiers';
 import type { Box, TdLayout } from './layout';
 import { STAGE_NAME, constructionStatus, flowLabel, rideObjective } from './objectives';
@@ -103,6 +103,11 @@ const CSS = `
 .td-radar.h .td-blip { --bmax:20px; left:calc(var(--p) * 100%); top:calc(var(--x) * 100%); transform:translate(-50%, -50%); }
 /* the enemies' own body colours (sprites COL), not the lighter UI tints: purple has to read as violet, not pink */
 .td-blip.red { --c:#ff5a3c; } .td-blip.purple { --c:#a95cff; }
+/* Stalkers rotate through the three colours, like the aliens themselves */
+@property --c { syntax:'<color>'; inherits:false; initial-value:#4aa8ff; }
+.td-blip.prism { animation:td-prism 12s linear infinite; }
+@keyframes td-prism { 0%, 28% { --c:#4aa8ff; } 33%, 61% { --c:#ff5a3c; } 66%, 94% { --c:#a95cff; } 100% { --c:#4aa8ff; } }
+@media (prefers-reduced-motion: reduce) { .td-blip.prism { animation-duration:36s; } }
 .td-blip.air { opacity:.8; background:radial-gradient(circle, color-mix(in srgb, var(--c) 35%, transparent) 0, transparent 65%); }
 .td-blip.air::after { content:''; position:absolute; left:50%; top:50%; width:5px; height:5px; border:solid #cfeefc; border-width:1.5px 0 0 1.5px; }
 .td-radar.v .td-blip.air::after { transform:translate(-50%, -25%) rotate(225deg); }
@@ -234,27 +239,59 @@ const CSS = `
 
 const color = (e: Element) => `var(--td-${e})`;
 
+type ScopeSize = { w: number; h: number };
+/** The scope's inner size in CSS px when the HUD hasn't measured it yet (and in tests). */
+export const SCOPE_DEFAULT: Record<'h' | 'v', ScopeSize> = { v: { w: 220, h: 110 }, h: { w: 260, h: 24 } };
+const BLIP_MAX = { v: 36, h: 20 }, BOSS_SIZE = { v: 30, h: 18 };
+export interface PlacedBlip { blip: RadarBlip; p: number; x: number; k: number }
 /**
- * The enemy radar (sim `radar`): one fuzzy blip per spawn group, placed by when it comes into the turret's reach
- * (the base line) and across by which road it takes (Gliders share the road columns, with a chevron), sized by its HP against the recent peak
- * blip. A boss is a gold ringed blip. Every blip enters at the far edge, so a peak reads as a growing smear.
+ * Lays the radar's blips out: `p` (0 = in reach, 1 = the far edge) comes from the arrival time and never moves;
+ * across, each blip starts at a stable spot in its road's column and slides sideways, within the column, to the
+ * nearest place where it doesn't overlap a blip already placed (the boss first, then older groups). When a column
+ * is too crowded for that, it takes the spot with the most room.
  */
-export function radarHtml(s: TdSnapshot, dir: 'h' | 'v'): string {
+export function layoutRadar(r: RadarView, dir: 'h' | 'v', size: ScopeSize = SCOPE_DEFAULT[dir]): PlacedBlip[] {
+  const cols = Math.max(1, r.roads), along = dir === 'v' ? size.h : size.w, across = dir === 'v' ? size.w : size.h;
+  const colOf = (b: RadarBlip) => Math.min(b.lane < 0 ? b.key % cols : b.lane, cols - 1);
+  const placed: Array<{ a: number; c: number; rad: number }> = [], out: PlacedBlip[] = [];
+  const order = [...r.blips].sort((a, b) => Number(!!b.boss) - Number(!!a.boss) || a.key - b.key || a.lane - b.lane || a.etaS - b.etaS);
+  for (const b of order) {
+    const p = Math.min(1, Math.max(0, b.etaS / r.horizonS));
+    const k = b.boss ? 1 : 0.3 + 0.7 * Math.sqrt(Math.min(1, b.hp / Math.max(1, r.scale)));
+    const rad = (b.boss ? BOSS_SIZE[dir] * 0.5 : k * BLIP_MAX[dir] * 0.32), a = p * along;
+    const col = colOf(b), lo = (col / cols) * across + Math.min(rad, across / cols / 2), hi = ((col + 1) / cols) * across - Math.min(rad, across / cols / 2);
+    const jitter = b.boss ? 0 : (((b.key * 0.618034 + (b.lane + 1) * 0.37) % 1) - 0.5) * 0.6;
+    const want = Math.min(hi, Math.max(lo, ((col + 0.5 + jitter) / cols) * across));
+    const room = (c: number) => placed.reduce((m, q) => Math.min(m, Math.hypot(q.a - a, q.c - c) - q.rad - rad), Infinity);
+    let best = want, bestRoom = room(want);
+    if (bestRoom < 1) search: for (let d = 1; d <= hi - lo; d++) for (const c of [want - d, want + d]) {
+      if (c < lo || c > hi) continue;
+      const rm = room(c);
+      if (rm >= 1) { best = c; break search; }
+      if (rm > bestRoom) { best = c; bestRoom = rm; }
+    }
+    placed.push({ a, c: best, rad });
+    out.push({ blip: b, p, x: across > 0 ? best / across : 0.5, k });
+  }
+  return out;
+}
+
+/**
+ * The enemy radar (sim `radar`): one soft blip per spawn group, placed by when it comes into the turret's reach
+ * (the base line) and across by which road it takes (Gliders share the road columns, with a chevron), sized by its
+ * HP against the recent peak blip and laid out so blips don't overlap. A boss is a gold ringed blip; Stalkers cycle
+ * colour. Every blip enters at the far edge.
+ */
+export function radarHtml(s: TdSnapshot, dir: 'h' | 'v', size?: ScopeSize): string {
   const r = s.radar;
   if (!r) return '';
   const horizon = r.horizonS, cols = Math.max(1, r.roads), cw = 1 / cols;
-  // Gliders fly over the roads, so they share the road columns (marked with a chevron) rather than a lane of their own
-  const colAt = (lane: number, key: number) => (Math.min(lane < 0 ? key % cols : lane, cols - 1) + 0.5) * cw;
   const f3 = (n: number) => n.toFixed(3);
   const lanes = Array.from({ length: cols }, (_, i) => `<i class="td-rlane" style="--x:${f3((i + 0.5) * cw)};--w:${f3(cw * 0.8)}"></i>`).join('');
   const ticks = [30, 60].filter((x) => x < horizon).map((x) => `<i class="td-rtick" style="--p:${f3(x / horizon)}"></i>`).join('');
-  const blips = r.blips.map((b) => {
-    const p = f3(Math.min(1, b.etaS / horizon));
-    if (b.boss) return `<b class="td-blip boss ${b.color}" style="--p:${p};--x:${f3(colAt(b.lane, b.key))}" title="Boss"></b>`;
-    const jitter = ((b.key * 0.618034 + (b.lane + 1) * 0.37) % 1) - 0.5; // stable per group, keeps overlaps readable
-    const k = 0.3 + 0.7 * Math.sqrt(Math.min(1, b.hp / Math.max(1, r.scale)));
-    return `<i class="td-blip ${b.color}${b.lane < 0 ? ' air' : ''}" style="--p:${p};--x:${f3(colAt(b.lane, b.key) + jitter * cw * 0.6)};--k:${f3(k)}"></i>`;
-  }).join('');
+  const blips = layoutRadar(r, dir, size).sort((a, b) => b.p - a.p).map(({ blip: b, p, x, k }) => b.boss
+    ? `<b class="td-blip boss ${b.color}" style="--p:${f3(p)};--x:${f3(x)}" title="Boss"></b>`
+    : `<i class="td-blip ${b.color}${b.lane < 0 ? ' air' : ''}" style="--p:${f3(p)};--x:${f3(x)};--k:${f3(k)}"></i>`).join('');
   const head = `<div class="td-radar-head"><small>${dir === 'h' ? `Incoming · ${horizon}s` : 'Incoming'}</small><b>${r.boss && r.boss.inS > 0 ? `Boss in ${Math.ceil(r.boss.inS)}s` : r.lead ? `${r.lead} leads` : 'Clear'}</b></div>`;
   const axis = `<div class="td-radar-axis"><small>+${horizon}s</small><small>in reach</small></div>`;
   const names = cols > 1 ? `<div class="td-radar-lanes">${Array.from({ length: cols }, (_, i) => `<small>Road ${i + 1}</small>`).join('')}</div>` : '';
@@ -345,11 +382,17 @@ export class TdHud {
   private place(el: HTMLElement, b: Box) {
     Object.assign(el.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
   }
+  private scope: Partial<Record<'h' | 'v', ScopeSize>> = {};
   private html(el: HTMLElement, html: string) {
     if (this.markup.get(el) === html) return;
     const focused = el.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset : null;
     const scroll = el.scrollTop;
     el.innerHTML = html; this.markup.set(el, html);
+    // the radar lays blips out in real pixels: remember its scope's size for the next frame
+    for (const sc of el.querySelectorAll<HTMLElement>('.td-radar > .td-radar-well > .td-scope')) {
+      const dir = sc.closest('.td-radar')!.classList.contains('v') ? 'v' : 'h';
+      if (sc.clientWidth > 0 && sc.clientHeight > 0) this.scope[dir] = { w: sc.clientWidth, h: sc.clientHeight };
+    }
     if (focused?.command) el.querySelector<HTMLElement>(`[data-command="${focused.command}"]${focused.index === undefined ? '' : `[data-index="${focused.index}"]`}`)?.focus({ preventScroll: true });
     el.scrollTop = scroll;
   }
@@ -389,7 +432,7 @@ export class TdHud {
     // The radar sits here (portrait, phones); the landscape column shows it upright in the objective card instead.
     const forecast = incoming
       ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>${esc(flowLabel(s))} · get ready</small>`
-      : L.objective ? `<span>${esc(flowLabel(s))}</span>` : radarHtml(s, 'h');
+      : L.objective ? `<span>${esc(flowLabel(s))}</span>` : radarHtml(s, 'h', this.scope.h);
     const swapping = s.swapLeft > 0 ? ` · mounting ${Math.ceil(s.swapLeft)}s` : '';
     this.html(this.current, `<div class="td-brood"><b>${WEAPON_NAME[s.weapon]}</b><small>${bd.color}${swapping}</small></div>${run ? tierHtml(s) : ''}<div class="td-next">${forecast}</div>`);
     const boss = s.boss, bn = s.banner;
@@ -405,7 +448,7 @@ export class TdHud {
     this.objective.hidden = !L.objective || !run || !!s.workshop;
     if (L.objective) {
       const o = rideObjective(s), crew = constructionStatus(s);
-      this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div>${radarHtml(s, 'v')}<div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
+      this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div>${radarHtml(s, 'v', this.scope.v)}<div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
     }
     this.menu.hidden = !s.garage;
     if (s.garage) {

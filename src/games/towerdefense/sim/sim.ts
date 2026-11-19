@@ -597,12 +597,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       }
       return d;
     };
-    const groups = new Map<string, { eta: number; hp: number; color: Element; lane: number; n: number; key: number; boss?: boolean }>();
+    const groups = new Map<string, { eta: number; hp: number; color: Element | 'prism'; lane: number; n: number; key: number; boss?: boolean }>();
     let boss: RadarView['boss'] = null;
     const put = (eta: number, hp: number, color: Element | 'prism', lane: number, born: number, bossBlip = false) => {
       if (eta > horizon || hp <= 0) return;
-      // Stalkers cycle colours: a third of their HP shows in each, so the scope only ever holds the three enemy colours
-      if (color === 'prism') { for (const c of ELEMENTS) put(eta, hp / 3, c, lane, born, bossBlip); return; }
       const key = Math.floor(born / G), id = bossBlip ? `boss:${born}` : `${lane}:${color}:${key}`;
       const g = groups.get(id);
       if (!g) { groups.set(id, { eta: Math.max(0, eta), hp, color, lane, n: 1, key, boss: bossBlip || undefined }); return; }

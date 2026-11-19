@@ -1,36 +1,73 @@
 import type { GameContext, GameSim } from '../../../contracts';
-
-export const LAP = 1080;
+import { LAP, WIDTH, track } from './track';
+export { LAP };
 export const FINISH = LAP * 3;
 export const classes = ['Rookie', 'Hotshot', 'Outlaw'] as const;
-export const pilots = ['Pip', 'Clover', 'Ember'];
-export const halfWidth = { boost: 0.34, goo: 0.3, slick: 0.42 };
-export type Marker = { at: number; x: number; kind: 'boost' | 'goo' | 'slick' };
-export type Rival = { at: number; x: number; slow: number; finish: number | null };
-const course: Marker[] = Array.from({ length: 24 }, (_, i) => ({
-  at: Math.floor(i / 8) * LAP + ((i % 8) + 0.6) * 130,
-  x: [-0.84, 0.85, 0.16, -0.65, 0.73, -0.18, 0.95, -0.92][i % 8],
-  kind: i % 2 ? 'goo' : 'boost',
+export const pilots = ['Rivet', 'Mantis', 'Switch'];
+export const pads = [78, 218, 375, 536, 729, 931].map((at, i) => ({
+  at,
+  x: [-0.78, 0.52, 0.82, -0.62, 0.15, -0.92][i],
 }));
-
+export type Rival = {
+  at: number;
+  x: number;
+  lean: number;
+  stun: number;
+  windup: number;
+  strike: number;
+  side: number;
+  cooldown: number;
+  finish: number | null;
+};
+export const SWING = 0.48;
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+export function inReach(gap: number, across: number, side: number) {
+  return Math.abs(gap) < 3.8 && across * side > 0.05 && across * side < 0.88;
+}
+// The same moving tip drives both the rendered links and the contact test.
+export function chainTip(phase: number, side: number) {
+  const reach = 0.7 + 3.25 * Math.sin(Math.PI * phase),
+    angle = -1.55 + phase * 3.1;
+  return { x: side * (0.47 + Math.cos(angle) * reach), z: 0.36 + Math.sin(angle) * reach };
+}
+export function swingConnects(gap: number, across: number, side: number, phase: number) {
+  if (!inReach(gap, across, side)) return false;
+  const tip = chainTip(phase, side),
+    dx = across * WIDTH,
+    dz = -gap;
+  const t = clamp((dx * tip.x + dz * tip.z) / (tip.x * tip.x + tip.z * tip.z), 0, 1);
+  return Math.hypot(dx - t * tip.x, (dz - t * tip.z) * 0.68) < 0.95;
+}
 export function createRace(ctx: GameContext) {
-  const cruise = ctx.tuning.num('speedAtFtp', 19, 10, 30, 1);
+  const cruise = ctx.tuning.num('speedAtFtp', 24, 12, 35, 1);
   const pace = [
     ctx.tuning.num('breezeFtp', 0.55, 0.3, 1.3, 0.05),
     ctx.tuning.num('tradeWindFtp', 0.78, 0.3, 1.3, 0.05),
     ctx.tuning.num('galeFtp', 1.02, 0.3, 1.5, 0.05),
   ];
-  const grade = ctx.tuning.num('slickGrade', 2.5, 0, 5, 0.25);
-  const duration = ctx.tuning.num('slickSeconds', 8, 4, 12, 1);
-  const sprintFtp = ctx.tuning.num('purgeFtp', 1.1, 0.9, 1.4, 0.05);
-  const sprintSeconds = ctx.tuning.num('purgeSeconds', 2, 1, 4, 0.25);
-  const rivals: Rival[] = [-1, 0, 1].map((x, i) => ({ at: 5 + 4 * i, x, slow: 0, finish: null }));
+  const grade = ctx.tuning.num('overloadGrade', 2.5, 0, 5, 0.25);
+  const purge = ctx.tuning.num('purgeFtp', 1.1, 0.9, 1.4, 0.05);
+  const purgeSeconds = ctx.tuning.num('purgeSeconds', 2, 1, 4, 0.25);
+  const rivals: Rival[] = [-0.55, 0.72, 0.05].map((x, i) => ({
+    at: [1.6, 4, 9][i],
+    x,
+    lean: 0,
+    stun: 0,
+    windup: 0,
+    strike: 0,
+    side: 1,
+    cooldown: 3 + i * 1.4,
+    finish: null,
+  }));
   const s = {
     menu: true,
     tier: 1,
     at: 0,
     x: 0,
     lateralSpeed: 0,
+    speed: 0,
+    lean: 0,
+    cameraX: 0,
     time: 0,
     boost: 0,
     slow: 0,
@@ -38,169 +75,226 @@ export function createRace(ctx: GameContext) {
     lap: 1,
     boosts: 0,
     hits: 0,
-    lobs: 0,
-    item: false,
+    strikes: 0,
+    counters: 0,
+    swings: 0,
+    draft: 0,
+    swing: 0,
+    side: 1,
+    reload: 0,
+    contact: false,
+    impact: 0,
+    impactX: 0,
+    purge: 0,
     message: '',
     notice: 0,
     next: 0,
-    purge: 0,
-    shot: null as { fromX: number; fromAt: number; target: number; progress: number } | null,
-    slick: null as Marker | null,
     rivals,
   };
-  let paddleReady = true,
-    nextAttack = 10;
+  let paddleReady = true;
   function say(message: string) {
     s.message = message;
-    s.notice = 2;
+    s.notice = 1.35;
   }
-  function action() {
+  function damage() {
+    s.slow = 7;
+    s.purge = 0;
+    s.hits++;
+    s.speed *= 0.84;
+    s.impact = 0.33;
+    s.impactX = 0;
+    ctx.resistance.set({ id: 'overload', mode: 'sim', gradePct: grade(), ttl: s.slow });
+    say('JET OVERLOAD');
+  }
+  function update(dt: number) {
+    if (s.at >= FINISH) return;
+    const input = ctx.input(),
+      pd = Math.abs(input.paddleR) - Math.abs(input.paddleL);
+    const edge = Number(input.pressed.has('right')) - Number(input.pressed.has('left'));
     if (s.menu) {
-      s.menu = false;
+      let delta = edge;
+      if (Math.abs(pd) < 0.18) paddleReady = true;
+      else if (paddleReady && Math.abs(pd) > 0.45) {
+        delta = Math.sign(pd);
+        paddleReady = false;
+      }
+      s.tier = clamp(s.tier + delta, 0, 2);
+      if (input.pressed.has('a')) s.menu = false;
       return;
     }
-    if (!s.item || s.shot) return;
-    const target = rivals.filter((r) => r.at > s.at && r.finish === null).sort((a, b) => a.at - b.at)[0];
-    if (!target) {
-      say('Hold goo for an overtake');
-      return;
+    s.time += dt;
+    s.notice -= dt;
+    s.impact = Math.max(0, s.impact - dt);
+    s.reload = Math.max(0, s.reload - dt);
+    const attack = Number(input.pressed.has('b')) - Number(input.pressed.has('a'));
+    if (attack && !s.reload) {
+      s.side = attack;
+      s.swing = SWING;
+      s.reload = 0.96;
+      s.contact = false;
+      s.swings++;
     }
-    s.item = false;
-    s.lobs++;
-    s.shot = { fromX: s.x, fromAt: s.at, target: rivals.indexOf(target), progress: 0 };
-    say('Goo away!');
+    s.swing = Math.max(0, s.swing - dt);
+    const turn = track(s.at).turn;
+    const keys = Number(input.held.has('right')) - Number(input.held.has('left'));
+    const steer = keys || edge || (Math.abs(pd) > 0.18 ? Math.sign(pd) : 0);
+    const effort = clamp(ctx.bike().ftpFraction, 0, 2);
+    const drift = -turn * 0.58 * Math.pow(s.speed / cruise(), 2);
+    s.lateralSpeed += (steer * 1.95 + drift - s.lateralSpeed) * (1 - Math.exp(-dt * (steer ? 5 : 9)));
+    s.x = clamp(s.x + s.lateralSpeed * dt, -1.19, 1.19);
+    s.lean += (clamp(-steer * 0.38 - turn * 0.3, -0.64, 0.64) - s.lean) * (1 - Math.exp(-dt * 6));
+    s.cameraX += (s.x * 0.76 - s.cameraX) * (1 - Math.exp(-dt * 3.7));
+    const inWake = rivals.some(
+      (r) =>
+        r.finish === null && !r.stun && r.at - s.at > 2.8 && r.at - s.at < 18 && Math.abs(r.x - s.x) < 0.25,
+    );
+    s.draft = clamp(s.draft + dt * (inWake ? 1.3 : -2.4), 0, 1);
+    const target =
+      cruise() *
+      Math.sqrt(effort) *
+      (1 + s.draft * 0.16) *
+      (s.boost > 0 ? 1.36 : 1) *
+      (s.slow > 0 ? 0.72 : 1) *
+      (Math.abs(s.x) > 1.13 ? 0.86 : 1);
+    s.speed += (target - s.speed) * (1 - Math.exp(-dt * (target > s.speed ? 1.25 : 0.75)));
+    const last = s.at;
+    s.at = Math.min(FINISH, s.at + s.speed * dt);
+    const finishTime = s.time - dt + (FINISH - last) / Math.max(0.001, s.speed);
+    s.lap = Math.min(3, 1 + Math.floor(s.at / LAP));
+    s.boost = Math.max(0, s.boost - dt);
+    if (s.slow) {
+      s.purge = effort >= purge() ? s.purge + dt / purgeSeconds() : 0;
+      s.slow = s.purge >= 1 ? 0 : Math.max(0, s.slow - dt);
+      if (!s.slow) {
+        s.purge = 0;
+        ctx.resistance.clear('overload');
+        say('Jets clear');
+      }
+    }
+    const pad = pads[s.next % pads.length],
+      marker = pad.at + Math.floor(s.next / pads.length) * LAP;
+    if (last < marker && s.at >= marker) {
+      s.next++;
+      if (Math.abs(s.x - pad.x) < 0.31) {
+        s.boost = 2.8;
+        s.boosts++;
+        say('Afterburner');
+      }
+    }
+    const lead = Math.floor(s.time / 12) % 3;
+    rivals.forEach((r, i) => {
+      if (r.finish !== null) return;
+      const gap = r.at - s.at,
+        flank = i !== lead,
+        flankSide = (i + 3 - lead) % 3 === 1 ? -1 : 1;
+      const paceSpeed =
+        cruise() * Math.sqrt(pace[s.tier]()) * (0.97 + 0.025 * i + 0.045 * Math.sin(s.time / 5 + i));
+      // The point rider contests the wake. Wing riders try to draw level, within
+      // a bounded pace envelope: actual rider effort can break the formation.
+      const nearby = Math.abs(gap) < 32;
+      const wantedX = nearby
+        ? flank
+          ? s.x + flankSide * 0.5
+          : s.x + 0.24 * Math.sin(s.time * 0.65)
+        : Math.sin(s.time * 0.27 + i * 2) * 0.88;
+      const vx = r.stun || r.windup ? 0 : clamp((clamp(wantedX, -1.08, 1.08) - r.x) * 1.7, -0.85, 0.85);
+      r.x += vx * dt;
+      r.lean += (clamp(-vx * 0.36 - turn * 0.2, -0.6, 0.6) - r.lean) * dt * 5;
+      const wantedGap = flank ? 1.5 : 9;
+      const tactical = nearby
+        ? clamp(s.speed + (wantedGap - gap) * 0.85, paceSpeed * 0.8, paceSpeed * 1.13)
+        : paceSpeed;
+      const speed = tactical * (r.stun ? 0.54 : 1) * Math.min(1, s.time * 1.35);
+      if (r.at + speed * dt >= FINISH) r.finish = s.time - dt + (FINISH - r.at) / Math.max(0.001, speed);
+      r.at = Math.min(FINISH, r.at + speed * dt);
+      r.strike = Math.max(0, r.strike - dt);
+      r.stun = Math.max(0, r.stun - dt);
+      r.cooldown = Math.max(0, r.cooldown - dt);
+      const dx = r.x - s.x,
+        dz = r.at - s.at;
+      if (
+        s.swing > 0.035 &&
+        s.swing < 0.42 &&
+        !s.contact &&
+        swingConnects(dz, dx, s.side, 1 - s.swing / SWING)
+      ) {
+        s.contact = true;
+        s.strikes++;
+        if (r.windup > 0) s.counters++;
+        say(r.windup ? 'Counter!' : pilots[i] + ' staggered');
+        r.windup = 0;
+        r.cooldown = 4;
+        r.stun = 2.4;
+        r.x = clamp(r.x + s.side * 0.25, -1.19, 1.19);
+        s.impact = 0.26;
+        s.impactX = dx;
+      }
+      if (r.strike > 0 && !s.slow && swingConnects(-dz, -dx, r.side, 1 - r.strike / 0.34)) damage();
+      if (r.windup) {
+        r.windup = Math.max(0, r.windup - dt);
+        if (!r.windup) {
+          r.strike = 0.34;
+          r.cooldown = 6;
+        }
+      } else if (
+        flank &&
+        !s.slow &&
+        !r.stun &&
+        !r.cooldown &&
+        Math.abs(dz) < 3.1 &&
+        Math.abs(dx) < 0.8 &&
+        !rivals.some((other) => other.windup > 0)
+      ) {
+        r.side = Math.sign(-dx) || 1;
+        r.windup = 1.15;
+      }
+    });
+    for (let i = 0; i < rivals.length; i++) {
+      const a = rivals[i];
+      if (a.finish !== null) continue;
+      for (const b of [s, ...rivals.slice(i + 1)]) {
+        const dx = a.x - b.x;
+        if (Math.abs(a.at - b.at) > 2.25 || Math.abs(dx) > 0.27) continue;
+        const shove = (Math.sign(dx) || 1) * (0.27 - Math.abs(dx)) * 0.6;
+        a.x = clamp(a.x + shove, -1.19, 1.19);
+        b.x = clamp(b.x - shove, -1.19, 1.19);
+      }
+    }
+    s.place =
+      1 +
+      rivals.filter((r) => (s.at === FINISH ? r.finish !== null && r.finish < finishTime : r.at > s.at))
+        .length;
+    if (s.at === FINISH) {
+      ctx.resistance.clear('overload');
+      ctx.save({ bestPlace: Math.min(s.place, ctx.load<{ bestPlace: number }>()?.bestPlace ?? 4) });
+      ctx.emit({ type: 'cloudcup.finish', data: { place: s.place, class: classes[s.tier] } });
+    }
   }
   return {
+    update,
     inMenu: () => s.menu,
     isOver: () => s.at >= FINISH,
-    update(dt: number) {
-      if (s.at >= FINISH) return;
-      const input = ctx.input(),
-        pd = Math.abs(input.paddleR) - Math.abs(input.paddleL);
-      const edge = Number(input.pressed.has('right')) - Number(input.pressed.has('left'));
-      if (s.menu) {
-        let delta = edge;
-        if (Math.abs(pd) < 0.18) paddleReady = true;
-        else if (paddleReady && Math.abs(pd) > 0.45) {
-          delta = Math.sign(pd);
-          paddleReady = false;
-        }
-        s.tier = Math.max(0, Math.min(2, s.tier + delta));
-        if (input.pressed.has('a')) action();
-        return;
-      }
-      if (input.pressed.has('a')) action();
-      s.time += dt;
-      s.notice -= dt;
-      const keys = Number(input.held.has('right')) - Number(input.held.has('left'));
-      const direction = keys || edge || (Math.abs(pd) > 0.18 ? Math.sign(pd) : 0);
-      // Duration controls travel. Even a binary paddle can feather a correction.
-      if (!direction) s.lateralSpeed = 0;
-      else {
-        const previous = Math.sign(s.lateralSpeed) === direction ? Math.abs(s.lateralSpeed) : 0;
-        s.lateralSpeed = direction * Math.min(1.65, previous + 4.8 * dt);
-      }
-      s.x = Math.max(-1.18, Math.min(1.18, s.x + s.lateralSpeed * dt));
-      const speed = cruise() * Math.sqrt(Math.max(0, Math.min(2, ctx.bike().ftpFraction)));
-      const step = dt * speed * (s.slow > 0 ? 0.65 : s.boost > 0 ? 1.45 : 1);
-      const playerFinish = step > 0 ? s.time - dt + (FINISH - s.at) / (step / dt) : Infinity;
-      s.at = Math.min(FINISH, s.at + step);
-      s.lap = Math.min(3, 1 + Math.floor(s.at / LAP));
-      s.boost = Math.max(0, s.boost - dt);
-      if (s.slow > 0) {
-        s.slow = Math.max(0, s.slow - dt);
-        s.purge = ctx.bike().ftpFraction >= sprintFtp() ? s.purge + dt / sprintSeconds() : 0;
-        if (s.slow === 0 || s.purge >= 1) {
-          s.slow = 0;
-          s.purge = 0;
-          ctx.resistance.clear('slick');
-          say('Jets clear!');
-        }
-      }
-      if (s.shot) {
-        s.shot.progress += dt / 0.8;
-        if (s.shot.progress >= 1) {
-          const rival = rivals[s.shot.target];
-          if (rival.finish === null) {
-            rival.slow = 4;
-            say(pilots[s.shot.target] + ' got slimed!');
-          }
-          s.shot = null;
-        }
-      }
-      rivals.forEach((r, i) => {
-        if (r.finish !== null) return;
-        const v =
-          cruise() *
-          Math.sqrt(pace[s.tier]()) *
-          (0.96 + 0.02 * i + 0.06 * Math.sin(s.time / 8 + i * 2)) *
-          (r.slow > 0 ? 0.5 : 1);
-        r.x = (i - 1) * 0.76 + 0.31 * Math.sin(r.at / 89 + i);
-        r.slow = Math.max(0, r.slow - dt);
-        if (r.at + v * dt >= FINISH) r.finish = s.time - dt + (FINISH - r.at) / v;
-        r.at = Math.min(FINISH, r.at + v * dt);
-      });
-      s.place =
-        1 +
-        rivals.filter((r) => (s.at === FINISH ? r.finish !== null && r.finish < playerFinish : r.at > s.at))
-          .length;
-      const marker = course[s.next];
-      if (marker && s.at >= marker.at) {
-        s.next++;
-        if (Math.abs(marker.x - s.x) <= halfWidth[marker.kind]) {
-          if (marker.kind === 'boost') {
-            s.boost = 3;
-            s.boosts++;
-            say('Afterburner!');
-          } else {
-            s.item = true;
-            say('Goo ready · press A');
-          }
-        }
-      }
-      if (s.slick && s.at >= s.slick.at) {
-        if (Math.abs(s.slick.x - s.x) <= halfWidth.slick) {
-          s.slow = duration();
-          s.purge = 0;
-          s.hits++;
-          say('Jets gummed up!');
-          ctx.resistance.set({ id: 'slick', mode: 'sim', gradePct: grade(), ttl: s.slow });
-        } else say('Clean dodge!');
-        s.slick = null;
-      }
-      if (s.time >= nextAttack && !s.slick && s.at + 65 < FINISH) {
-        nextAttack = s.time + 14;
-        const attacker = rivals.find((r) => Math.abs(r.at - s.at) < 130 && r.finish === null && !r.slow);
-        if (attacker) {
-          s.slick = { at: s.at + 65, x: s.x, kind: 'slick' };
-          say(pilots[rivals.indexOf(attacker)] + ' spilled goo!');
-        }
-      }
-      if (s.at === FINISH) {
-        ctx.resistance.clear('slick');
-        ctx.save({ bestPlace: Math.min(s.place, ctx.load<{ bestPlace: number }>()?.bestPlace ?? 4) });
-        ctx.emit({ type: 'cloudcup.finish', data: { place: s.place, class: classes[s.tier] } });
-      }
-    },
     hud: () => ({
       controls: [
-        { button: 'paddles', label: s.menu ? 'Choose class' : 'Hold to steer' },
+        { button: 'paddles', label: s.menu ? 'Choose class' : 'Lean' },
         { button: 'left', label: 'Left' },
         { button: 'right', label: 'Right' },
-        { button: 'a', label: s.menu ? 'Race' : 'Lob goo', active: s.menu || s.item },
+        { button: 'a', label: s.menu ? 'Race' : 'Sweep left' },
+        { button: 'b', label: 'Sweep right' },
       ],
-      touchControls: ['left', 'right', 'a'],
+      touchControls: s.menu ? ['left', 'right', 'a'] : ['left', 'right', 'a', 'b'],
     }),
-    snapshot: () => ({ ...s, purgeFtp: sprintFtp(), markers: course.slice(s.next, s.next + 3) }),
+    snapshot: () => ({ ...s, purgeFtp: purge() }),
     summary: () => ({
       Place: s.place,
       Class: classes[s.tier],
       Laps: Math.floor(s.at / LAP),
       Boosts: s.boosts,
-      Lobs: s.lobs,
+      Strikes: s.strikes,
+      Counters: s.counters,
       Hits: s.hits,
     }),
-    dispose: () => ctx.resistance.clear('slick'),
+    dispose: () => ctx.resistance.clear('overload'),
   } satisfies GameSim;
 }
 export type RaceView = ReturnType<ReturnType<typeof createRace>['snapshot']>;

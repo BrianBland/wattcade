@@ -1,9 +1,13 @@
 # Scrapjet Rally
 
-Design discussion #293 and playable PR #294. The internal cloudcup ID preserves arcade history and best finishes from the first prototype.
+Design discussion #293 and playable PR #294. The original cloudcup ID retains arcade history and best finishes.
 
-Magnet Mile is a three-lap salvage-yard race. Hold a paddle to steer, release to keep your line. Choose Rookie, Hotshot or Outlaw on the grid. Their nominal rival pace matches 55%, 78% and 102% of rider FTP before pilot variation, items and boosts.
+Three laps against a breaker crew. Select Rookie, Hotshot or Outlaw on the grid. The crew's nominal pace corresponds to 55%, 78% and 102% FTP. A short paddle squeeze trims the line; a hold leans the bike. Speed builds with a lag and carries through pedal release. Cornering load pushes the bike outward, the shoulder costs speed and boost strips reward a clean line.
 
-Gold strips give three seconds of boost. A goo drum arms one lob. Press A with a rival ahead to launch it. The blob arcs for 0.8 seconds before halving the target's pace for four seconds. Rival spills mark a patch of road 65 game units ahead. Hitting a spill costs speed and adds a temporary grade through the resistance mixer. Two seconds at 110% FTP purge the goo early. Otherwise it wears off after eight seconds. The threshold, duration and grade are tunable.
+Follow a rival's exhaust to draft. The point rider contests the tow while two flankers seek striking distance. Their pace adjustment has a bounded range, so they can be dropped. A flanker holds its line and winds up before sweeping. A sweeps left, B sweeps right. Both directions work without a second steering input. A miss puts the chain into recovery. A counter staggers the attacker for 2.4 seconds. A hit overloads the player's jet and requests a temporary 2.5% SIM grade. Two seconds at 110% FTP clears it early; it also clears naturally after seven seconds.
 
-The deterministic sim owns projectile timing and recovery. Canvas layers a painted panorama, a projected grit-textured road, distinct rider sprites and world-space splat effects. The environment and character paintings were created with ImageGen. The road, pickup art, shadows and animation are procedural. A physical ride is still needed to tune steering and recovery effort.
+The road mesh, bank forces, camera, scenery and actors sample one closed, arc-length-resampled course. The swing simulation and animated chain use the same tip trajectory. WebGL2 via Three.js draws the race; audio uses Wattcade's shared effects and continuous-voice buses. The panorama, suit paint, track material and salvage paintings were created with ImageGen. The bikes, trusses, animated crusher drums and lighting are geometry.
+
+Hardware checks still pending: iPad/Bluefy frame pacing, paddle trim, warning readability, trainer overload and sprint recovery.
+
+The PR preview includes /dev/scrapjet.html for an immediate test ride. Arrow keys steer, Z/X sweep and Space simulates a sprint. The footer supports touch. To ride with hardware, use the normal arcade entry.

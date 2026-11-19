@@ -1,0 +1,134 @@
+.scrapjet-world {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #55323d url('/scrapjet/magnet-mile.webp') center/cover;
+}
+.scrapjet-stage {
+  position: absolute;
+  overflow: hidden;
+  background: #b17968 url('/scrapjet/magnet-mile.webp') center/auto 110% no-repeat;
+  background-size: max(135%, 196vh) auto;
+}
+.scrapjet-stage > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.scrapjet-dash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #fff1d1;
+  font:
+    italic 800 clamp(12px, 1.7vw, 20px) / 1 system-ui,
+    sans-serif;
+  text-shadow: 0 2px 6px #211327;
+}
+.sj-rank,
+.sj-speed,
+.sj-combat,
+.sj-cue,
+.sj-grid {
+  position: absolute;
+}
+.sj-rank {
+  left: 2.6%;
+  top: 3.5%;
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  background: linear-gradient(105deg, #1c1a26eb, #27202ad9 91%, transparent 91%);
+  padding: 0.35em 1.45em 0.4em 0.65em;
+  border-left: 0.22em solid #efad43;
+}
+.sj-rank b,
+.sj-speed b {
+  font-size: 2.15em;
+  line-height: 1;
+  letter-spacing: -0.075em;
+}
+.sj-rank span,
+.sj-combat,
+.sj-speed small {
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  color: #f2ce8e;
+}
+.sj-speed {
+  bottom: 5%;
+  right: 3%;
+  text-align: right;
+}
+.sj-speed b {
+  font-size: 2.8em;
+}
+.sj-combat {
+  left: 3%;
+  bottom: 5.5%;
+  padding: 0.6em 0.9em;
+  background: #251d2bc9;
+  color: #baf5e5;
+  border-bottom: 2px solid #87d6c6;
+}
+.sj-map {
+  position: absolute;
+  right: 1%;
+  top: 1%;
+  width: clamp(85px, 15%, 170px);
+  height: auto;
+}
+.sj-cue {
+  top: 15%;
+  left: 50%;
+  transform: translateX(-50%) skewX(-7deg);
+  background: #211c29e6;
+  color: #c5ffed;
+  padding: 0.6em 1em;
+  white-space: nowrap;
+  border-bottom: 2px solid currentColor;
+}
+.sj-cue.danger {
+  color: #ffd05b;
+}
+.sj-cue:empty {
+  display: none;
+}
+.sj-grid {
+  left: 4%;
+  top: 7%;
+  background: linear-gradient(100deg, #171721ed, #27202aaa);
+  padding: 1em 2.5em 1em 1.2em;
+  border-left: 5px solid #ecac54;
+  display: none;
+}
+.sj-grid strong {
+  display: block;
+  line-height: 0.8;
+  font-size: clamp(2em, 7.5vh, 5em);
+  letter-spacing: -0.08em;
+  margin: 0.17em 0 0.22em;
+}
+.sj-grid small,
+.sj-grid span {
+  display: block;
+}
+.sj-grid span {
+  color: #aff2dc;
+  margin: 0.65em 0;
+}
+.sj-grid small {
+  font-size: 0.7em;
+  letter-spacing: 0.06em;
+}
+.on-grid .sj-grid {
+  display: block;
+}
+.on-grid > .sj-rank,
+.on-grid > .sj-speed,
+.on-grid > .sj-map,
+.on-grid > .sj-combat,
+.on-grid > .sj-cue {
+  display: none;
+}

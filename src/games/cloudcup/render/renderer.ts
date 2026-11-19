@@ -1,297 +1,394 @@
+import { RallySound } from './sound';
+import * as T from 'three';
 import { NO_INSETS, type GameRenderer, type Insets } from '../../../contracts';
-import { classes, halfWidth, FINISH, LAP, type RaceView } from '../sim/race';
-import { art, drum, glob, jet, panorama, poly, roadSurface, splat } from '../art';
+import { chainTip, classes, FINISH, LAP, SWING, type RaceView } from '../sim/race';
+import { track, world } from '../sim/track';
+import { buildBike } from './bike';
+import { buildYard } from './yard';
+import './rally.css';
 
-const ordinals = ['1st', '2nd', '3rd', '4th'];
 export function playBounds(w: number, h: number, i: Insets) {
   return { x: i.left, y: i.top, w: Math.max(1, w - i.left - i.right), h: Math.max(1, h - i.top - i.bottom) };
 }
-export class Renderer implements GameRenderer {
-  private canvas!: HTMLCanvasElement;
-  private g!: CanvasRenderingContext2D;
-  private asphalt!: HTMLCanvasElement;
-  private insets = NO_INSETS;
-  async ready() {
-    const { yard, rider, rivals } = art();
-    await Promise.all([yard, rider, ...rivals].map((image) => image.decode()));
-  }
-  mount(host: HTMLElement, ctx: Parameters<GameRenderer['mount']>[1]) {
-    this.canvas = document.createElement('canvas');
-    this.canvas.style.cssText = 'width:100%;height:100%;display:block';
-    host.append(this.canvas);
-    this.g = this.canvas.getContext('2d')!;
-    this.asphalt = roadSurface();
+const places = ['1st', '2nd', '3rd', '4th'];
+function glowMap() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const ramp = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  ramp.addColorStop(0, '#ffffff');
+  ramp.addColorStop(0.42, '#ffffffad');
+  ramp.addColorStop(1, '#ffffff00');
+  g.fillStyle = ramp;
+  g.fillRect(0, 0, 64, 64);
+  return new T.CanvasTexture(c);
+}
 
-    this.setInsets(ctx.insets ?? NO_INSETS);
+export class Renderer implements GameRenderer {
+  private root!: HTMLDivElement;
+  private stage!: HTMLDivElement;
+  private info!: HTMLDivElement;
+  private scene!: T.Scene;
+  private camera = new T.PerspectiveCamera(58, 1, 0.15, 360);
+  private gl!: T.WebGLRenderer;
+  private assets?: Promise<void>;
+  private disposed = false;
+  private bikes: ReturnType<typeof buildBike>[] = [];
+  private shades: T.Mesh[] = [];
+  private chain: T.InstancedMesh[] = [];
+  private warning: T.Sprite[] = [];
+  private sparks!: T.Points;
+  private streak!: T.LineSegments;
+  private insets = NO_INSETS;
+  private width = 1;
+  private height = 1;
+  private animateYard?: (time: number) => void;
+  private sound = new RallySound();
+  private sun = new T.DirectionalLight('#fff1bd', 2.15);
+  private lastHud = '';
+  private label!: HTMLElement;
+  private lap!: HTMLElement;
+  private combat!: HTMLElement;
+  private gauge!: HTMLElement;
+  private cue!: HTMLElement;
+  private menu!: HTMLElement;
+  private map!: HTMLCanvasElement;
+  private routeMap!: HTMLCanvasElement;
+  mount(host: HTMLElement, ctx: Parameters<GameRenderer['mount']>[1]) {
+    this.insets = ctx.insets ?? NO_INSETS;
+    this.root = document.createElement('div');
+    this.root.className = 'scrapjet-world';
+    this.stage = document.createElement('div');
+    this.stage.className = 'scrapjet-stage';
+    this.root.append(this.stage);
+    host.append(this.root);
+    this.gl = new T.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    this.gl.setPixelRatio(Math.min(1.6, window.devicePixelRatio || 1));
+    this.gl.setClearColor(0, 0);
+    this.gl.outputColorSpace = T.SRGBColorSpace;
+    this.stage.append(this.gl.domElement);
+    this.scene = new T.Scene();
+    this.scene.fog = new T.FogExp2('#d28d70', 0.008);
+    this.scene.add(new T.HemisphereLight('#ffead1', '#8d6575', 2.1));
+    const sun = this.sun;
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    Object.assign(sun.shadow.camera, { left: -23, right: 23, top: 23, bottom: -23, near: 1, far: 95 });
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.035;
+    this.gl.shadowMap.enabled = true;
+    this.gl.shadowMap.type = T.PCFShadowMap;
+    this.scene.add(sun, sun.target);
+    const rim = new T.DirectionalLight('#b4d8ed', 1.15);
+    rim.position.set(15, 10, -24);
+    this.scene.add(rim);
+    const glow = glowMap();
+    const loader = new T.TextureLoader();
+    const skinLoads: Promise<void>[] = [];
+    const skins = ['number-seven', 'rival-0', 'rival-1', 'rival-2'].map((name) => {
+      const image = new Image(),
+        texture = new T.Texture(image);
+      image.src = '/scrapjet/' + name + '.webp';
+      skinLoads.push(
+        image.decode().then(() => {
+          texture.needsUpdate = true;
+        }),
+      );
+      return texture;
+    });
+    skins.forEach((skin) => (skin.colorSpace = T.SRGBColorSpace));
+    for (let i = 0; i < 4; i++) {
+      const bike = buildBike(i, skins[i]);
+      this.bikes.push(bike);
+      this.scene.add(bike.group);
+      const shadow = new T.Mesh(
+        new T.PlaneGeometry(2.4, 4.6),
+        new T.MeshBasicMaterial({
+          map: glow,
+          color: '#221828',
+          transparent: true,
+          opacity: 0.79,
+          depthWrite: false,
+        }),
+      );
+      this.shades.push(shadow);
+      this.scene.add(shadow);
+      const links = new T.InstancedMesh(
+        new T.TorusGeometry(0.113, 0.034, 5, 10),
+        new T.MeshStandardMaterial({
+          color: i ? '#ffb058' : '#caffff',
+          emissive: i ? '#b73b10' : '#148d98',
+          emissiveIntensity: 0.85,
+          metalness: 0.65,
+          roughness: 0.32,
+        }),
+        16,
+      );
+      links.frustumCulled = false;
+      this.chain.push(links);
+      bike.group.add(links);
+      const light = new T.Sprite(
+        new T.SpriteMaterial({
+          map: glow,
+          color: '#ff672d',
+          transparent: true,
+          depthWrite: false,
+          blending: T.AdditiveBlending,
+        }),
+      );
+      this.warning.push(light);
+      bike.group.add(light);
+    }
+    const sparkGeo = new T.BufferGeometry();
+    sparkGeo.setAttribute('position', new T.Float32BufferAttribute(new Float32Array(32 * 3), 3));
+    this.sparks = new T.Points(
+      sparkGeo,
+      new T.PointsMaterial({
+        color: '#ffe675',
+        map: glow,
+        size: 0.24,
+        transparent: true,
+        depthWrite: false,
+        blending: T.AdditiveBlending,
+      }),
+    );
+    this.sparks.frustumCulled = false;
+    this.scene.add(this.sparks);
+    const streakGeo = new T.BufferGeometry();
+    streakGeo.setAttribute('position', new T.Float32BufferAttribute(new Float32Array(32 * 6), 3));
+    this.streak = new T.LineSegments(
+      streakGeo,
+      new T.LineBasicMaterial({ color: '#fff0c3', transparent: true, opacity: 0.43 }),
+    );
+    this.streak.frustumCulled = false;
+    this.scene.add(this.streak);
+    this.info = document.createElement('div');
+    this.info.className = 'scrapjet-dash';
+    this.info.innerHTML =
+      '<div class="sj-rank"><b></b><span></span></div><canvas class="sj-map" width="180" height="114"></canvas><div class="sj-combat"></div><div class="sj-speed"></div><div class="sj-cue"></div><div class="sj-grid"><small>MAGNET MILE &nbsp; / &nbsp; THREE LAPS</small><strong>SCRAPJET<br>RALLY</strong><span></span><small>Hold paddles to lean · A to launch</small></div>';
+    this.stage.append(this.info);
+    this.label = this.info.querySelector('b')!;
+    this.lap = this.info.querySelector('.sj-rank span')!;
+    this.combat = this.info.querySelector('.sj-combat')!;
+    this.gauge = this.info.querySelector('.sj-speed')!;
+    this.cue = this.info.querySelector('.sj-cue')!;
+    this.menu = this.info.querySelector('.sj-grid')!;
+    this.map = this.info.querySelector('canvas')!;
+    this.routeMap = document.createElement('canvas');
+    this.routeMap.width = 180;
+    this.routeMap.height = 114;
+    const g = this.routeMap.getContext('2d')!;
+    g.beginPath();
+    for (let i = 0; i <= 180; i++) {
+      const p = track((i * LAP) / 180);
+      const x = 32 + p.x * 0.34,
+        y = 55 + p.z * 0.27;
+      if (!i) g.moveTo(x, y);
+      else g.lineTo(x, y);
+    }
+    g.closePath();
+    g.strokeStyle = '#221b26';
+    g.lineWidth = 7;
+    g.stroke();
+    g.strokeStyle = '#eee1c099';
+    g.lineWidth = 2;
+    g.stroke();
     this.resize(host.clientWidth, host.clientHeight);
+    this.assets = Promise.all(
+      ['slag-road', 'yard-0', 'yard-1', 'yard-2'].map((name) =>
+        loader.loadAsync('/scrapjet/' + name + '.webp'),
+      ),
+    ).then(([road, ...props]) => {
+      if (this.disposed) {
+        [road, ...props].forEach((t) => t.dispose());
+        return;
+      }
+      this.animateYard = buildYard(this.scene, road, props, this.gl.capabilities.getMaxAnisotropy());
+    });
+    this.assets = Promise.all([this.assets, ...skinLoads]).then(() => undefined);
+  }
+  async ready() {
+    await this.assets;
   }
   resize(w: number, h: number) {
-    const d = Math.min(2, window.devicePixelRatio || 1);
-    this.canvas.width = Math.round(w * d);
-    this.canvas.height = Math.round(h * d);
-    this.g.setTransform(d, 0, 0, d, 0, 0);
+    this.width = w;
+    this.height = h;
+    this.layout();
   }
   setInsets(i: Insets) {
     this.insets = i;
+    this.layout();
   }
-  unmount() {
-    this.canvas.remove();
+  private layout() {
+    if (!this.stage) return;
+    const b = playBounds(this.width, this.height, this.insets);
+    Object.assign(this.stage.style, {
+      left: b.x + 'px',
+      top: b.y + 'px',
+      width: b.w + 'px',
+      height: b.h + 'px',
+    });
+    this.gl.setSize(b.w, b.h);
+    this.camera.aspect = b.w / b.h;
+    this.camera.updateProjectionMatrix();
+  }
+  private links(i: number, side: number, phase: number, wind: number) {
+    const mesh = this.chain[i];
+    mesh.visible = phase > 0 || wind > 0;
+    if (!mesh.visible) return;
+    const tip = wind > 0 ? { x: side * (0.85 + 0.26 * (1 - wind / 1.15)), z: -0.92 } : chainTip(phase, side);
+    const angle = Math.atan2(tip.z, Math.abs(tip.x));
+    const dummy = new T.Object3D();
+    for (let k = 0; k < 16; k++) {
+      const t = k / 15;
+      dummy.position.set(
+        side * 0.47 * (1 - t) + tip.x * t,
+        1.45 + 0.22 * Math.sin(t * 3.4) - 0.19 * t,
+        0.04 * (1 - t) + tip.z * t,
+      );
+      dummy.rotation.set(k % 2 ? 0.95 : 0.12, -angle * side, 0.12);
+      dummy.scale.set(1.4, 0.76, 1);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(k, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
   }
   render(s: RaceView) {
-    const g = this.g,
-      W = this.canvas.clientWidth,
-      H = this.canvas.clientHeight;
-    const b = playBounds(W, H, this.insets);
-    panorama(g, W, H, Math.sin(s.at / 171));
-    g.save();
-    g.translate(b.x, b.y);
-    g.beginPath();
-    g.rect(0, 0, b.w, b.h);
-    g.clip();
-    const w = b.w,
-      h = b.h,
-      horizon = h * 0.35,
-      near = h * 0.83;
-    // Reciprocal depth projects every road edge, pickup and craft into the same bend.
-    function point(z: number, offset: number) {
-      const k = 38 / (38 + z),
-        bend = Math.sin(((s.at + z) / LAP) * Math.PI * 4);
-      return {
-        x: w * (0.5 + (1 - k) * 0.22 * bend + offset * 0.31 * k),
-        y: horizon + (near - horizon) * k,
-        k,
-      };
-    }
-    const strip = (far: number, close: number, l: number, r: number, c: string) => {
-      const a = point(far, l),
-        b = point(far, r),
-        d = point(close, l),
-        e = point(close, r);
-      poly(g, c, [a.x, a.y, b.x, b.y, e.x, e.y, d.x, d.y]);
-    };
-    for (let m = Math.floor((s.at + 380) / 6) * 6; m > s.at - 20; m -= 6) {
-      const z = m - s.at,
-        close = Math.max(-17, z - 6);
-      if (z <= close) continue;
-      const alt = Math.floor(m / 12) % 2 === 0;
-      g.globalAlpha = Math.max(0, Math.min(1, (380 - z) / 100));
-      if (m % 54 === 0) {
-        for (const offset of [-1.5, 1.5]) {
-          const pier = point(z, offset);
-          g.fillStyle = '#63434b';
-          g.fillRect(pier.x, pier.y, 5 * pier.k, h * 0.35 * pier.k);
-        }
-      }
-      strip(z, close, -1.58, 1.58, alt ? '#cca337' : '#3c2f36');
-      strip(z, close, -1.47, 1.47, alt ? '#53434a' : '#514148');
-      // Warp a slice of the same asphalt tile into each projected segment.
-      const farLeft = point(z, -1.47),
-        farRight = point(z, 1.47);
-      const nearLeft = point(close, -1.47),
-        nearRight = point(close, 1.47);
-      const left = Math.min(farLeft.x, nearLeft.x),
-        right = Math.max(farRight.x, nearRight.x);
-      g.save();
-      g.beginPath();
-      g.moveTo(farLeft.x, farLeft.y);
-      g.lineTo(farRight.x, farRight.y);
-      g.lineTo(nearRight.x, nearRight.y + 0.45);
-      g.lineTo(nearLeft.x, nearLeft.y + 0.45);
-      g.closePath();
-      g.clip();
-      const row = (((-(m / 6) % 16) + 16) % 16) * 32;
-      g.globalAlpha *= 0.43;
-      g.drawImage(this.asphalt, 0, row, 768, 32, left, farLeft.y, right - left, nearLeft.y - farLeft.y + 0.6);
-      g.restore();
-      if (alt) for (const l of [-1.41, 1.41]) strip(z, close, l - 0.012, l + 0.012, '#e3b773');
-      if (m >= 0 && m % LAP === 0)
-        for (let j = 0; j < 12; j++)
-          strip(z, close, -1.47 + j * 0.245, -1.47 + (j + 1) * 0.245, j % 2 ? '#384761' : '#fff0d2');
-    }
-    g.globalAlpha = 1;
-    const drawables: { z: number; draw(): void }[] = [];
-    const gateZ = (Math.floor(s.at / LAP) + 1) * LAP - s.at;
-    if (gateZ < 380) {
-      const p = point(gateZ, 0),
-        span = 0.49 * w * p.k,
-        height = h * 0.32 * p.k;
-      drawables.push({
-        z: gateZ,
-        draw: () => {
-          g.save();
-          g.translate(p.x, p.y);
-          g.fillStyle = '#332831';
-          g.fillRect(-span, -height, 6 * p.k, height);
-          g.fillRect(span - 6 * p.k, -height, 6 * p.k, height);
-          g.fillRect(-span, -height, span * 2, height * 0.26);
-          g.fillStyle = '#f7c04d';
-          g.font = 'italic 900 ' + height * 0.18 + 'px system-ui';
-          g.textAlign = 'center';
-          g.fillText(s.lap === 3 ? 'FINISH' : 'MAGNET MILE', 0, -height * 0.8);
-          g.restore();
-        },
-      });
-    }
-    for (const marker of [...s.markers, ...(s.slick ? [s.slick] : [])]) {
-      const z = marker.at - s.at;
-      if (z < 0 || z > 380) continue;
-      drawables.push({
-        z,
-        draw: () => {
-          const p = point(z, marker.x),
-            a = w * 0.31 * halfWidth[marker.kind] * p.k;
-          strip(
-            z + 5,
-            z,
-            marker.x - halfWidth[marker.kind],
-            marker.x + halfWidth[marker.kind],
-            { boost: '#eca64c', goo: '#8b9b40', slick: '#57403b' }[marker.kind],
-          );
-          g.save();
-          g.translate(p.x, p.y);
-          g.scale(a / 30, a / 30);
-          if (marker.kind === 'boost') {
-            poly(g, '#ef9e3a', [-30, 2, -21, -8, 21, -8, 30, 2], true);
-            poly(g, '#fff5b3', [-17, 0, 0, -7, 17, 0, 7, 0, 0, -3, -7, 0]);
-          } else {
-            if (marker.kind === 'goo') drum(g);
-            else splat(g, 0, -2, 12, 2.5);
-          }
-          g.restore();
-        },
-      });
-    }
-    s.rivals.forEach((r, i) => {
-      const z = r.at - s.at;
-      if (z < -8 || z > 380 || r.finish !== null) return;
-      const p = point(z, r.x);
-      drawables.push({
-        z,
-        draw: () => jet(g, p.x, p.y, Math.min(w / 680, h / 350) * p.k, 0, false, r.slow, s.time, i),
-      });
-    });
-    const player = point(0, s.x);
-    drawables.push({
-      z: 0,
-      draw: () =>
-        jet(
-          g,
-          player.x,
-          player.y,
-          Math.min(w / 680, h / 350),
-          s.lateralSpeed * 0.1,
-          s.boost > 0,
-          s.slow,
-          s.time,
-        ),
-    });
-    if (s.shot) {
-      const { target, progress, fromAt, fromX } = s.shot,
-        rival = s.rivals[target];
-      const z = Math.max(-8, fromAt + (rival.at - fromAt) * progress - s.at);
-      const p = point(z, fromX + (rival.x - fromX) * progress);
-      drawables.push({
-        z: z - 0.01,
-        draw: () => {
-          const arc = Math.sin(progress * Math.PI);
-          const y = p.y - h * (0.12 + 0.24 * arc) * p.k;
-          splat(g, p.x, p.y, 4 * p.k, 2.4);
-          glob(g, p.x, y, Math.min(22, w * 0.024) * p.k);
-        },
-      });
-    }
-    // Salvage-yard turn boards sit beside the asphalt and pass the rider at race speed.
-    for (let dist = Math.ceil(s.at / 72) * 72; dist < s.at + 300; dist += 72) {
-      const side = Math.sin((dist / LAP) * 4 * Math.PI) > 0 ? -1 : 1;
-      const z = dist - s.at,
-        p = point(z, 1.7 * side),
-        scale = p.k * Math.min(w / 690, h / 350);
-      drawables.push({
-        z,
-        draw: () => {
-          g.save();
-          g.translate(p.x, p.y);
-          g.scale(scale, scale);
-          g.fillStyle = '#422f37';
-          g.fillRect(-3, -24, 6, 24);
-          poly(g, '#322936', [-22, -38, 22, -38, 22, -18, -22, -18], true);
-          g.scale(-side, 1);
-          for (const x of [-12, 4])
-            poly(g, '#ffcf51', [x, -35, x + 7, -35, x + 15, -28, x + 7, -21, x, -21, x + 8, -28]);
-          g.restore();
-        },
-      });
-    }
-    drawables.sort((a, b) => b.z - a.z).forEach((obj) => obj.draw());
-    const font = Math.max(12, Math.min(23, h * 0.045, w * 0.04));
-    function text(
-      str: string,
-      x: number,
-      y: number,
-      size: number,
-      color: string,
-      align: CanvasTextAlign = 'left',
-    ) {
-      g.textAlign = align;
-      g.font = 'italic 900 ' + size + 'px system-ui';
-      g.fillStyle = color;
-      g.fillText(str, x, y, w * 0.95);
-    }
-    if (s.menu) {
-      const left = w * 0.055,
-        top = h * 0.09,
-        wide = Math.min(w * 0.84, 580);
-      poly(g, '#261d2cf2', [
-        left,
-        top,
-        left + wide,
-        top,
-        left + wide - 18,
-        top + h * 0.26,
-        left,
-        top + h * 0.26,
-      ]);
-      g.fillStyle = '#e5f54b';
-      g.fillRect(left, top, 6, h * 0.26);
-      text('MAGNET MILE    /    3 LAPS', left + 16, top + h * 0.052, font * 0.78, '#ebdcbd');
-      text('SCRAPJET RALLY', left + 16, top + h * 0.149, font * 1.8, '#fff1cb');
-      text('‹  ' + classes[s.tier] + '  ›     ·     A to race', left + 16, top + h * 0.225, font, '#d5ed54');
-    } else {
-      const plaque = (x: number, y: number, width: number, height: number, color: string) => {
-        poly(g, color, [x + 7, y, x + width, y, x + width - 7, y + height, x, y + height]);
-      };
-      plaque(8, 8, font * 7.5, font * 2, '#251d2bf2');
-      text(ordinals[s.place - 1].toUpperCase(), 18, 8 + font * 1.43, font * 1.52, '#f4ecce');
-      text('LAP ' + s.lap + '/3', font * 4, 8 + font * 1.3, font * 0.78, '#e6f26a');
-      plaque(w - font * 6 - 8, 8, font * 6, font * 1.62, s.item ? '#e2f44b' : '#281f2de6');
-      text(
-        s.item ? 'A  ·  LOB GOO' : classes[s.tier].toUpperCase(),
-        w - 20,
-        8 + font * 1.12,
-        font * 0.84,
-        s.item ? '#302237' : '#ffdbba',
-        'right',
+    const f = track(s.at);
+    const actors = [{ at: s.at, x: s.x, lean: s.lean, stun: s.slow, finish: null }, ...s.rivals];
+    actors.forEach((r, i) => {
+      const p = world(r.at, r.x);
+      const obj = this.bikes[i].group;
+      const rebound = i && r.stun ? Math.sin(r.stun * 17) * Math.min(0.16, r.stun * 0.18) : 0;
+      obj.visible = r.finish === null;
+      obj.position.set(p.x, p.y + 0.26 + Math.sin(s.time * 8 + i) * 0.045, p.z);
+      obj.rotation.set(Math.sin(s.time * 6 + i) * 0.015, -p.yaw, p.bank + r.lean + rebound, 'YXZ');
+      const thrust = i ? (r.stun ? 0.52 : 1) : 0.7 + s.speed / 35 + (s.boost ? 1 : 0);
+      this.bikes[i].flame.scale.z = thrust * (1.1 + 0.15 * Math.sin(s.time * 43 + i));
+      const shade = this.shades[i];
+      shade.visible = obj.visible;
+      shade.position.set(p.x, p.y + 0.063, p.z);
+      shade.rotation.set(-Math.PI / 2, -p.yaw, p.bank, 'YXZ');
+      const r2 = s.rivals[i - 1],
+        wind = r2?.windup ?? 0;
+      this.links(
+        i,
+        i ? r2.side : s.side,
+        i ? (r2.strike ? 1 - r2.strike / 0.34 : 0) : s.swing ? 1 - s.swing / SWING : 0,
+        wind,
       );
-      g.fillStyle = '#73d7c9';
-      g.fillRect(16, 10 + font * 2, (font * 7 * s.at) / FINISH, 3);
-      if (s.notice > 0 || s.slow > 0 || s.at >= FINISH) {
-        const msg =
-          s.at >= FINISH
-            ? ordinals[s.place - 1] + ' at Magnet Mile'
-            : s.slow > 0
-              ? 'GUMMED UP  ·  Sprint at ' + Math.round(s.purgeFtp * 100) + '% FTP'
-              : s.message;
-        const width = Math.min(w * 0.94, Math.max(font * 12, g.measureText(msg).width * 1.5 + 40));
-        const x = (w - width) / 2,
-          y = h * 0.17;
-        plaque(x, y, width, font * 1.85, '#261c2eea');
-        text(msg, w * 0.5, y + font * 1.28, font, '#eeef9e', 'center');
-        if (s.slow > 0) {
-          g.fillStyle = '#d3f43f';
-          g.fillRect(x + 6, y + font * 1.85, (width - 12) * s.purge, 4);
-        }
-      }
+      const light = this.warning[i];
+      light.visible = wind > 0;
+      light.position.set((r2?.side ?? 1) * 0.65, 1.45, 0.1);
+      light.scale.setScalar(1.2 + 0.7 * Math.sin(s.time * 26));
+    });
+    const back = s.menu ? 8.5 : 6.65 + s.speed * 0.033;
+    const eye = world(s.at - back, s.cameraX + (s.menu ? 0.65 : 0), s.menu ? 3.1 : 2.55 + s.speed * 0.017);
+    const focus = world(s.at + 8 + s.speed * 0.11, s.cameraX * 0.72, 1.1);
+    const j = s.impact * Math.sin(s.time * 97) * 0.23;
+    this.camera.position.set(eye.x + j, eye.y + j, eye.z);
+    const roll = s.lean * 0.15 + f.turn * 0.065;
+    this.camera.up.set(Math.cos(f.yaw) * Math.sin(roll), Math.cos(roll), Math.sin(f.yaw) * Math.sin(roll));
+    this.camera.lookAt(focus.x, focus.y, focus.z);
+    const fov = 55 + Math.min(15, s.speed * 0.38);
+    if (Math.abs(fov - this.camera.fov) > 0.06) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
     }
-    g.restore();
+    this.stage.style.backgroundPosition = 50 + Math.sin(f.yaw) * 34 + '% 48%';
+    const p = world(s.at, s.x, 1.05);
+    this.sparks.visible = !!s.impact;
+    if (s.impact) {
+      const age = Math.max(0, 0.33 - s.impact);
+      const pos = this.sparks.geometry.attributes.position;
+      for (let i = 0; i < 32; i++) {
+        const a = i * 2.4,
+          radius = age * (3 + (i % 8)),
+          dx = s.impactX * 3.2 + radius * Math.cos(a);
+        pos.setXYZ(
+          i,
+          p.x + dx * Math.cos(f.yaw) + radius * Math.sin(a) * 0.35,
+          p.y + age * (2 + (i % 7)) - age * age * 9,
+          p.z + dx * Math.sin(f.yaw) + radius * Math.sin(a),
+        );
+      }
+      pos.needsUpdate = true;
+    }
+    const hot = s.boost > 0 || s.draft > 0.7;
+    this.streak.visible = hot;
+    if (hot) {
+      const pos = this.streak.geometry.attributes.position;
+      for (let i = 0; i < 32; i++) {
+        const z = (i * 8.17 + s.time * (s.boost ? 23 : 15)) % 25;
+        const a = world(s.at + 16 - z, (i % 2 ? 1 : -1) * (0.6 + (i % 9) * 0.14), 0.16 + (i % 5) * 0.35);
+        pos.setXYZ(2 * i, a.x, a.y, a.z);
+        pos.setXYZ(2 * i + 1, a.x - Math.sin(f.yaw) * 0.8, a.y, a.z + Math.cos(f.yaw) * 0.8);
+      }
+      pos.needsUpdate = true;
+    }
+    this.animateYard?.(s.time);
+    this.sun.target.position.set(f.x, f.y, f.z);
+    this.sun.position.set(f.x - 25, f.y + 37, f.z + 18);
+    this.gl.render(this.scene, this.camera);
+    this.drawHud(s);
+    this.sound.update(s);
+  }
+  private drawHud(s: RaceView) {
+    const g = this.map.getContext('2d')!;
+    g.clearRect(0, 0, 180, 114);
+    g.drawImage(this.routeMap, 0, 0);
+    for (const r of [...s.rivals, s]) {
+      const p = track(r.at);
+      g.fillStyle = r === s ? '#a6fff1' : '#ff8757';
+      g.beginPath();
+      g.arc(32 + p.x * 0.34, 55 + p.z * 0.27, r === s ? 4 : 2.3, 0, Math.PI * 2);
+      g.fill();
+    }
+    const danger = s.rivals.find((r) => r.windup > 0);
+    const cue =
+      s.at >= FINISH
+        ? places[s.place - 1] + ' · FINISH'
+        : s.slow
+          ? 'OVERLOAD   /   ' + Math.round(s.purgeFtp * 100) + '% FTP   ' + Math.floor(s.purge * 100) + '%'
+          : danger
+            ? (danger.x < s.x ? '‹ LEFT' : 'RIGHT ›') + '   /   INCOMING'
+            : s.notice > 0
+              ? s.message
+              : s.draft > 0.7
+                ? 'IN THE SLIPSTREAM'
+                : '';
+    const speed = Math.round(s.speed * 3.6);
+    const key = [s.menu, s.tier, s.place, s.lap, cue, speed, !!s.reload].join('|');
+    if (key === this.lastHud) return;
+    this.lastHud = key;
+    this.info.classList.toggle('on-grid', s.menu);
+    this.menu.querySelector('span')!.textContent = '‹  ' + classes[s.tier] + '  ›';
+    this.label.textContent = places[s.place - 1];
+    this.lap.textContent = 'LAP ' + s.lap + ' / 3';
+    this.gauge.innerHTML = '<b>' + speed + '</b><small> KM/H</small>';
+    this.cue.textContent = cue;
+    this.cue.classList.toggle('danger', !!danger || s.slow > 0);
+    this.combat.textContent = s.reload ? 'CHAIN REELING' : 'A ‹   CHAIN   › B';
+  }
+  unmount() {
+    this.disposed = true;
+    this.sound.stop();
+    const geometries = new Set<T.BufferGeometry>(),
+      materials = new Set<T.Material>(),
+      textures = new Set<T.Texture>();
+    this.scene.traverse((obj) => {
+      const m = obj as T.Mesh;
+      if (m.geometry) geometries.add(m.geometry);
+      if (m.material)
+        for (const mat of Array.isArray(m.material) ? m.material : [m.material]) materials.add(mat);
+    });
+    materials.forEach((m) => {
+      for (const prop of Object.values(m)) if (prop instanceof T.Texture) textures.add(prop);
+      m.dispose();
+    });
+    textures.forEach((t) => t.dispose());
+    geometries.forEach((g) => g.dispose());
+    this.gl.dispose();
+    this.root.remove();
   }
 }

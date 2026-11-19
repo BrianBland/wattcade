@@ -7,7 +7,7 @@ export const module: GameModule = {
   title: 'Scrapjet Rally',
   accent: '#ffad57',
   blurb:
-    'Thread a hoverjet through the Magnet Mile scrapyard. Grab goo drums, splat the rider ahead and sprint to clear gummed-up jets.',
+    'Run Magnet Mile against the breaker crew. Draft their point rider, lean through the banks and sweep either flank with your salvage chain.',
   tags: ['intervals'],
   drawCard,
   createSim: (ctx) => createRace(ctx),

@@ -2,133 +2,138 @@ import { expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import type { Button } from '../../../contracts';
 import { module } from '..';
-import { FINISH, type RaceView } from '../sim/race';
+import { FINISH, swingConnects, type RaceView } from '../sim/race';
+import { LAP, track, world } from '../sim/track';
 import { playBounds } from '../render/renderer';
-
 function race(ftp = 200) {
-  const profile = { ...testProfile(), ftp };
-  const base = new NullInput().state();
-  let input = { ...base };
+  const profile = { ...testProfile(), ftp },
+    base = new NullInput().state();
+  const pressed = new Set<Button>();
+  let paddleR = 0;
   const session = createGameSession({
-    game: module,
     profile,
+    game: module,
     seed: 3,
     fake: { script: 'z2' },
-    input: { beginTick() {}, state: () => input },
+    input: { beginTick() {}, state: () => ({ ...base, pressed, paddleR }) },
   });
   const snap = () => session.sim.snapshot() as RaceView;
-  function press(b: Button) {
-    input = { ...base, pressed: new Set([b]) };
+  const press = (b: Button) => {
+    pressed.add(b);
     session.step(1);
-    input = { ...base };
-  }
+    pressed.clear();
+  };
+  const until = (pred: (s: RaceView) => boolean, max = 900) => {
+    for (let i = 0; i < max && !pred(snap()); i++) session.step(1);
+    expect(pred(snap())).toBe(true);
+  };
   return {
     session,
     snap,
     press,
-    paddle: (r: number, ticks = 10) => {
-      input = { ...base, paddleR: Math.max(0, r), paddleL: Math.max(0, -r) };
-      session.step(ticks);
+    until,
+    paddle: (value: number) => {
+      paddleR = value;
     },
   };
 }
-it('supports small corrections, sustained steering, release and track bounds', () => {
+it('takes a partial line, banks under held input, and eases out on release', () => {
   const r = race();
-  r.paddle(0.8, 150);
-  expect(r.snap()).toMatchObject({ at: 0, tier: 2 });
   r.press('a');
-  r.paddle(1, 4);
-  const trim = r.snap().x;
-  expect(trim).toBeGreaterThan(0);
-  expect(trim).toBeLessThan(0.2);
-  r.paddle(0.1, 30);
-  expect(r.snap().x).toBe(trim);
-  r.paddle(1, 90);
-  expect(r.snap().x).toBe(1.18);
-  r.paddle(-1, 90);
-  expect(r.snap().x).toBe(-1.18);
-});
-it('raises opponent pace across all three classes', () => {
-  const distances = (['left', null, 'right'] as const).map((button) => {
-    const r = race();
-    if (button) r.press(button);
-    r.press('a');
-    r.session.step(150);
-    return r.snap().rivals[0].at;
-  });
-  expect(distances[0]).toBeLessThan(distances[1]);
-  expect(distances[1]).toBeLessThan(distances[2]);
-});
-it('awards pickups across the track, lobs goo and completes three laps', () => {
-  const r = race();
-  r.press('right');
-  r.press('a');
-  r.paddle(-1, 20);
+  r.paddle(0.8);
+  r.session.step(5);
+  const trim = r.snap();
+  expect(trim.x).toBeGreaterThan(0.03);
+  expect(trim.x).toBeLessThan(0.3);
+  expect(trim.lean).toBeLessThan(0);
   r.paddle(0);
-  while (r.snap().next === 0 && r.snap().time < 30) r.session.step(1);
-  expect(r.snap().boosts).toBe(1);
-  r.paddle(1, 36);
-  r.paddle(0);
-  while (r.snap().next === 1 && r.snap().time < 60) r.session.step(1);
-  expect(r.snap().item).toBe(true);
-  r.press('a');
-  expect(r.snap().lobs).toBe(1);
-  const target = r.snap().shot!.target;
-  expect(r.snap().rivals[target].slow).toBe(0);
-  r.session.step(25);
-  expect(r.snap().shot).toBeNull();
-  expect(r.snap().rivals[target].slow).toBeGreaterThan(3);
-  r.session.step(30 * 360);
-  expect(r.snap().at).toBe(FINISH);
-  expect(r.session.sim.summary()).toMatchObject({ Laps: 3, Class: 'Outlaw' });
+  r.session.step(1);
+  expect(r.snap().lateralSpeed).toBeGreaterThan(0);
+  r.paddle(0.8);
+  r.session.step(75);
+  expect(r.snap().x).toBe(1.19);
 });
-it('telegraphs a patch of road and applies a temporary grade only on a hit', () => {
-  for (const dodge of [false, true]) {
-    const r = race();
-    r.press('a');
-    while (!r.snap().slick && r.snap().time < 20) r.session.step(1);
-    expect(r.snap().slick!.at - r.snap().at).toBeGreaterThan(60);
-    if (dodge) r.paddle(-1, 20);
-    while (r.snap().slick && r.snap().time < 30) r.session.step(1);
-    expect(r.snap().hits).toBe(dodge ? 0 : 1);
-    const pulse = () => r.session.mixer.debug().activeEffects.find((e) => e.id === 'slick');
-    if (dodge) expect(pulse()).toBeUndefined();
-    else expect(pulse()).toMatchObject({ mode: 'sim', gradePct: 2.5 });
-    expect(r.snap().slow > 0).toBe(!dodge);
-    r.session.step(245);
-    expect(r.snap().slow).toBe(0);
-    expect(pulse()).toBeUndefined();
-  }
-});
-it('keeps the race viewport above the HUD', () => {
+it('keeps the mesh and handling coordinates continuous at lap boundaries', () => {
+  expect(track(LAP)).toEqual(track(0));
+  expect(world(-3, 0.7)).toEqual(world(LAP - 3, 0.7));
+  expect(Math.abs(world(LAP - 0.01, 0.5).x - world(0.01, 0.5).x)).toBeLessThan(0.1);
   const b = playBounds(1024, 768, { top: 12, left: 10, right: 14, bottom: 144 });
   expect(b.y + b.h).toBe(624);
-  expect(b.x + b.w).toBe(1010);
 });
-
-it('gives two riders at the same FTP fraction the same pace', () => {
+it('only sweeps the chosen side, inside its physical arc', () => {
+  expect(swingConnects(0, 0.65, 1, 0.5)).toBe(true);
+  expect(swingConnects(0, 0.65, -1, 0.5)).toBe(false);
+  expect(swingConnects(5, 0.6, 1, 0.5)).toBe(false);
+  expect(swingConnects(3, 0.7, 1, 0.85)).toBe(false);
+});
+it('a timed counter staggers the attacker and opens a passing opportunity', () => {
+  const r = race();
+  r.press('a');
+  r.until((s) => s.rivals.some((p) => p.windup > 0.35 && p.windup < 0.7));
+  const attacker = r.snap().rivals.findIndex((p) => p.windup > 0);
+  r.press(r.snap().rivals[attacker].x < r.snap().x ? 'a' : 'b');
+  r.until((s) => s.counters === 1, 15);
+  expect(r.snap().rivals[attacker].stun).toBeGreaterThan(2);
+  expect(r.snap().hits).toBe(0);
+  r.session.step(45);
+  expect(r.snap().at).toBeGreaterThan(r.snap().rivals[attacker].at);
+});
+it('a missed wind-up gives a bounded load that a sprint can clear early', () => {
+  const r = race(160);
+  r.press('a');
+  r.until((s) => s.rivals.some((p) => p.windup > 0));
+  r.until((s) => s.hits === 1);
+  const effects = () => r.session.mixer.debug().activeEffects;
+  expect(effects()).toContainEqual(expect.objectContaining({ id: 'overload', gradePct: 2.5 }));
+  const start = r.snap().time;
+  r.session.fakeBike!.useScript(null);
+  r.session.fakeBike!.manual = { cadence: 100, power: 220, hr: null };
+  r.until((s) => s.purge > 0);
+  r.until((s) => s.slow === 0);
+  expect(r.snap().time - start).toBeLessThan(7);
+  expect(effects().some((e) => e.id === 'overload')).toBe(false);
+});
+it('rewards the wake, finishes three laps, and varies rival pace across FTP classes', () => {
+  const pace = (tier: Button | null) => {
+    const r = race();
+    if (tier) r.press(tier);
+    r.press('a');
+    r.session.step(90);
+    return r.snap().rivals[1].at;
+  };
+  expect(pace('left')).toBeLessThan(pace(null));
+  expect(pace(null)).toBeLessThan(pace('right'));
+  const r = race();
+  r.press('a');
+  r.until((s) => s.draft > 0.6);
+  r.session.step(30 * 360);
+  expect(r.snap().at).toBe(FINISH);
+  expect(r.session.sim.summary().Laps).toBe(3);
+});
+it('matches pace at the same relative effort across rider FTPs', () => {
   const distance = (ftp: number) => {
-    const rider = race(ftp);
-    rider.press('a');
-    rider.session.step(150);
-    return rider.snap().at;
+    const r = race(ftp);
+    r.press('a');
+    r.session.step(90);
+    return r.snap().at;
   };
   expect(distance(150)).toBeCloseTo(distance(300), 0);
 });
 
-it('purges the sticky load early after a sustained FTP-scaled sprint', () => {
-  const r = race(160);
+it('can leave a telegraphed strike by steering out of its arc', () => {
+  const r = race();
   r.press('a');
-  while (!r.snap().hits && r.snap().time < 25) r.session.step(1);
-  expect(r.snap().slow).toBeGreaterThan(7);
-  const start = r.snap().time;
-  const bike = r.session.fakeBike!;
-  bike.useScript(null);
-  bike.manual = { cadence: 100, power: 220, hr: null };
-  while (r.snap().purge === 0 && r.snap().time - start < 7) r.session.step(1);
-  expect(r.snap().purge).toBeGreaterThan(0);
-  r.session.step(61);
+  r.until((s) => s.rivals.some((p) => p.windup > 0));
+  expect(r.snap().rivals.find((p) => p.windup > 0)!.x).toBeLessThan(r.snap().x);
+  r.paddle(1);
+  r.session.step(50);
+  expect(r.snap().hits).toBe(0);
+});
+it('lets the trainer load expire at ordinary effort', () => {
+  const r = race();
+  r.press('a');
+  r.until((s) => s.slow > 0);
+  r.session.step(211);
   expect(r.snap().slow).toBe(0);
-  expect(r.snap().time - start).toBeLessThan(7);
-  expect(r.session.mixer.debug().activeEffects.find((e) => e.id === 'slick')).toBeUndefined();
+  expect(r.session.mixer.debug().activeEffects.some((e) => e.id === 'overload')).toBe(false);
 });

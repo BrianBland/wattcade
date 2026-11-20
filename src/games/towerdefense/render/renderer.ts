@@ -627,6 +627,7 @@ export class TdRenderer implements GameRenderer {
         railCharge: s.railCharges / Math.max(1, s.railMaxCharges), flaming: s.flaming,
       });
       this.baseDamage(g, s, bx, by);
+      if (s.weapon === 'rail' && s.swapLeft <= 0) this.railRing(g, s, bx, by, k, t);
       // Fireballs arc over everything, from the launcher.
       this.drawShells(g, s, muzzle);
       if (this.odBlend > 0.02) { // Overdrive: a white-hot muzzle that flares with each shot
@@ -846,6 +847,24 @@ export class TdRenderer implements GameRenderer {
     g.fillStyle = '#120f0ce6'; g.strokeStyle = TD.edge; g.lineWidth = 1;
     g.beginPath(); g.rect(c.x - tw / 2, ty - th / 2, tw, th); g.fill(); g.stroke();
     g.fillStyle = TD.brass; g.fillText(label, c.x, ty + 0.5);
+    g.restore();
+  }
+
+  /**
+   * The Railgun's charge as a ring round the turret: it fills with banked watts, drains by what each shot spends
+   * (a full pulse empties it, a quick snap at a small alien takes a sliver), and pulses once a full pulse is ready.
+   */
+  private railRing(g: CanvasRenderingContext2D, s: TdSnapshot, x: number, y: number, k: number, t: number) {
+    const r = k * 6.2, p = Math.max(0, Math.min(1, s.railProgress)), ready = p >= 1;
+    g.save(); g.lineCap = 'round';
+    g.strokeStyle = '#0009'; g.lineWidth = Math.max(4, k * 1.2);
+    g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke();
+    if (p > 0) {
+      g.strokeStyle = COL.purple; g.lineWidth = Math.max(2.5, k * 0.8);
+      g.globalAlpha = ready ? 0.75 + 0.25 * Math.sin(t * 7) : 0.85;
+      if (ready) { g.shadowColor = COL.purple; g.shadowBlur = 12; }
+      g.beginPath(); g.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + TAU * p); g.stroke();
+    }
     g.restore();
   }
 

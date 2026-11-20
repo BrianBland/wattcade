@@ -3,9 +3,9 @@ import { knownLevel } from '../sim/levelCache';
 import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { RadarBlip, RadarView, TdSnapshot } from '../sim/types';
-import { roman } from '../sim/tiers';
+import { powerState, roman, tierGain } from '../sim/tiers';
 import type { Box, TdLayout } from './layout';
-import { STAGE_NAME, constructionStatus, flowLabel, rideObjective } from './objectives';
+import { STAGE_NAME, flowLabel, rideObjective } from './objectives';
 import { levelImage, levelSelectHtml, modesHtml, styleName, type ArtLookup } from './levelSelect';
 import type { TdLevel } from '../sim/level';
 import { THEME_CSS } from './theme';
@@ -33,7 +33,7 @@ const CSS = `
 .td-hp .bar > i { background:var(--lime); }
 .td-hp.low .bar > i { background:var(--bad); }
 .td-scrap { text-align:right; color:var(--warn); }
-.td-current { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); grid-template-areas:"brood tier next"; gap:6px 14px; align-items:center; }
+.td-current { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); grid-template-areas:"brood tier next" "guide tier next"; gap:4px 14px; align-items:center; }
 .td-brood { grid-area:brood; min-width:0; }
 .td-brood b { display:block; color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .td-current small { display:block; margin-top:3px; }
@@ -59,6 +59,21 @@ const CSS = `
 .td-tier-read strong { font-size:17px; font-weight:900; font-variant-numeric:tabular-nums; color:var(--td-text); text-shadow:0 2px 0 #000; }
 .td-hud .td-tier-read small { margin:0; font-size:9px; letter-spacing:.12em; color:var(--td-dim); }
 .td-next { grid-area:next; min-width:0; justify-self:end; }
+.td-guide { grid-area:guide; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.td-meter { position:relative; height:10px; border-radius:2px; background:linear-gradient(90deg, #4a1d12 0%, #2a1a12 100%); box-shadow:inset 0 1px 3px #000; }
+.td-band { position:absolute; top:0; bottom:0; background:linear-gradient(180deg, #8fd16a, #4f8f36); box-shadow:0 0 8px #8fd16a55; border-radius:1px; }
+.td-needle { position:absolute; top:-3px; bottom:-3px; width:3px; margin-left:-1.5px; background:#fff; box-shadow:0 0 4px #000, 0 0 6px #fff8; border-radius:1px; }
+.td-guide.under .td-needle { background:#ff8a5c; } .td-guide.over .td-needle { background:var(--td-brassHi); }
+.td-hud .td-verdict { margin:0; font-size:13px; line-height:1.25; color:var(--td-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.td-verdict strong { color:var(--td-text); }
+.td-guide.on .td-verdict strong { color:#9be27a; } .td-guide.under .td-verdict strong { color:#ff9a6c; } .td-guide.over .td-verdict strong { color:var(--td-brassHi); }
+.td-hud .td-gain { margin:0; font-size:12px; color:var(--td-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.td-charge { position:relative; height:16px; border-radius:2px; background:#160d22; box-shadow:inset 0 1px 3px #000; overflow:hidden; }
+.td-charge > i { position:absolute; left:0; top:0; bottom:0; background:linear-gradient(180deg, #c790ff, #7a3fd0); }
+.td-charge.ready > i { box-shadow:0 0 10px #c790ff; animation:td-charge-pulse 0.9s ease-in-out infinite alternate; }
+@keyframes td-charge-pulse { from { filter:brightness(1); } to { filter:brightness(1.35); } }
+.td-hud:not([data-column=true]) .td-charge { height:6px; } .td-hud:not([data-column=true]) .td-charge > span { display:none; }
+.td-charge > span { position:relative; display:block; padding-left:6px; font-size:10px; line-height:16px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#f3e8ff; text-shadow:0 1px 2px #000; }
 .td-next { color:var(--dim); font-size:15px; text-align:right; }
 .td-next > .td-radar { width:min(260px, 100%); margin-left:auto; text-align:left; }
 .td-next > span { display:block; }
@@ -224,13 +239,13 @@ const CSS = `
 .td-hud[data-narrow=true] .td-stat small { display:block; margin:0; font-size:10px; letter-spacing:0; }
 .td-hud[data-narrow=true] .td-status { gap:12px; }
 .td-hud[data-narrow=true] .panel { padding:8px 12px; }
-.td-hud[data-narrow=true] .td-current { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"brood next" "tier tier"; align-content:center; gap:5px 10px; }
+.td-hud[data-narrow=true] .td-current { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"brood next" "tier tier" "guide guide"; align-content:center; gap:5px 10px; }
 .td-hud[data-narrow=true] .td-current .td-brood b { font-size:18px; }
 .td-hud[data-narrow=true] .td-next { font-size:13px; }
 .td-hud[data-narrow=true] .td-count { font-size:22px; }
 .td-hud[data-column=true] .td-status { grid-template-columns:1fr; gap:8px; align-content:center; }
 .td-hud[data-column=true] .td-scrap { text-align:left; }
-.td-hud[data-column=true] .td-current { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"brood next" "tier tier" "detail detail"; align-content:center; gap:8px 10px; }
+.td-hud[data-column=true] .td-current { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"brood next" "tier tier" "guide guide" "detail detail"; align-content:center; gap:8px 10px; }
 .td-hud[data-column=true] .td-next { display:contents; }
 .td-hud[data-column=true] .td-next > strong { grid-area:next; justify-self:end; }
 .td-hud[data-column=true] .td-next > small, .td-hud[data-column=true] .td-next > span { grid-area:detail; margin:0; text-align:left; font-size:13px; }
@@ -330,7 +345,33 @@ export function tierHtml(s: TdSnapshot): string {
   const key = (step: -1 | 1) => `<button class="td-key${(step > 0 ? call > s.tier : call < s.tier) ? ' cue' : ''}" data-command="tier" data-step="${step}" aria-label="Tier ${step > 0 ? 'up' : 'down'}">${step > 0 ? '+' : '−'}</button>`;
   return `<div class="td-tier" aria-label="Intensity tier ${name} of ${s.tierCount}${call !== s.tier ? `, ride calls for ${roman(call)}` : ''}">${key(-1)}`
     + `<div class="td-gate"><div class="td-slots">${slots}</div><div class="td-load${out < 0.85 ? ' short' : ''}" title="Output"><i style="width:${(Math.min(1, out) * 100).toFixed(0)}%"></i></div></div>`
-    + `${key(1)}<div class="td-tier-read"><strong>${Math.round(s.tierFtp * 100)}%</strong><small>FTP</small></div></div>`;
+    + `${key(1)}<div class="td-tier-read"><strong>${watts(s, s.tierFtp)} W</strong><small>at ${s.power.refRpm} rpm</small></div></div>`;
+}
+
+/** Watts for a share of the rider's FTP, rounded to 5. */
+const watts = (s: Pick<TdSnapshot, 'power'>, ftp: number) => Math.max(0, Math.round((ftp * s.power.ftpW) / 5) * 5);
+
+/**
+ * The power guide under the gearbox: a meter of the rider's watts against the selected tier (shortfall, the
+ * full-power band from its rated watts to the effort cap, and beyond it), one line saying where they are and what to
+ * do, and what the next tier would add. The Railgun also shows its charge: it fires a full pulse when charged, and
+ * spends a sliver of it on a quick snap at a small alien.
+ */
+export function guideHtml(s: TdSnapshot, full = true): string {
+  const p = s.power, rated = s.tierFtp, top = rated * p.cap, scale = top * 1.3;
+  const ps = powerState(p.nowFtp, rated, p.cap), at = (ftp: number) => `${(Math.min(1, Math.max(0, ftp / scale)) * 100).toFixed(1)}%`;
+  const short = Math.round(Math.min(1, ps.share) * 100);
+  const verdict = s.swapLeft > 0 ? `<strong>Mounting</strong> · turret silent ${Math.ceil(s.swapLeft)}s`
+    : ps.state === 'under' ? `<strong>${watts(s, ps.gapFtp)} W under</strong> · shots at ${short}%`
+    : ps.state === 'over' && s.tier < s.tierCount ? `<strong>Over the cap</strong> · shift up to ${roman(Math.max(s.tier + 1, s.suggestedTier))}`
+    : `<strong>Full power</strong> · ${watts(s, rated)}–${watts(s, top)} W`;
+  const next = s.tier < s.tierCount ? `${roman(s.tier + 1)}: ${tierGain(s.weapon, s.tier, s.tier + 1)}` : 'Top tier';
+  const meter = `<div class="td-meter" role="meter" aria-label="Power against tier ${roman(s.tier)}" aria-valuemin="0" aria-valuemax="${watts(s, scale)}" aria-valuenow="${watts(s, p.nowFtp)}">`
+    + `<i class="td-band" style="left:${at(rated)};width:calc(${at(top)} - ${at(rated)})"></i><b class="td-needle" style="left:${at(p.nowFtp)}"></b></div>`;
+  const rail = s.weapon === 'rail'
+    ? `<div class="td-charge${s.railProgress >= 1 ? ' ready' : ''}" title="The Railgun banks your watts: a full pulse when charged, quick snaps at small aliens spend a sliver"><i style="width:${(s.railProgress * 100).toFixed(0)}%"></i><span>${s.railProgress >= 1 ? 'Pulse ready' : `Charging ${Math.floor(s.railProgress * 100)}%`}</span></div>`
+    : '';
+  return `<div class="td-guide ${s.swapLeft > 0 ? 'mount' : ps.state}">${meter}<p class="td-verdict">${verdict}</p>${rail}${full ? `<p class="td-gain">${esc(next)}</p>` : ''}</div>`;
 }
 
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
@@ -456,16 +497,16 @@ export class TdHud {
     for (const el of [this.status, this.current]) el.hidden = !run;
     const pct = (n: number) => `${Math.max(0, Math.min(100, n * 100))}%`;
     const f = s.flow, segK = f ? 1 - f.leftS / Math.max(1, f.leftS + s.waveElapsed) : 0;
-    this.html(this.status, `<div class="td-stat"><b>${f && f.stage !== 'warm-up' ? `SET ${f.set}${f.sets ? `<small>/${f.sets}</small>` : ''}` : 'WARM-UP'}</b><small>${s.lull > 0 ? `Starts in ${Math.ceil(s.lull)}s` : f ? `${f.stage === 'warm-up' ? '' : `${STAGE_NAME[f.stage]} · `}${Math.ceil(f.leftS)}s` : ''}</small><div class="bar"><i style="width:${pct(segK)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
+    this.html(this.status, `<div class="td-stat"><b>${f && f.stage !== 'warm-up' ? `ROUND ${f.set}${f.sets ? `<small>/${f.sets}</small>` : ''}` : 'WARM-UP'}</b><small>${s.lull > 0 ? `Starts in ${Math.ceil(s.lull)}s` : f ? `${f.stage === 'warm-up' ? '' : `${STAGE_NAME[f.stage]} · `}${Math.ceil(f.leftS)}s` : ''}</small><div class="bar"><i style="width:${pct(segK)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
     this.current.style.setProperty('--brood', color(bd.color));
     const incoming = bd.countdownS > 0;
     this.current.classList.toggle('incoming', incoming);
     // The radar sits here (portrait, phones); the landscape column shows it upright in the objective card instead.
     const forecast = incoming
       ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>${esc(flowLabel(s))} · get ready</small>`
-      : L.objective ? `<span>${esc(flowLabel(s))}</span>` : radarHtml(s, 'h', this.scope.h);
-    const swapping = s.swapLeft > 0 ? ` · mounting ${Math.ceil(s.swapLeft)}s` : '';
-    this.html(this.current, `<div class="td-brood"><b>${WEAPON_NAME[s.weapon]}</b><small>${bd.color}${swapping}</small></div>${run ? tierHtml(s) : ''}<div class="td-next">${forecast}</div>`);
+      : L.objective ? '' : radarHtml(s, 'h', this.scope.h);
+    const counters = { gatling: 'blue', flame: 'red', rail: 'purple' }[s.weapon];
+    this.html(this.current, `<div class="td-brood"><b>${WEAPON_NAME[s.weapon]}</b><small>strong vs ${counters}</small></div>${run ? tierHtml(s) + guideHtml(s, !!L.column) : ''}<div class="td-next">${forecast}</div>`);
     const boss = s.boss, bn = s.banner;
     let headline = '', sub = '';
     if (boss) {
@@ -483,8 +524,8 @@ export class TdHud {
     this.html(this.event, `<b>${esc(headline)}</b><span>${esc(sub)}</span>`);
     this.objective.hidden = !L.objective || !run || !!s.workshop;
     if (L.objective) {
-      const o = rideObjective(s), crew = constructionStatus(s);
-      this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div>${radarHtml(s, 'v', this.scope.v)}<div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
+      const o = rideObjective(s);
+      this.html(this.objective, `<div class="td-objective-main">${o.label ? `<small>${esc(o.label)}</small>` : ''}<h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div>${radarHtml(s, 'v', this.scope.v)}`);
     }
     this.menu.hidden = !s.garage;
     if (s.garage) {

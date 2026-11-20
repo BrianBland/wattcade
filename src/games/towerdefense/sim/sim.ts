@@ -7,13 +7,13 @@ import { suggestBuild, type BuildSuggestion } from './construction';
 import { LEVEL_0, levelGeometry, type TdLevel } from './level';
 import { CAMPAIGN, INTENSITIES, LEVELS_PER_STYLE, INTENSITY_NAME, QUICK_MINUTES, bossCount, campaignOpen, estimateMinutes, levelWaves, quickRide, endlessMap, starsFor, type Intensity, type LevelSpec, type LevelWave } from './campaign';
 import {
-  AIM_LIMIT, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP,
+  AIM_LIMIT, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP, upgradeStats,
   TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, towerMatch, WEAPON_NAME, WEAPONS, towerBuildCost, towerUpgradeCost,
   type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossState, type BossTricks } from './boss';
 import { canObserve, levelFor as gearboxLevelFor, observeK, priorK, type FireballLevelTuning } from './fireballLevel';
-import { TIER_FTP_DEFAULT, beamHits, clampTier, effortFactor, fireballPeriod as fireballPeriodAt, fireballShape, gatlingShape, railShape, riderTier, roman, type Tier } from './tiers';
+import { TIER_FTP_DEFAULT, beamHits, powerState, powerZoneOf, clampTier, effortFactor, fireballPeriod as fireballPeriodAt, fireballShape, gatlingShape, railShape, riderTier, roman, type Tier } from './tiers';
 import { specKey } from './baked';
 import { levelFor } from './levelCache';
 import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, quickGrounds, starTotal } from './unlocks';
@@ -317,6 +317,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let ignitionChainId = 0;
   let revAcc = 0, lastRevs = 0;
   let railBank = 0, railFired = 0, railCooldown = 0;
+  /** The bike as the last tick saw it (the snapshot must not read ctx.bike(): test fakes derive it from the snapshot). */
+  let seenBike = { ftp: 0, rpm: 0 };
   let tier: Tier = clampTier(startTier());
   let gearLevel = 0, gearRelief = 1;
   let inputEpoch = 0, workshopRevision = 0, discardEdges = false;
@@ -544,9 +546,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const of = sets ? ` of ${sets}` : '';
     const want = roman(suggestedTier());
     if (stage === 'warm-up') say('Warm-up', `${play!.spec.name} · tier ${want} · build your first towers`, '#7dffb0');
-    else if (stage === 'trough') say(`Set ${set}${of} · trough`, `Ride easy · build · a clean trough heals the base`, '#7dffb0');
-    else if (stage === 'build') say(`Set ${set}${of} · build`, `Tier ${want} · ${lead}`, '#cfe3ff');
-    else if (stage === 'peak') say(`Set ${set}${of} · peak`, `Tier ${want} · ${lead}`, '#ffd24a');
+    else if (stage === 'trough') say('Light wave', `Round ${set}${of} · ride easy and build · no leaks heals the base`, '#7dffb0');
+    else if (stage === 'build') say('Rising wave', `Round ${set}${of} · tier ${want} · ${lead}`, '#cfe3ff');
+    else if (stage === 'peak') say('Heavy wave', `Round ${set}${of} · tier ${want} · ${lead}`, '#ffd24a');
     cue('waveStart');
   }
   /** The current segment is over: the next rolls straight in (a boss still alive escapes; a trough heals). */
@@ -566,7 +568,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     else runSpotless = 0;
     ctx.emit({ type: 'waveCleared', data: { wave, heal, leakDmg, spotless, runSpotless } });
     if (trough && !setView(wave).warmup) {
-      say(heal ? `Base +${heal} HP` : 'Trough over', `${leakDmg === 0 ? 'Clean trough' : 'Leaks cost the heal'} · +${bonus} scrap`, '#7dffb0');
+      say(heal ? `Base +${heal} HP` : 'Light wave over', `${leakDmg === 0 ? 'No leaks' : 'Leaks cost the heal'} · +${bonus} scrap`, '#7dffb0');
       cue('waveClear');
     }
     leakDmg = 0;
@@ -980,7 +982,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const rows: WorkshopRow[] = [];
     if (tw.level < towerCap()) {
       const c = towerUpgradeCost(tw.kind, tw.level, towerCostMult());
-      rows.push({ kind: 'upgrade', tower: tw.kind, label: `Upgrade to Lv ${tw.level + 1}`, desc: `x${(LEVEL_DMG[tw.level] / LEVEL_DMG[tw.level - 1]).toFixed(1)} damage, more range`, cost: c, affordable: scrap >= c });
+      rows.push({ kind: 'upgrade', tower: tw.kind, label: `Upgrade to Lv ${tw.level + 1}`, desc: `x${(LEVEL_DMG[tw.level] / LEVEL_DMG[tw.level - 1]).toFixed(1)} damage, more range`, cost: c, affordable: scrap >= c,
+        stats: upgradeStats(tw.level) });
     }
     rows.push({ kind: 'sell', tower: tw.kind, label: 'Scrap it', desc: 'Refund half', cost: 0, affordable: true });
     return rows;
@@ -1300,6 +1303,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // ---------- run ----------
   function runUpdate(dt: number, inp: Readonly<InputState>) {
     const bike = ctx.bike();
+    seenBike = { ftp: bike.ftpFraction, rpm: bike.cadence3s };
     const p = (b: Button) => inp.pressed.has(b);
 
     const epoch = inputEpoch, hadWorkshop = !!workshop;
@@ -1500,7 +1504,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       const dmg = e.dmg;
       baseHp -= dmg; baseHurt = 0; leakDmg += dmg; levelDmg += dmg;
       addFx({ kind: 'baseHit', life: 0.5, dmg });
-      say(`${BOSS_NAME[e.boss.color]} broke through!`, `−${dmg} base · ride harder next peak`, '#ff6a5a', true);
+      say(`${BOSS_NAME[e.boss.color]} broke through!`, `−${dmg} base · ride harder next boss`, '#ff6a5a', true);
       cue('baseHitHeavy');
       ctx.emit({ type: 'baseHit', data: { dmg, kind: 'boss' } });
       ctx.emit({ type: 'bossEscaped', data: { wave, color: e.boss.color, hpLeft: Math.round(e.hp / e.maxHp * 100) / 100 } });
@@ -1578,7 +1582,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const on = weapon === w, mounting = on && swapLeft > 0;
     return { button, label: `Mount the ${WEAPON_NAME[w]}`, shortLabel: WEAPON_NAME[w], displayOrder: i, active: !on || mounting,
       touch: { down: { type: 'weapon', weapon: w, epoch: inputEpoch } },
-      indicator: { label: WEAPON_NAME[w], status: mounting ? 'Mounting' : on ? 'Mounted' : '', ready: on && !mounting, ...(mounting ? { fill: 1 - swapLeft / swapTotal } : {}) } };
+      // Every chip always carries a fill: a track that came and went resized the shell's chip row, which moved the
+      // HUD occlusions and re-laid the field (the ground visibly jumped on each weapon swap).
+      indicator: { label: WEAPON_NAME[w], status: mounting ? 'Mounting' : on ? 'Mounted' : '', ready: on && !mounting, fill: mounting ? 1 - swapLeft / swapTotal : on ? 1 : 0 } };
   });
   const playControls = (): ControlHint[] => [
     ...weaponHints(),
@@ -1655,18 +1661,23 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       };
       if (phase === 'run' && loading) return { gears: true, targetZone: { min: 1, max: 2, label: 'Preparing the level' }, controls: [] };
       const boss = bossView();
-      const powerZone = (ftp: number): 1 | 2 | 3 | 4 | 5 => ftp < 0.56 ? 1 : ftp < 0.76 ? 2 : ftp < 0.91 ? 3 : ftp < 1.06 ? 4 : 5;
-      const want = suggestedTier();
+      // The band is the selected tier's full-power range (its rated watts up to the effort cap), so the strip and
+      // the shots agree; the label says the one thing to do: shift toward the wave's call, or close the gap.
+      const want = suggestedTier(), rated = ratedFtp(tier), ps = powerState(ctx.bike().ftpFraction, rated, effortCap());
+      const watts = (ftp: number) => Math.max(5, Math.round((ftp * (ctx.profile.ftp || 200)) / 5) * 5);
+      const label = want !== tier ? `Shift ${want > tier ? 'up' : 'down'} to ${roman(want)}`
+        : ps.state === 'under' ? `Tier ${roman(tier)} · ${watts(ps.gapFtp)} W under`
+        : ps.state === 'over' && tier < 5 ? `Tier ${roman(tier)} maxed · shift up` : `Tier ${roman(tier)} · full power`;
       const tz: GameHud['targetZone'] = boss?.exposed || boss?.telegraph
         ? { min: 5, max: 5, label: boss.exposed ? 'Exposed · sprint!' : `Sprint in ${Math.ceil(boss.windowLeftS)}s`, source: 'power' }
         : lull > 0 ? { min: 1, max: 2, label: `Get ready · tier ${roman(want)}` }
-        : plan?.role === 'easy' ? { min: 1, max: 2, label: `${setView(wave).warmup ? 'Warm-up' : 'Trough'} · tier ${roman(want)}` }
-        : { min: powerZone(ratedFtp(want)), max: powerZone(ratedFtp(want)), label: `Tier ${roman(want)} · you're on ${roman(tier)}`, source: 'power' };
+        : { min: powerZoneOf(rated), max: powerZoneOf(rated * effortCap() * 0.98), label, source: 'power' };
+      const tc: GameHud['targetCadence'] = phase === 'run' && lull <= 0 ? { min: gearRefRpm() - 5, max: gearRefRpm() + 15, label: `${gearRefRpm()} rpm` } : undefined;
       if (workshop) return {
-        gears: false, targetZone: tz, touchControls: [],
+        gears: false, targetZone: tz, targetCadence: tc, touchControls: [],
         controls: [{ button: 'dpad', label: 'Choose an option or Exit', shortLabel: 'Choose' }, { button: 'a', label: 'Build / upgrade / Exit', shortLabel: 'OK' }, ...weaponHints().map((h) => ({ ...h, indicator: false as const })), ...gearHints()],
       };
-      return { gears: false, targetZone: tz, touchControls: ['y', 'b', 'z'], controls: playControls() };
+      return { gears: false, targetZone: tz, targetCadence: tc, touchControls: ['y', 'b', 'z'], controls: playControls() };
     },
     snapshot(): TdSnapshot {
       return {
@@ -1685,6 +1696,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         weapon, swapLeft, swapS: swapTotal,
         aimAngle: aim, targetId, lock: lock(),
         tier, tierCount: 5, suggestedTier: suggestedTier(), tierFtp: ratedFtp(tier), tierOutput,
+        power: { ftpW: ctx.profile.ftp || 200, nowFtp: seenBike.ftp, cadence: seenBike.rpm, refRpm: gearRefRpm(), cap: effortCap(), rated: [1, 2, 3, 4, 5].map((t) => ratedFtp(t)) },
         railCharges: railBank >= railCost() ? 1 : 0, railMaxCharges: 1, railProgress: Math.min(1, railBank / Math.max(1e-6, railCost())), railCharging: weapon === 'rail' && railBank < railCost(), zHold: 0, railDumpHoldS: 0.5,
         flaming, flameRange: flameRange(), flamePower, laserId: 0,
         grid, overdrive, stalled: stalled(),

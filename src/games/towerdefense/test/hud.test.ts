@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
-import { TdHud, layoutRadar, radarHtml, tierHtml } from '../render/panels';
+import { TdHud, guideHtml, layoutRadar, radarHtml, tierHtml } from '../render/panels';
 import { layout } from '../render/layout';
 import type { TdSnapshot } from '../sim/types';
 import { WEAPON_NAME } from '../sim/defs';
@@ -39,7 +39,7 @@ it('counts down the quiet start, then shows the mounted weapon and the radar; co
     expect(radar).not.toBeNull();
     expect(combat.radar!.blips.length).toBeGreaterThan(0);
     expect(radar.querySelectorAll('.td-blip')).toHaveLength(combat.radar!.blips.length);
-    expect(hud.root.querySelector('.td-status')?.textContent).toMatch(/SET 1|WARM-UP/);
+    expect(hud.root.querySelector('.td-status')?.textContent).toMatch(/ROUND 1|WARM-UP/);
     // the only buttons over combat are the tier steppers (− / +), for touch riders without shifters
     expect([...hud.root.querySelectorAll<HTMLElement>('button')].map((b) => b.dataset.command)).toEqual(['tier', 'tier']);
   } finally {
@@ -62,14 +62,15 @@ function hudFixture() {
   return { snapshot, hud, draw, card: hud.root.querySelector<HTMLElement>('.td-objective')! };
 }
 
-it('the landscape card shows the set, the stage, the suggested tier and an upright radar', () => {
+it('the landscape card shows the round, the wave, what leads and an upright radar', () => {
   const { snapshot: s, hud, draw, card } = hudFixture();
   draw({ ...s, scrap: 180 });
   expect(card.hidden).toBe(false);
-  expect(card.textContent).toContain('Set 2/4 · Build');
-  expect(card.textContent).toContain('Tier III · red leads');
-  expect(card.textContent).toContain('64s · then more flow');
-  expect(card.textContent).toContain('180 scrap · build any time with A');
+  expect(hud.root.querySelector('.td-status')?.textContent).toContain('ROUND 2/4');
+  expect(card.textContent).toContain('Rising wave');
+  expect(card.textContent).toContain('Red leads');
+  expect(card.textContent).toContain('64s · then a heavier wave');
+  expect(card.textContent).not.toMatch(/trough|peak|build any time/i);
   const radar = card.querySelector('.td-radar.v')!;
   expect(radar.querySelectorAll('.td-blip')).toHaveLength(4);
   expect(radar.querySelectorAll('.td-blip.air')).toHaveLength(1);
@@ -77,12 +78,11 @@ it('the landscape card shows the set, the stage, the suggested tier and an uprig
   expect(hud.root.querySelector('.td-next .td-radar')).toBeNull(); // not twice
   expect(hud.root.querySelector<HTMLElement>('.td-event')!.hidden).toBe(true);
   draw({ ...s, flow: { ...s.flow!, stage: 'trough' }, suggestedTier: 2 });
-  expect(card.textContent).toContain('Trough');
-  expect(card.textContent).toContain('A clean trough heals the base');
-  expect(card.textContent).toContain('Build now');
+  expect(card.textContent).toContain('Light wave');
+  expect(card.textContent).toContain('No leaks heals the base');
   draw({ ...s, lull: 12 });
   expect(card.textContent).toContain('Get ready');
-  expect(card.textContent).toContain('The flow starts in 12s');
+  expect(card.textContent).toContain('Starts in 12s');
   draw({ ...s }, 844, 390); // phone landscape: no card, the radar sits in the strip
   expect(card.hidden).toBe(true);
   expect(hud.root.querySelector('.td-next .td-radar.h')).not.toBeNull();
@@ -116,7 +116,7 @@ it('prioritizes boss phases and sprint windows in a boss peak', () => {
   const boss: NonNullable<TdSnapshot['boss']> = { id: 1, name: 'Bulwark Tyrant', phase: 1, phaseCount: 3, color: 'purple', weapon: 'rail', pending: false, countdownS: 0, telegraph: true, exposed: false, windowLeftS: 4, sprintBoost: false, charge: null, shield: 0, hp: 0.8, escapeS: 150 };
   draw({ ...s, boss });
   expect(card.textContent).toContain('Bulwark Tyrant · phase 1/3');
-  expect(card.textContent).toContain('Shift to tier V');
+  expect(card.textContent).toContain('Shift to V');
   draw({ ...s, boss: { ...boss, exposed: true, telegraph: false } });
   expect(card.textContent).toContain('Exposed');
   draw({ ...s, boss: { ...boss, pending: true, countdownS: 7 } });
@@ -127,7 +127,7 @@ it('prioritizes boss phases and sprint windows in a boss peak', () => {
   draw({ ...s, boss: { ...boss, name: 'Ram Tyrant', color: 'red', weapon: 'flame', telegraph: false, charge: 'warn' } });
   expect(card.textContent).toContain('Ram charge incoming');
   draw({ ...s, boss: { ...boss, telegraph: false } });
-  expect(card.textContent).toContain('Boss peak');
+  expect(card.textContent).toContain('Boss wave');
   expect(card.textContent).not.toMatch(/called effort|ERG push/i);
   // the boss bar runs along the top of the field: name, phase notches, HP, plates and a gold flash when Exposed
   draw({ ...s, boss: { ...boss, telegraph: false, shield: 0.5 } });
@@ -160,7 +160,7 @@ it('the gearbox lights tiers up to the current one, marks the called tier and cu
   expect(el.querySelector('[data-step="1"]')!.classList.contains('cue')).toBe(true);
   expect(el.querySelector('[data-step="-1"]')!.classList.contains('cue')).toBe(false);
   expect(el.querySelector('.td-load')!.classList.contains('short')).toBe(true);
-  expect(el.querySelector('.td-tier-read')?.textContent).toBe('60%FTP');
+  expect(el.querySelector('.td-tier-read')?.textContent).toBe('120 Wat 85 rpm');
   el.innerHTML = tierHtml({ ...snapshot, tier: 4, suggestedTier: 4, tierFtp: 0.9, tierOutput: 1.1 });
   expect(el.querySelectorAll('.cue')).toHaveLength(0);
   expect(el.querySelector('.td-load')!.classList.contains('short')).toBe(false);
@@ -186,4 +186,23 @@ it('lays radar blips out without overlaps when the column has room, keeping arri
   const el = document.createElement('div');
   el.innerHTML = radarHtml({ ...snapshot, radar: { ...r, blips: [{ etaS: 40, hp: 90, color: 'prism', lane: 0, n: 1, key: 3 }] } }, 'v');
   expect(el.querySelector('.td-blip')!.classList.contains('prism')).toBe(true);
+});
+
+it('the power guide says under / full power / over against the selected tier, and what the next tier adds', () => {
+  const { snapshot } = hudFixture();
+  const base: TdSnapshot = { ...snapshot, weapon: 'gatling', tier: 3, tierCount: 5, tierFtp: 0.75, swapLeft: 0,
+    power: { ftpW: 200, nowFtp: 0.6, cadence: 80, refRpm: 85, cap: 1.2, rated: [0.45, 0.6, 0.75, 0.9, 1.05] } };
+  const el = document.createElement('div');
+  el.innerHTML = guideHtml(base);
+  expect(el.querySelector('.td-guide')!.classList.contains('under')).toBe(true);
+  expect(el.querySelector('.td-verdict')!.textContent).toBe('30 W under · shots at 80%');
+  expect(el.querySelector('.td-gain')!.textContent).toBe('IV: +27% damage · splash');
+  el.innerHTML = guideHtml({ ...base, power: { ...base.power, nowFtp: 0.8 } });
+  expect(el.querySelector('.td-verdict')!.textContent).toBe('Full power · 150–180 W');
+  el.innerHTML = guideHtml({ ...base, power: { ...base.power, nowFtp: 1 } });
+  expect(el.querySelector('.td-verdict')!.textContent).toBe('Over the cap · shift up to IV');
+  el.innerHTML = guideHtml({ ...base, weapon: 'rail', railProgress: 0.62 });
+  expect(el.querySelector('.td-charge')!.textContent).toBe('Charging 62%');
+  el.innerHTML = guideHtml({ ...base, weapon: 'rail', railProgress: 1 });
+  expect(el.querySelector('.td-charge')!.classList.contains('ready')).toBe(true);
 });

@@ -48,12 +48,13 @@ export function layout(W: number, H: number, inset: number | Insets, hudControls
     // The field keeps its full height to the right; short screens naturally close the gap.
     const colW = Math.round(Math.max(220, Math.min(300, W * 0.24)));
     status = { x: pad, y: pad, w: colW, h: Math.min(150, (bottom - 3 * pad) * 0.45) };
-    const currentH = Math.min(154, bottom - 3 * pad - status.h);
+    // The weapon card (power guide) grows to 232 px when the objective card above it keeps 250 px for its radar.
+    const currentH = Math.min(232, Math.max(154, bottom - 4 * pad - status.h - 250), bottom - 3 * pad - status.h);
     current = { x: pad, y: bottom - pad - currentH, w: colW, h: currentH };
     area = { x: 2 * pad + colW, y: pad, w: Math.max(0, W - 3 * pad - colW), h: Math.max(0, bottom - 2 * pad) };
   } else {
     const statusH = Math.min(short ? 48 : 64, UH * 0.19);
-    const currentH = Math.min(W < 560 ? 88 : 60, UH * 0.23);
+    const currentH = Math.min(W < 560 ? 150 : 100, UH * 0.26);
     status = { x: pad, y: pad, w: W - 2 * pad, h: statusH };
     current = { x: pad, y: status.y + status.h + pad, w: W - 2 * pad, h: currentH };
     const top = current.y + current.h + pad;

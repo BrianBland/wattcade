@@ -183,6 +183,38 @@ function makeWheel(th) {
 // place a wheel on a path point with its travel direction (2D sketch coords)
 function placeWheel(w, x, y, z, dx, dy, roll) { w.position.copy(V(x, y, z)); w.rotation.y = Math.atan2(-dy, dx); w.userData.spin.rotation.z = -roll; }
 
+/* ---------- the goal ---------- */
+// A goal has to read from any camera angle and against any road colour (the old additive ring vanished on a pale deck):
+// a solid pad in the goal colour with a pale rim at the road's end, a pennant on a pole standing just past the end, and a
+// soft shaft of light rising well above, so the goal still shows when the end of the road is behind something
+// (Monument Valley marks its goals with a standing silhouette, not a glow). Local +y is the road's normal, +x its heading.
+TEX.shaft = canvasTex(4, 128, (g) => { const v = g.createLinearGradient(0, 0, 0, 128); v.addColorStop(0, 'rgba(255,255,255,0)'); v.addColorStop(.55, 'rgba(255,255,255,.55)'); v.addColorStop(1, 'rgba(255,255,255,.95)'); g.fillStyle = v; g.fillRect(0, 0, 4, 128); });
+function makeGoal(th, view) {
+  const G = new T.Group(), body = new T.Group(); G.add(body); const goalP = tone(th.goal), ink = th.ink || '#2A2640';
+  const rim = new T.Mesh(new T.CylinderGeometry(.5, .5, .05, 36), tri(tone(mix(th.goal, '#FFFFFF', .78)))); rim.position.y = .03; body.add(rim);
+  const pad = new T.Mesh(new T.CylinderGeometry(.38, .38, .07, 36), tri(goalP)); pad.position.y = .05; body.add(pad);
+  const dot = new T.Mesh(new T.CylinderGeometry(.14, .14, .08, 24), tri(tone(mix(th.goal, '#FFFFFF', .78)))); dot.position.y = .06; body.add(dot);
+  // the pennant, on a pole just beyond the end of the road
+  const pole = new T.Mesh(new T.CylinderGeometry(.035, .035, 1.7, 8), tri(tone(ink))); pole.position.set(.55, .85, 0); body.add(pole);
+  const knob = new T.Mesh(new T.SphereGeometry(.08, 12, 8), tri(tone('#FFD15C'))); knob.position.set(.55, 1.74, 0); body.add(knob);
+  const fgeo = new T.PlaneGeometry(.72, .42, 10, 1); fgeo.translate(.36, 0, 0); const base = fgeo.attributes.position.array.slice();
+  const flag = new T.Mesh(fgeo, basic(th.goal, { side: true })); flag.position.set(.55, 1.45, 0); body.add(flag);
+  const edge = new T.Mesh(fgeo, basic(ink, { side: true })); edge.scale.set(1.06, 1.16, 1); edge.position.set(-.02, 0, -.006); flag.add(edge);   // a dark outline behind it, so it reads on a pale sky
+  // the shaft: an open cylinder, bright at the road and fading out above it
+  const shaft = new T.Mesh(new T.CylinderGeometry(.34, .34, 5, 24, 1, true), new T.MeshBasicMaterial({ color: th.goal, map: TEX.shaft, transparent: true, opacity: .32, depthWrite: false, side: T.DoubleSide })); shaft.position.y = 2.5; body.add(shaft);
+  const glow = sprite(TEX.glow, 1.6, 1.6, th.goal, { opacity: .45, add: true }); glow.position.y = .3; body.add(glow);
+  const X = new T.Vector3(), Y = new T.Vector3(), Z = new T.Vector3(), Mx = new T.Matrix4();
+  G.userData.place = (p, n, d, t) => {
+    Y.copy(n).normalize(); X.copy(d).addScaledVector(Y, -d.dot(Y)).normalize(); Z.crossVectors(X, Y);
+    G.position.copy(p); G.quaternion.setFromRotationMatrix(Mx.makeBasis(X, Y, Z));
+    // the pennant turns to face the camera's side, so it never shows edge-on
+    const cam = view.camera.getWorldDirection(new T.Vector3()).negate(); flag.rotation.y = Math.atan2(cam.dot(X), cam.dot(Z));
+    const q = fgeo.attributes.position; for (let i = 0; i < q.count; i++) { const x0 = base[i * 3]; q.setZ(i, Math.sin(x0 * 7 - t * 6) * .06 * x0 / .72); q.setY(i, base[i * 3 + 1] - .05 * x0 * x0); } q.needsUpdate = true;
+    const k = 1 + .06 * Math.sin(t * 3); pad.scale.set(k, 1, k); glow.material.opacity = .35 + .15 * Math.sin(t * 3); shaft.material.opacity = .26 + .08 * Math.sin(t * 2);
+  };
+  return G;
+}
+
 /* ---------- a fluttering flag ---------- */
 function makeFlag(g, x, y, z, color, ink, upd) {
   CY(g, x, y, .035, z, z + 1.5, tri(tone(ink)), 8);
@@ -826,7 +858,7 @@ function makeLevel(def, idx) {
   const dust = new T.Mesh(new T.RingGeometry(.3, .38, 32), basic('#FFFFFF', { opacity: 0, side: true })); dust.rotation.x = -Math.PI / 2; portal.add(dust);
   const fx = Array.from({ length: 16 }, () => { const s = sprite(TEX.diamond, .18, .18, th.goal, { opacity: 0, depthTest: false, order: 6 }); g.add(s); return s; });
   let fxAt = null, fxT = 9;
-  const goalRing = sprite(TEX.ring, 1.1, 1.1, th.goal, { opacity: .9, add: true }), goalGlow = sprite(TEX.glow, 2.2, 2.2, th.goal, { opacity: .55, add: true }); g.add(goalRing); g.add(goalGlow);
+  const goal = makeGoal(th, view); g.add(goal);
   def.build(L);
   // generated levels may stand on plateaus (./terrain.ts); a level that does gets no floating scenery around it
   if (def.terrain && $scope.autoTerrain) L.terrain = $scope.autoTerrain(L, def.terrain === true ? {} : def.terrain);
@@ -965,7 +997,9 @@ function makeLevel(def, idx) {
     if (W.mode === 'spawn' && W.t > 1.1 && L.state === 'play') W.mode = 'road';
     if (W.mode === 'spawn') W.t += dt;
     pose(dt);
-    if (goalRoad) { const e = goalRoad.end(1); goalRing.position.copy(e.p).add(new T.Vector3(0, .5, 0)); goalGlow.position.copy(goalRing.position); goalRing.material.rotation = t * .8; goalRing.scale.setScalar(1 + .08 * Math.sin(t * 3)); }
+    if (goalRoad) { const f = goalRoad.at(goalRoad.L), M = goalRoad.g ? goalRoad.g.matrixWorld : null, p = f.p.clone(), n = f.n.clone(), d = f.d.clone();
+      if (M) { p.applyMatrix4(M); n.transformDirection(M); d.transformDirection(M); } goal.userData.place(p, n, d, t); }
+    goal.visible = !!goalRoad;
     // badges follow their machines, anchored on the cap's outer face so on a wall the letter sits on the cap, not inside the wall
     L.machines.forEach((m, i) => { const p = m.bloom.holder.localToWorld(new T.Vector3(0, .07, 0)); const [x, y] = view.project(p); m.bd.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`; });
     if (W.mode === 'win' && W.t > .5 && L.state === 'play') { L.state = 'won'; L.wonT = 0; hooks.onWon(L.idx); }
@@ -1011,5 +1045,5 @@ function setAutopilot(on) { autopilot = on; hooks.onAutopilot(on); }
 // live engine state (these are reassigned, so other modules read them through state())
 const state = () => ({ LVL, lvIndex, autopilot });
 
-Object.assign($scope, { HAZE, HAZE_GLSL, skyAt, skyCss, setHaze, LEVELS, state, TAU, reduce, FACE, clamp, lerp, ease, hexRgb, mix, mixPal, shade, tone, seedState, rnd, VS, FS, triCache, tri, setTri, DEPTH_ONLY, basic, UNIT, B, CY, V, at, archGeo, rectGeo, onFace, gearGeo, petalGeo, canvasTex, TEX, sprite, SR, SU, SD, toScreen, views, R3, View, WHEELS, makeWheel, placeWheel, makeFlag, dashes, ringDashes, bloomIris, bloomFlower, bloomHelm, bloomCrystal, bloomLantern, bloomClock, BLOOMS, machine, THEMES, sp, windowsOn, cloudLayer, birds, drift, backdrop, TEXS, buildLevel, decorate, bloomGyro, SKY, Track, L3, ARC, filletPath, ribbon, hull2, inHull, segHit, SPEED, GRAV, TOL, corners, boundsOf, UP, LV, gearRatio, powerOf, easeIO, bounce, FACEKEYS, badgeIcon, Road, turtle, lollipop, lollipopLen, lvHost, lvBadges, lvFade, lvView, rider, ui, LVL, lvIndex, autopilot, fade, makeLevel, flowTick, fadeTo, loadLevel, setAutopilot });
+Object.assign($scope, { HAZE, HAZE_GLSL, skyAt, skyCss, setHaze, LEVELS, state, TAU, reduce, FACE, clamp, lerp, ease, hexRgb, mix, mixPal, shade, tone, seedState, rnd, VS, FS, triCache, tri, setTri, DEPTH_ONLY, basic, UNIT, B, CY, V, at, archGeo, rectGeo, onFace, gearGeo, petalGeo, canvasTex, TEX, sprite, SR, SU, SD, toScreen, views, R3, View, WHEELS, makeWheel, placeWheel, makeGoal, makeFlag, dashes, ringDashes, bloomIris, bloomFlower, bloomHelm, bloomCrystal, bloomLantern, bloomClock, BLOOMS, machine, THEMES, sp, windowsOn, cloudLayer, birds, drift, backdrop, TEXS, buildLevel, decorate, bloomGyro, SKY, Track, L3, ARC, filletPath, ribbon, hull2, inHull, segHit, SPEED, GRAV, TOL, corners, boundsOf, UP, LV, gearRatio, powerOf, easeIO, bounce, FACEKEYS, badgeIcon, Road, turtle, lollipop, lollipopLen, lvHost, lvBadges, lvFade, lvView, rider, ui, LVL, lvIndex, autopilot, fade, makeLevel, flowTick, fadeTo, loadLevel, setAutopilot });
 }

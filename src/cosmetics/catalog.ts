@@ -43,6 +43,10 @@ export const ITEMS: Item[] = ORIGINAL_ITEMS.map(it => resourced(ROTATION[itemKey
   { slot: 'title', id: 't_full_send', name: 'Full Send', source: { achievement: 'fs_golden' } },
   { slot: 'pet', id: 'pocketrocket', name: 'Pocket rocket', source: { achievement: 'fs_hours' }, flavor: 'Ten hours of sprints and it has started following you home.' },
   { slot: 'jersey', id: 'fs_triple_star', name: 'Triple Star', source: { achievement: 'fs_triple' }, look: { pattern: 'stars', base: '#16205a', ink: '#ffd23b' } },
+  // Watershed campaign (Nov 2026): recolours, no new art.
+  { slot: 'jersey', id: 'ws_raindrop', name: 'Raindrop', source: { achievement: 'ws_level_clear' }, look: { pattern: 'hoops', base: '#2f7fb8', ink: '#bfeaff' } },
+  { slot: 'paint', id: 'ws_full_bucket', name: 'Full Bucket', source: { achievement: 'ws_full_bucket' }, look: { frame: '#2de2a6', frame2: '#3d97d3', kind: 'fade' } },
+  { slot: 'jersey', id: 'ws_keeper', name: 'Watershed Keeper', source: { achievement: 'ws_campaign' }, look: { pattern: 'stars', base: '#1f5e4a', ink: '#bfeaff' } },
   { slot: 'hat', id: 'none', name: 'No headwear', source: { default: true } },
   ...(['bottoms', 'hands', 'feet', 'eyewear', 'back'] as const).map(slot => ({
     slot, id: 'none', name: ({bottoms: 'Classic shorts', hands: 'Bare hands', feet: 'Basic shoes', eyewear: 'No eyewear', back: 'No back item'})[slot],

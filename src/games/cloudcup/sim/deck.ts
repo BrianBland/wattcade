@@ -7,6 +7,13 @@ export const FORK = 190,
 export const FLIGHT = 1,
   LAUNCH_SPEED = (LAND - LIP) / FLIGHT;
 export const RESCUE = 2.15;
+export const CATCH = 0.46,
+  DROP = 1.94,
+  PROTECTION = 2.3;
+export function easeBetween(time: number, start: number, end: number) {
+  const t = Math.max(0, Math.min(1, (time - start) / (end - start)));
+  return t * t * (3 - 2 * t);
+}
 export const lapAt = (at: number) => ((at % LAP) + LAP) % LAP;
 const unit = (x: number) => Math.max(0, Math.min(1, x));
 function envelope(at: number, start: number, inEnd: number, outStart: number, end: number) {
@@ -59,18 +66,39 @@ export function prize(gap: number, roll: number): Pickup {
 }
 
 export function chassis() {
-  return { fall: 0, falls: 0, grace: 0, flight: 0, launchSpeed: 0, lift: 0, shove: 0, jumps: 0 };
+  return {
+    fall: 0,
+    fallX: 0,
+    fallLift: 0,
+    craneAway: 0,
+    falls: 0,
+    grace: 0,
+    flight: 0,
+    launchSpeed: 0,
+    lift: 0,
+    shove: 0,
+    jumps: 0,
+  };
 }
 type Bike = ReturnType<typeof chassis> & { at: number; x: number };
 export function recover(b: Bike, dt: number) {
+  b.craneAway = Math.max(0, b.craneAway - dt);
   b.grace = Math.max(0, b.grace - dt);
   if (!b.fall) return false;
-  b.fall = Math.max(0, b.fall - dt);
-  b.lift = -Math.min(11, 6.4 * (RESCUE - b.fall) ** 2);
+  b.fall = b.fall <= dt + 1e-9 ? 0 : b.fall - dt;
+  const age = RESCUE - b.fall;
+  const destination = forkWidth(b.at) > 0 ? safeLine(b.at) : 0;
+  const caught = b.fallLift - 1.55;
+  b.x = b.fallX + (destination - b.fallX) * easeBetween(age, 1.09, 1.73);
+  if (age < CATCH) b.lift = b.fallLift - 1.55 * (age / CATCH) ** 2;
+  else if (age < 1.13) b.lift = caught + (2.65 - caught) * easeBetween(age, CATCH, 1.13);
+  else if (age < DROP) b.lift = 2.65 - 2.4 * easeBetween(age, 1.64, DROP);
+  else b.lift = 0.25 * (1 - ((age - DROP) / (RESCUE - DROP)) ** 2);
   if (!b.fall) {
-    b.x = forkWidth(b.at) > 0 ? safeLine(b.at) : 0;
+    b.x = destination;
     b.lift = 0;
-    b.grace = 2.3;
+    b.grace = PROTECTION;
+    b.craneAway = 0.4;
   }
   return true;
 }
@@ -99,9 +127,10 @@ export function crossDeck(b: Bike, previous: number, speed: number, dt: number) 
     b.lift = b.x > 0 ? rises(b.at) : 0;
     return;
   }
+  b.fallX = b.x;
+  b.fallLift = b.lift;
   b.fall = RESCUE;
   b.falls++;
   b.shove = 0;
   b.flight = 0;
-  b.lift = 0;
 }

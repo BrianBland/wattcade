@@ -273,3 +273,69 @@ it('can shove a rival over the edge or get knocked off by the crew', () => {
     }
   }
 });
+
+it('winches an underspeed bike over the deck before traversing, releases it and preserves race distance', () => {
+  for (const [at, x] of [
+    [250, 0.95],
+    [695, -1.0],
+    [1250, 1.8],
+  ]) {
+    const b = { ...chassis(), at, x };
+    crossDeck(b, at - 0.4, 13, 1 / 30);
+    expect(b.fall).toBe(RESCUE);
+    let low = 0,
+      high = 0,
+      previousX = b.x,
+      previousHeight = b.lift;
+    for (let i = 0; i < 129; i++) {
+      recover(b, 1 / 60);
+      low = Math.min(low, b.lift);
+      high = Math.max(high, b.lift);
+      expect(Math.abs(b.lift - previousHeight)).toBeLessThan(0.22);
+      if (Math.abs(b.x - previousX) > 0.001) expect(b.lift).toBeGreaterThan(1.7);
+      previousX = b.x;
+      previousHeight = b.lift;
+    }
+    expect(low).toBeLessThan(-1);
+    expect(high).toBeGreaterThan(2.5);
+    expect(b.fall).toBeCloseTo(0, 8);
+    expect(b.at).toBe(at);
+    expect(supported(b.at, b.x)).toBe(true);
+    expect(b.lift).toBeCloseTo(0, 6);
+  }
+});
+it('runs a full endurance race on the selected course and keeps the field racing after lap three', () => {
+  const r = race();
+  r.press('b');
+  r.press('up');
+  r.press('a');
+  expect(r.snap()).toMatchObject({ course: 1, laps: 12, finishAt: 12 * LAP });
+  r.until((s) => s.at > FINISH, 30 * 400);
+  expect(r.session.sim.isOver()).toBe(false);
+  expect(r.snap().rivals.some((p) => p.finish === null)).toBe(true);
+  r.until((s) => s.at === s.finishAt, 30 * 1500);
+  expect(r.session.sim.summary()).toMatchObject({ Laps: 12, Course: 'Kiln Switchbacks' });
+});
+it('cycles the grid distances and lets Switch clear the ramp at Hotshot pace', () => {
+  const r = race();
+  r.press('up');
+  r.press('up');
+  expect(r.snap().laps).toBe(24);
+  r.press('up');
+  expect(r.snap().laps).toBe(3);
+  r.press('a');
+  r.until((s) => s.rivals[2].jumps > 0, 30 * 90);
+});
+
+it('trims the line with a light paddle squeeze and reaches full steering before the end of paddle travel', () => {
+  function trim(p: number) {
+    const r = race();
+    r.press('a');
+    r.paddle(p);
+    r.session.step(6);
+    return r.snap().x;
+  }
+  expect(trim(0.32)).toBeGreaterThan(0);
+  expect(trim(0.32)).toBeLessThan(trim(0.8));
+  expect(trim(0.8)).toBeCloseTo(trim(1), 6);
+});

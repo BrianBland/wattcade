@@ -1,5 +1,5 @@
 import * as T from 'three';
-import { LAP, WIDTH, world } from '../sim/track';
+import { LAP, WIDTH, courses, type Course } from '../sim/track';
 import {
   deck as deckSpan,
   forkWidth,
@@ -13,10 +13,18 @@ import {
 } from '../sim/deck';
 import { buildRails, launchPlate } from './viaduct';
 import { buildFoundry } from './foundry';
+import { buildKilns } from './kilns';
 import { buildSalvage } from './salvage';
 import { pads } from '../sim/race';
 
-export function buildYard(scene: T.Scene, roadMap: T.Texture, enamel: T.Texture, anisotropy: number) {
+export function buildYard(
+  scene: T.Object3D,
+  roadMap: T.Texture,
+  enamel: T.Texture,
+  anisotropy: number,
+  course: Course = courses[0],
+) {
+  const { world } = course;
   roadMap.colorSpace = T.SRGBColorSpace;
   roadMap.wrapT = T.RepeatWrapping;
   roadMap.anisotropy = Math.min(8, anisotropy);
@@ -56,8 +64,9 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, enamel: T.Texture,
   ]);
   deck.receiveShadow = true;
   scene.add(deck);
-  buildRails(scene);
-  const animatePour = buildFoundry(scene);
+  if (course === courses[1]) buildKilns(scene, course);
+  buildRails(scene, course);
+  const animatePour = buildFoundry(scene, course);
   const blocks: { matrix: T.Matrix4; color: T.Color }[] = [];
   const scratch = new T.Object3D();
   function block(
@@ -113,9 +122,9 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, enamel: T.Texture,
     return new T.MeshBasicMaterial({ map, side: T.DoubleSide });
   }
   const sectors = [
-    [40, 'MAGNET MILE'],
+    [40, course.name.toUpperCase()],
     [JOIN + 12, 'THE CRUSHER'],
-    [610, 'BONEYARD'],
+    [610, course === courses[1] ? 'QUARRY RIM' : 'BONEYARD'],
     [915, 'LAST CHANCE'],
   ] as const;
   for (const [at, name] of sectors) {
@@ -228,7 +237,7 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, enamel: T.Texture,
   scene.add(beams);
   enamel.colorSpace = T.SRGBColorSpace;
   enamel.anisotropy = Math.min(8, anisotropy);
-  buildSalvage(scene, enamel);
+  buildSalvage(scene, enamel, course);
   // Two counter-rotating breaker drums hang over the entrance to the crusher.
   // Their teeth catch the sun and cast moving shadows across the apex.
   const machines: T.Group[] = [];

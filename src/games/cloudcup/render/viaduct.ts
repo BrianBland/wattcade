@@ -1,10 +1,11 @@
 import * as T from 'three';
 import { deck, FORK, forkWidth, JOIN, LAND, LIP, rises } from '../sim/deck';
-import { LAP, world } from '../sim/track';
+import { LAP, courses, type Course } from '../sim/track';
 
 // Sweep a folded box girder along the deck vertices, including its bank.
 // Separate runs end flush at the lip and resume exactly on the receiving deck.
-export function buildRails(scene: T.Scene) {
+export function buildRails(scene: T.Object3D, course: Course = courses[0]) {
+  const { world } = course;
   const vertices: number[] = [],
     colors: number[] = [],
     indices: number[] = [];

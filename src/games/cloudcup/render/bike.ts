@@ -1,17 +1,21 @@
 import * as T from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
+import { riderRig } from './rider';
+
 const ink = '#28252b',
   iron = '#52464a',
   leather = '#403334',
   alloy = '#ad9a87',
   bone = '#eddfb8';
 const paint = ['#e75a32', '#bf456a', '#a7b64b', '#399e9c'];
-// Sculpt each bike in its own local frame (-Z forward). Bake rigid components
-// into one vertex-coloured mesh per bike; exhaust and the chain animate separately.
+// The bike faces local -Z. Rigid weights hold each armour plate together
+// as the rider leans and swings. Exhaust and chain animate separately.
 export function buildBike(id: number, skin: T.Texture) {
   const group = new T.Group(),
     parts: T.BufferGeometry[] = [];
+  const rig = riderRig();
+  let joint = 0;
   const color = paint[id],
     orange = '#fbab53';
   function add(
@@ -66,6 +70,14 @@ export function buildBike(id: number, skin: T.Texture) {
       arr = new Float32Array(g.getAttribute('position').count * 3);
     for (let i = 0; i < arr.length; i += 3) rgb.toArray(arr, i);
     g.setAttribute('color', new T.BufferAttribute(arr, 3));
+    const ids = new Uint16Array(vertices.count * 4),
+      weights = new Float32Array(vertices.count * 4);
+    for (let i = 0; i < vertices.count; i++) {
+      ids[i * 4] = joint;
+      weights[i * 4] = 1;
+    }
+    g.setAttribute('skinIndex', new T.Uint16BufferAttribute(ids, 4));
+    g.setAttribute('skinWeight', new T.Float32BufferAttribute(weights, 4));
     parts.push(g);
   }
   const box = (
@@ -141,17 +153,25 @@ export function buildBike(id: number, skin: T.Texture) {
     pod(color, side * 0.43, 0.79, -0.18, 0.15, 0.16, 0.18);
     bar(ink, [side * 0.42, 0.75, -0.14], [side * 0.45, 0.48, 0.38], 0.125);
     pod(leather, side * 0.46, 0.47, 0.24, 0.15, 0.12, 0.29);
+    const shoulder = side < 0 ? 3 : 6;
+    joint = shoulder;
     bar(color, [side * 0.3, 1.66, -0.04], [side * 0.52, 1.38, 0.13], 0.137);
     pod(bone, side * 0.33, 1.64, -0.035, 0.175, 0.145, 0.2);
+    joint = shoulder + 1;
     bar(leather, [side * 0.52, 1.37, 0.12], [side * 0.54, 1.22, -0.46], 0.1);
+    joint = shoulder + 2;
     pod(ink, side * 0.54, 1.21, -0.48, 0.115, 0.099, 0.14);
+    joint = shoulder;
     if (id === 1)
       add(new T.ConeGeometry(0.105, 0.34, 5), alloy, side * 0.43, 1.79, 0.015, 1, 1, 1, 0, 0, -side * 0.48);
+    joint = 0;
     if (id === 3) box(color, side * 0.61, 0.95, 1, 0.075, 0.65, 0.46, -0.37, 0, -side * 0.14);
   }
+  joint = 1;
   pod(leather, 0, 1.31, 0.19, 0.32, 0.45, 0.24, -0.35);
   pod(color, 0, 1.51, 0.045, 0.38, 0.38, 0.27, -0.4);
   pod(iron, 0, 1.84, -0.16, 0.145, 0.14, 0.13);
+  joint = 2;
   pod(id === 2 ? color : bone, 0, 1.99, -0.23, 0.245, 0.26, 0.285, -0.14);
   pod('#243438', 0, 2, -0.323, 0.251, 0.132, 0.235);
   pod(color, 0, 2.16, -0.22, 0.097, 0.117, 0.267, -0.12);
@@ -176,7 +196,9 @@ export function buildBike(id: number, skin: T.Texture) {
       `,
     );
   };
-  const shell = new T.Mesh(geo, finish);
+  const shell = new T.SkinnedMesh(geo, finish);
+  shell.add(...rig.bones);
+  shell.bind(rig.skeleton);
   shell.castShadow = true;
   shell.receiveShadow = true;
   group.add(shell);
@@ -224,5 +246,5 @@ export function buildBike(id: number, skin: T.Texture) {
   const flame = new T.Mesh(jet, flameMaterial);
   flame.position.set(0, 0.49, 1.61);
   group.add(flame);
-  return { group, flame, jetTime };
+  return { group, flame, jetTime, pose: rig.pose, skeleton: rig.skeleton };
 }

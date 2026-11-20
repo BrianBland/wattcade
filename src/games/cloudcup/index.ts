@@ -7,7 +7,7 @@ export const module: GameModule = {
   title: 'Scrapjet Rally',
   accent: '#ffad57',
   blurb:
-    'Run Magnet Mile against the breaker crew. Draft their point rider, lean through the banks and sweep either flank with your salvage chain.',
+    'Race the breaker crew on Magnet Mile or Kiln Switchbacks. Choose a short heat or an endurance ride. Draft their point rider, lean through the banks and sweep either flank with your salvage chain.',
   tags: ['intervals'],
   drawCard,
   createSim: (ctx) => createRace(ctx),

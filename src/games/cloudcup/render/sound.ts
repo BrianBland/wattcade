@@ -1,6 +1,7 @@
 import { play, sfxGraph } from '../../../audio/sfx';
 import { setVoice, stopVoices } from '../../../audio/voices';
-import { FINISH, type RaceView } from '../sim/race';
+import { CATCH, RESCUE } from '../sim/deck';
+import { type RaceView } from '../sim/race';
 
 export class RallySound {
   private previous?: RaceView;
@@ -8,7 +9,7 @@ export class RallySound {
   update(s: RaceView) {
     const prev = this.previous;
     this.previous = s;
-    if (!sfxGraph() || s.menu || s.at >= FINISH) {
+    if (!sfxGraph() || s.menu || s.at >= s.finishAt) {
       this.stop();
       return;
     }
@@ -37,6 +38,8 @@ export class RallySound {
       play('ignite', { vol: 0.38 });
     }
     if (s.falls > prev.falls) play('whoosh', { pitch: 0.56, vol: 0.62 });
+    if (prev.fall > RESCUE - CATCH && s.fall <= RESCUE - CATCH) play('clank', { pitch: 0.69, vol: 0.42 });
+    if (prev.fall && !s.fall) play('ignite', { pitch: 0.82, vol: 0.32 });
     if (s.swings > prev.swings) play('whoosh', { pitch: 1.45, vol: 0.46 });
     if (s.strikes > prev.strikes) play('clank', { pitch: 0.73, vol: 0.9 });
     if (s.hits > prev.hits) play('wreck', { pitch: 0.83, vol: 0.65 });

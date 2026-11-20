@@ -1,6 +1,6 @@
 import * as T from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { world } from '../sim/track';
+import { courses, type Course } from '../sim/track';
 
 // UV tiles in salvage-enamel.webp, in reading order.
 const [
@@ -457,13 +457,14 @@ const heaps: Site[] = [
   [494, -3.23, 1.19, 0.76],
   [545, 3.35, 1.33, -0.51],
   [592, -3.24, 1.27, 1.52],
-  [638, -2.97, 1.47, 0.83],
+  [638, -3.48, 1.47, 0.83],
   [666, 4.25, 1.12, -0.63],
   [769, -3.6, 1.3, 0.7],
   [854, 3.68, 1.51, -0.89],
   [996, -3.3, 1.24, 1.23],
 ];
-export function buildSalvage(scene: T.Scene, map: T.Texture) {
+export function buildSalvage(scene: T.Object3D, map: T.Texture, course: Course = courses[0]) {
+  const { world } = course;
   const metal = new T.MeshStandardMaterial({ map, roughness: 0.83, metalness: 0.16, side: T.DoubleSide });
   for (const [name, geo, sites] of [
     ['turbine', turbine(), turbines],

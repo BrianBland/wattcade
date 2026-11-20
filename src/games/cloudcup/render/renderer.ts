@@ -1,11 +1,12 @@
 import { RallySound } from './sound';
 import * as T from 'three';
 import { NO_INSETS, type GameRenderer, type Insets } from '../../../contracts';
-import { chainTip, classes, FINISH, LAP, SWING, type RaceView } from '../sim/race';
-import { track, world } from '../sim/track';
-import { lapAt, LIP, LAUNCH_SPEED } from '../sim/deck';
+import { chainTip, classes, LAP, SWING, type RaceView } from '../sim/race';
+import { courses } from '../sim/track';
+import { lapAt, LIP, LAUNCH_SPEED, CATCH, DROP, RESCUE, easeBetween } from '../sim/deck';
 import { buildBike } from './bike';
 import { buildWake } from './wake';
+import { buildCranes } from './crane';
 import { buildYard } from './yard';
 import './rally.css';
 
@@ -36,6 +37,10 @@ export class Renderer implements GameRenderer {
   private stage!: HTMLDivElement;
   private info!: HTMLDivElement;
   private scene!: T.Scene;
+  private cranes!: ReturnType<typeof buildCranes>;
+  private yards = new Map<number, { root: T.Group; animate: ReturnType<typeof buildYard> }>();
+  private yardMaps?: [T.Texture, T.Texture];
+  private activeCourse = -1;
   private camera = new T.PerspectiveCamera(58, 1, 0.15, 360);
   private gl!: T.WebGLRenderer;
   private assets?: Promise<void>;
@@ -82,6 +87,7 @@ export class Renderer implements GameRenderer {
     this.gl.outputColorSpace = T.SRGBColorSpace;
     this.stage.append(this.gl.domElement);
     this.scene = new T.Scene();
+    this.cranes = buildCranes(this.scene);
     this.scene.fog = new T.FogExp2('#d28d70', 0.008);
     this.scene.add(new T.HemisphereLight('#ffead1', '#8d6575', 2.1));
     const sun = this.sun;
@@ -191,7 +197,7 @@ export class Renderer implements GameRenderer {
     this.info = document.createElement('div');
     this.info.className = 'scrapjet-dash';
     this.info.innerHTML =
-      '<div class="sj-rank"><b></b><span></span></div><canvas class="sj-map" width="180" height="114"></canvas><div class="sj-combat"></div><div class="sj-speed"><div><b>0</b><small>KM/H</small></div><div class="sj-dial"><i></i><em></em></div><span></span></div><div class="sj-cue"></div><div class="sj-grid"><small>MAGNET MILE &nbsp; / &nbsp; THREE LAPS</small><strong>SCRAPJET<br>RALLY</strong><span></span><small>Hold paddles to lean · A to launch</small></div>';
+      '<div class="sj-rank"><b></b><span></span></div><canvas class="sj-map" width="180" height="114"></canvas><div class="sj-combat"></div><div class="sj-speed"><div><b>0</b><small>KM/H</small></div><div class="sj-dial"><i></i><em></em></div><span></span></div><div class="sj-cue"></div><div class="sj-grid"><small>Magnet Mile · 3 laps</small><strong>SCRAPJET<br>RALLY</strong><span></span><small>Paddles · class &nbsp; B · course &nbsp; ↑ · distance &nbsp; A · race</small></div>';
     this.stage.append(this.info);
     this.label = this.info.querySelector('b')!;
     this.lap = this.info.querySelector('.sj-rank span')!;
@@ -203,10 +209,42 @@ export class Renderer implements GameRenderer {
     this.routeMap = document.createElement('canvas');
     this.routeMap.width = 180;
     this.routeMap.height = 114;
+    this.resize(host.clientWidth, host.clientHeight);
+    this.assets = Promise.all(
+      ['slag-road', 'salvage-enamel'].map((name) => loader.loadAsync('/scrapjet/' + name + '.webp')),
+    ).then(([road, enamel]) => {
+      if (this.disposed) {
+        [road, enamel].forEach((t) => t.dispose());
+        return;
+      }
+      this.yardMaps = [road, enamel];
+      this.setCourse(0);
+    });
+    this.assets = Promise.all([this.assets, ...skinLoads]).then(() => undefined);
+  }
+  private setCourse(id: number) {
+    if (!this.yardMaps || this.activeCourse === id) return;
+    this.stage.classList.toggle('kiln-dusk', id === 1);
+    (this.scene.fog as T.FogExp2).color.set(id === 1 ? '#9d8190' : '#d28d70');
+    this.sun.color.set(id === 1 ? '#ffd4a4' : '#fff1bd');
+    const previous = this.yards.get(this.activeCourse);
+    if (previous) previous.root.visible = false;
+    let yard = this.yards.get(id);
+    if (!yard) {
+      const root = new T.Group();
+      const animate = buildYard(root, ...this.yardMaps, this.gl.capabilities.getMaxAnisotropy(), courses[id]);
+      yard = { root, animate };
+      this.yards.set(id, yard);
+      this.scene.add(root);
+    }
+    yard.root.visible = true;
+    this.animateYard = yard.animate;
+    this.activeCourse = id;
     const g = this.routeMap.getContext('2d')!;
+    g.clearRect(0, 0, 180, 114);
     g.beginPath();
     for (let i = 0; i <= 180; i++) {
-      const p = track((i * LAP) / 180);
+      const p = courses[id].track((i * LAP) / 180);
       const x = 32 + p.x * 0.34,
         y = 55 + p.z * 0.27;
       if (!i) g.moveTo(x, y);
@@ -219,17 +257,6 @@ export class Renderer implements GameRenderer {
     g.strokeStyle = '#eee1c099';
     g.lineWidth = 2;
     g.stroke();
-    this.resize(host.clientWidth, host.clientHeight);
-    this.assets = Promise.all(
-      ['slag-road', 'salvage-enamel'].map((name) => loader.loadAsync('/scrapjet/' + name + '.webp')),
-    ).then(([road, enamel]) => {
-      if (this.disposed) {
-        [road, enamel].forEach((t) => t.dispose());
-        return;
-      }
-      this.animateYard = buildYard(this.scene, road, enamel, this.gl.capabilities.getMaxAnisotropy());
-    });
-    this.assets = Promise.all([this.assets, ...skinLoads]).then(() => undefined);
   }
   async ready() {
     await this.assets;
@@ -256,7 +283,7 @@ export class Renderer implements GameRenderer {
     this.camera.aspect = b.w / b.h;
     this.camera.updateProjectionMatrix();
   }
-  private links(i: number, side: number, phase: number, wind: number) {
+  private links(i: number, side: number, phase: number, wind: number, hand: T.Vector3) {
     const mesh = this.chain[i];
     mesh.visible = phase > 0 || wind > 0;
     if (!mesh.visible) return;
@@ -266,9 +293,9 @@ export class Renderer implements GameRenderer {
     for (let k = 0; k < 16; k++) {
       const t = k / 15;
       dummy.position.set(
-        side * 0.47 * (1 - t) + tip.x * t,
-        1.45 + 0.22 * Math.sin(t * 3.4) - 0.19 * t,
-        0.04 * (1 - t) + tip.z * t,
+        hand.x * (1 - t) + tip.x * t,
+        hand.y * (1 - t) + 1.26 * t + 0.22 * Math.sin(t * 3.4),
+        hand.z * (1 - t) + tip.z * t,
       );
       dummy.rotation.set(k % 2 ? 0.95 : 0.12, -angle * side, 0.12);
       dummy.scale.set(1.4, 0.76, 1);
@@ -278,6 +305,8 @@ export class Renderer implements GameRenderer {
     mesh.instanceMatrix.needsUpdate = true;
   }
   render(s: RaceView) {
+    this.setCourse(s.course);
+    const { track, world } = courses[s.course];
     const f = track(s.at);
     const actors = [
       {
@@ -288,6 +317,7 @@ export class Renderer implements GameRenderer {
         finish: null,
         lift: s.lift,
         fall: s.fall,
+        craneAway: s.craneAway,
         flight: s.flight,
         grace: s.grace,
         jumps: s.jumps,
@@ -302,14 +332,22 @@ export class Renderer implements GameRenderer {
       this.jumpCounts[i] = r.jumps;
       const age = s.time - this.touchdowns[i];
       const settle = this.touchdowns[i] && age < 0.55 ? Math.sin(age * 17) * Math.exp(-age * 7) : 0;
-      obj.visible = r.finish === null && (!r.grace || Math.sin(s.time * 30) > -0.65);
+      obj.visible = r.finish === null;
       obj.position.set(p.x, p.y + r.lift + 0.26 - settle * 0.34 + Math.sin(s.time * 8 + i) * 0.045, p.z);
+      const ageOfFall = RESCUE - r.fall;
+      const tumble = r.fall
+        ? (r.x < 0 ? -1 : 1) *
+          0.72 *
+          easeBetween(ageOfFall, 0, CATCH) *
+          (1 - easeBetween(ageOfFall, CATCH, 1.13))
+        : 0;
       obj.rotation.set(
         (r.flight ? (r.flight - 0.5) * 0.44 : 0) - settle * 0.12 + Math.sin(s.time * 6 + i) * 0.015,
         -p.yaw,
-        p.bank + r.lean + rebound + (r.fall ? (2.15 - r.fall) * 2 : 0),
+        p.bank + r.lean + rebound + tumble,
         'YXZ',
       );
+      this.cranes[i](obj, p.yaw, r.fall, r.craneAway);
       const thrust = i ? (r.stun ? 0.52 : 1) : 0.7 + s.speed / 35 + (s.boost ? 1 : 0);
       this.bikes[i].jetTime.value = s.time + i * 0.39;
       this.bikes[i].flame.scale.z = thrust * (1.15 + 0.06 * Math.sin(s.time * 31 + i));
@@ -320,28 +358,41 @@ export class Renderer implements GameRenderer {
       shade.rotation.set(-Math.PI / 2, -p.yaw, p.bank, 'YXZ');
       const r2 = s.rivals[i - 1],
         wind = r2?.windup ?? 0;
-      this.links(
-        i,
-        i ? r2.side : s.side,
-        i ? (r2.strike ? 1 - r2.strike / 0.34 : 0) : s.swing ? 1 - s.swing / SWING : 0,
-        wind,
-      );
+      const side = i ? r2.side : s.side;
+      const phase = i ? (r2.strike ? 1 - r2.strike / 0.34 : 0) : s.swing ? 1 - s.swing / SWING : 0;
+      const hand = this.bikes[i].pose(r.lean, side, wind, phase, settle);
+      this.links(i, side, phase, wind, hand);
       const light = this.warning[i];
       light.visible = wind > 0;
       light.position.set((r2?.side ?? 1) * 0.65, 1.45, 0.1);
       light.scale.setScalar(1.2 + 0.7 * Math.sin(s.time * 26));
     });
-    const back = s.menu ? 8.5 : 6.65 + s.speed * 0.033;
-    const eye = world(s.at - back, s.cameraX + (s.menu ? 0.65 : 0), s.menu ? 3.1 : 2.55 + s.speed * 0.017);
-    const focus = world(s.at + 8 + s.speed * 0.11, s.cameraX * 0.72, 1.1);
+    const rescueView = s.fall ? easeBetween(RESCUE - s.fall, 0, CATCH) : easeBetween(s.craneAway, 0, 0.4);
+    const back = s.menu ? 8.5 : 6.65 + s.speed * 0.033 + rescueView * 4.3;
+    const eye = world(
+      s.at - back,
+      s.cameraX + rescueView * (s.x - s.cameraX) + (s.menu ? 0.65 : 0),
+      s.menu ? 3.1 : 2.55 + s.speed * 0.017 + rescueView * 1.6,
+    );
+    const focus = world(s.at + 8 + s.speed * 0.11, s.cameraX * 0.72, 1.1 + rescueView * 1.9);
     const age = s.time - this.touchdowns[0];
     const compression = this.touchdowns[0] && age < 0.55 ? Math.sin(age * 15) * Math.exp(-age * 7) : 0;
     const j = s.impact * Math.sin(s.time * 97) * 0.23;
     this.camera.position.set(eye.x + j, eye.y + j - compression * 0.32 + Math.max(0, s.lift) * 0.67, eye.z);
     const roll = s.lean * 0.15 + f.turn * 0.065;
     this.camera.up.set(Math.cos(f.yaw) * Math.sin(roll), Math.cos(roll), Math.sin(f.yaw) * Math.sin(roll));
+    if (rescueView > 0) {
+      const tow = world(s.at, s.x, 1.55 + s.lift * 0.7);
+      focus.x += (tow.x - focus.x) * rescueView;
+      focus.y += (tow.y - focus.y) * rescueView;
+      focus.z += (tow.z - focus.z) * rescueView;
+    }
     this.camera.lookAt(focus.x, focus.y + Math.max(0, s.lift) * 0.36, focus.z);
-    const fov = 55 + Math.min(15, s.speed * 0.38) + (s.flight ? 2.8 * Math.sin(Math.PI * s.flight) : 0);
+    const fov =
+      55 +
+      rescueView * 8 +
+      Math.min(15, s.speed * 0.38) +
+      (s.flight ? 2.8 * Math.sin(Math.PI * s.flight) : 0);
     if (Math.abs(fov - this.camera.fov) > 0.06) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
@@ -389,7 +440,7 @@ export class Renderer implements GameRenderer {
     g.clearRect(0, 0, 180, 114);
     g.drawImage(this.routeMap, 0, 0);
     for (const r of [...s.rivals, s]) {
-      const p = track(r.at);
+      const p = courses[s.course].track(r.at);
       g.fillStyle = r === s ? '#a6fff1' : '#ff8757';
       g.beginPath();
       g.arc(32 + p.x * 0.34, 55 + p.z * 0.27, r === s ? 4 : 2.3, 0, Math.PI * 2);
@@ -408,10 +459,14 @@ export class Renderer implements GameRenderer {
           ? 'SINGLE SPAN   /   EXPOSED EDGES'
           : '';
     const cue =
-      s.at >= FINISH
+      s.at >= s.finishAt
         ? places[s.place - 1] + ' · FINISH'
         : s.fall
-          ? 'MAGNET RECOVERY   /   ' + Math.ceil(s.fall) + 's'
+          ? RESCUE - s.fall < CATCH
+            ? 'MAGNET INBOUND'
+            : RESCUE - s.fall < DROP
+              ? 'ON THE WINCH'
+              : 'RELEASING'
           : s.flight
             ? 'AIRBORNE'
             : s.slow
@@ -437,6 +492,8 @@ export class Renderer implements GameRenderer {
       enough,
       !!s.boost,
       s.menu,
+      s.course,
+      s.laps,
       s.tier,
       s.place,
       s.lap,
@@ -449,9 +506,15 @@ export class Renderer implements GameRenderer {
     if (key === this.lastHud) return;
     this.lastHud = key;
     this.info.classList.toggle('on-grid', s.menu);
+    this.menu.querySelector('small')!.textContent =
+      courses[s.course].name.toUpperCase() +
+      ' · ' +
+      s.laps +
+      ' LAPS · ' +
+      (s.laps === 3 ? '~2–4 MIN' : s.laps === 12 ? '~9–14 MIN' : '~18–28 MIN');
     this.menu.querySelector('span')!.textContent = '‹  ' + classes[s.tier] + '  ›';
     this.label.textContent = places[s.place - 1];
-    this.lap.textContent = 'LAP ' + s.lap + ' / 3';
+    this.lap.textContent = 'LAP ' + s.lap + ' / ' + s.laps;
     this.gauge.querySelector('b')!.textContent = String(speed);
     this.gauge.style.setProperty('--speed', Math.min(100, speed / 1.4) + '%');
     this.gauge.style.setProperty('--launch', (LAUNCH_SPEED * 3.6) / 1.4 + '%');
@@ -475,6 +538,7 @@ export class Renderer implements GameRenderer {
   unmount() {
     this.disposed = true;
     this.sound.stop();
+    this.bikes.forEach((b) => b.skeleton.dispose());
     const geometries = new Set<T.BufferGeometry>(),
       materials = new Set<T.Material>(),
       textures = new Set<T.Texture>();

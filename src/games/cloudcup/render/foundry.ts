@@ -1,11 +1,12 @@
 import * as T from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LAND, LIP, lapAt } from '../sim/deck';
-import { world } from '../sim/track';
+import { courses, type Course } from '../sim/track';
 
 // All distances here are local to the hanging ladle. Keep the supports on
 // its outboard side so the silhouette never cuts across the riding surface.
-export function buildFoundry(scene: T.Scene) {
+export function buildFoundry(scene: T.Object3D, course: Course = courses[0]) {
+  const { world } = course;
   const root = new T.Group(),
     at = (LIP + LAND) / 2;
   const frame = world(at, 2.72);

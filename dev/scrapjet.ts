@@ -6,7 +6,15 @@ import { module as game } from '../src/games/cloudcup';
 
 const host = document.querySelector('main')!,
   leftAction = document.querySelector<HTMLButtonElement>('[data-key="KeyZ"]')!;
-const keys: Record<string, Button> = { ArrowLeft: 'left', ArrowRight: 'right', KeyZ: 'a', KeyX: 'b' };
+const courseButton = document.querySelector<HTMLButtonElement>('[data-key="KeyX"]')!;
+const distanceButton = document.querySelector<HTMLButtonElement>('[data-key="ArrowUp"]')!;
+const keys: Record<string, Button> = {
+  ArrowUp: 'up',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  KeyZ: 'a',
+  KeyX: 'b',
+};
 const sources = new Map<string, string>(),
   edges = new Set<Button>();
 const base = new NullInput().state();
@@ -73,7 +81,11 @@ function draw(time: number) {
   session.frame(Math.min(0.1, (time - previous) / 1000));
   previous = time;
   renderer.render(session.sim.snapshot(), session.ctx.bike(), session.ctx.input());
-  if (!session.sim.inMenu?.()) leftAction.textContent = 'Left sweep · Z';
+  if (!session.sim.inMenu?.() && !distanceButton.hidden) {
+    leftAction.textContent = 'Left sweep · Z';
+    courseButton.textContent = 'Right sweep · X';
+    distanceButton.hidden = true;
+  }
   if (session.sim.isOver()) {
     again.hidden = false;
     return;

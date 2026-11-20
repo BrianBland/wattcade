@@ -40,6 +40,10 @@ const session = createGameSession({
     state: () => ({ ...base, pressed, held, source: 'keyboard' }),
   },
 });
+if (new URLSearchParams(location.search).get('course') === 'kiln') {
+  edges.add('b');
+  session.step(1);
+}
 const renderer = await game.loadRenderer();
 renderer.mount(host, { profile });
 await renderer.ready?.();

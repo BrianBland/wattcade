@@ -4,7 +4,7 @@ import type { Course } from '../sim/track';
 
 // Bottle kilns on the terraced rim. The lit fire doors and pale refractory
 // bands are visible from both directions across the quarry.
-export function buildKilns(scene: T.Object3D, course: Course) {
+export function buildKilns(scene: T.Object3D, course: Course, brick?: T.Texture) {
   const parts: T.BufferGeometry[] = [];
   function part(src: T.BufferGeometry, color: string, x = 0, y = 0, z = 0) {
     const g = src.index ? src.toNonIndexed() : src;
@@ -17,7 +17,9 @@ export function buildKilns(scene: T.Object3D, course: Course) {
     parts.push(g);
   }
   const profile = [
-    [4.2, -7],
+    [5.2, -48],
+    [5.2, -7],
+    [4.4, -6.8],
     [4.2, 2.6],
     [4.5, 3],
     [4.3, 4.7],
@@ -35,7 +37,7 @@ export function buildKilns(scene: T.Object3D, course: Course) {
       profile.map(([x, y]) => new T.Vector2(x, y)),
       24,
     ),
-    '#895841',
+    '#cba791',
   );
   for (const [r, y] of [
     [4.24, 1.3],
@@ -59,7 +61,18 @@ export function buildKilns(scene: T.Object3D, course: Course) {
   }
   const geometry = mergeGeometries(parts)!;
   parts.forEach((p) => p.dispose());
-  const mat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, side: T.DoubleSide });
+  if (brick) {
+    const pos = geometry.getAttribute('position'),
+      uv = geometry.getAttribute('uv');
+    for (let i = 0; i < pos.count; i++) uv.setXY(i, uv.getX(i) * 3, pos.getY(i) / 9);
+  }
+  const mat = new T.MeshStandardMaterial({
+    map: brick ?? null,
+    vertexColors: true,
+    roughness: 0.92,
+    side: T.DoubleSide,
+  });
+  const chimneys: T.Vector3[] = [];
   for (const [at, side, size] of [
     [29, -5.9, 0.83],
     [64, -6.8, 1.06],
@@ -79,5 +92,7 @@ export function buildKilns(scene: T.Object3D, course: Course) {
     mesh.scale.setScalar(size);
     mesh.receiveShadow = true;
     scene.add(mesh);
+    chimneys.push(mesh.position.clone().add(new T.Vector3(0, 15.1 * size, 0)));
   }
+  return chimneys;
 }

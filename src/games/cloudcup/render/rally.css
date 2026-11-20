@@ -192,6 +192,41 @@
   background: linear-gradient(110deg, transparent 7%, #201d26c2 8%, #201d2699 100%);
 }
 
-.scrapjet-stage.kiln-dusk {
-  background-image: linear-gradient(180deg,#45426c85,#83556566 49%,#49384e55),url('/scrapjet/magnet-mile.webp');
+.scrapjet-stage.kiln-dusk, .scrapjet-world.kiln-night {
+  background-image: url('/scrapjet/kiln-night.webp');
+  background-color: #253947;
 }
+.sj-speed.pressure { --dial-color: #aa8061; }
+.sj-speed.charging { --dial-color: #ffbe75; }
+.sj-speed.pressure .sj-dial { background: #775e4c; }
+
+.sj-grid {
+  inset: auto auto 7% 3.5%;
+  box-sizing: border-box;
+  max-width: min(27em, 89%);
+  padding: .9em 1.3em 1em;
+  background: linear-gradient(100deg, #111e26f5 62%, #17222ce8);
+  border-left: .22em solid #f7ba71;
+  box-shadow: 0 .3em 1.5em #111b252e;
+}
+.sj-grid strong { font: 850 clamp(1.8em, 5.6vh, 3.6em)/.97 system-ui,sans-serif; letter-spacing: -.065em; }
+.sj-grid p { font: 500 .86em/1.35 system-ui,sans-serif; margin: .6em 0; color: #d7dfd9; }
+.sj-grid small { font-style: normal; }
+.sj-grid small:first-child { letter-spacing: .2em; color: #e9bd83; }
+.sj-grid span { font: 750 .9em/1.35 system-ui,sans-serif; padding: .4em 0; border-top: 1px solid #b8cfcd44; }
+
+.sj-threat {
+  position: absolute;
+  top: 48%; right: 3%;
+  padding: .5em .7em .62em;
+  font: 800 clamp(10px,1.5vw,17px)/1 system-ui,sans-serif;
+  letter-spacing: .06em;
+  color: #ffe3aa; background: #33251de8;
+  border-right: .24em solid #ffbc6a;
+}
+.sj-threat.left { left: 3%; right: auto; border-right: 0; border-left: .24em solid #ffbc6a; }
+.sj-threat::after {
+  content:''; position:absolute; inset: auto 0 0 auto; height:.17em;
+  width:var(--wind); background: #ffbd6c;
+}
+.sj-threat.left::after { left:0; right:auto; }

@@ -18,6 +18,7 @@ import {
   prize,
 } from '../sim/deck';
 import { LAP, track, world } from '../sim/track';
+import { firebox, firingLine } from '../sim/kiln';
 import { playBounds } from '../render/renderer';
 function race(ftp = 200) {
   const profile = { ...testProfile(), ftp },
@@ -338,4 +339,36 @@ it('trims the line with a light paddle squeeze and reaches full steering before 
   expect(trim(0.32)).toBeGreaterThan(0);
   expect(trim(0.32)).toBeLessThan(trim(0.8));
   expect(trim(0.8)).toBeCloseTo(trim(1), 6);
+});
+
+it('pays the firing line at class effort and lets the center and low-power rider finish without charging', () => {
+  function crossDrum(fraction: number, follow: boolean, ftp: number) {
+    const r = race(ftp);
+    r.press('b');
+    r.press('a');
+    const bike = r.session.fakeBike!;
+    bike.useScript(null);
+    bike.manual = { cadence: 85, power: ftp * fraction, hr: null };
+    for (let tick = 0; tick < 30 * 50 && r.snap().at < 345; tick++) {
+      const s = r.snap(),
+        d = s.at + 4,
+        run = firebox(d);
+      const target = follow ? (run ? firingLine(run, d) : d > 52 && d < 88 ? -0.74 : 0) : 0;
+      const error = target - s.x - s.lateralSpeed * 0.13;
+      r.paddle(Math.abs(error) > 0.045 ? Math.sign(error) : 0);
+      r.session.step(1);
+    }
+    return r.snap();
+  }
+  for (const ftp of [145, 285]) {
+    const ride = crossDrum(0.78, true, ftp);
+    expect(ride.at).toBeGreaterThan(332);
+    expect(ride.firing.releases).toBe(1);
+    expect(ride.boost).toBeGreaterThan(0);
+    expect(ride.rivals[2].firing.releases).toBe(1);
+  }
+  expect(crossDrum(0.78, false, 200).firing.releases).toBe(0);
+  const easy = crossDrum(0.45, true, 200);
+  expect(easy.at).toBeGreaterThan(332);
+  expect(easy.firing.releases).toBe(0);
 });

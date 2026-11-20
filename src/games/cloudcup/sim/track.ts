@@ -14,14 +14,43 @@ function route(a: number) {
     y: 5 * Math.sin(2 * a - 0.8) + 2.6 * Math.sin(4 * a + 0.2),
   };
 }
-// A terraced quarry loop. The long climb on the eastern rim crests
-// into a descending pair of esses on the far side.
+// Survey stakes around the firing sheds, the descending cooling flume and
+// the two return switchbacks. Each stake includes a height above the quarry.
+const stakes = [
+  [2, 5, 12],
+  [1, 4, -47],
+  [33, 5, -99],
+  [99, 8, -127],
+  [179, 13, -135],
+  [233, 19, -111],
+  [227, 18, -71],
+  [165, 13, -56],
+  [131, 2, -24],
+  [151, -9, 8],
+  [228, -11, 12],
+  [266, -4, 43],
+  [251, 7, 87],
+  [188, 13, 104],
+  [129, 14, 83],
+  [86, 10, 51],
+  [64, 7, 66],
+  [65, 6, 108],
+  [31, 4, 128],
+  [-2, 4, 98],
+];
 function quarry(a: number) {
-  return {
-    x: 150 - 135 * Math.cos(a) + 22 * Math.sin(2 * a) + 9 * Math.cos(3 * a),
-    z: -134 * Math.sin(a) - 22 * Math.sin(2 * a) + 15 * Math.sin(3 * a),
-    y: 10 * Math.sin(a - 0.8) + 4.5 * Math.sin(3 * a - 0.35),
+  const n = stakes.length,
+    u = (a * n) / (Math.PI * 2),
+    i = Math.floor(u),
+    t = u - i;
+  const sample = (k: number) => {
+    const p = stakes[(i + n - 1) % n][k],
+      q = stakes[i % n][k],
+      r = stakes[(i + 1) % n][k],
+      s = stakes[(i + 2) % n][k];
+    return q + 0.5 * t * (r - p + t * (2 * p - 5 * q + 4 * r - s + t * (3 * q - p - 3 * r + s)));
   };
+  return { x: sample(0), y: sample(1), z: sample(2) };
 }
 export const WIDTH = 4.6;
 function surveyCourse(name: string, line: typeof route) {

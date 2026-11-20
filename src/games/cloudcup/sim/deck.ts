@@ -81,13 +81,13 @@ export function chassis() {
   };
 }
 type Bike = ReturnType<typeof chassis> & { at: number; x: number };
-export function recover(b: Bike, dt: number) {
+export function recover(b: Bike, dt: number, viaduct = true) {
   b.craneAway = Math.max(0, b.craneAway - dt);
   b.grace = Math.max(0, b.grace - dt);
   if (!b.fall) return false;
   b.fall = b.fall <= dt + 1e-9 ? 0 : b.fall - dt;
   const age = RESCUE - b.fall;
-  const destination = forkWidth(b.at) > 0 ? safeLine(b.at) : 0;
+  const destination = viaduct && forkWidth(b.at) > 0 ? safeLine(b.at) : 0;
   const caught = b.fallLift - 1.55;
   b.x = b.fallX + (destination - b.fallX) * easeBetween(age, 1.09, 1.73);
   if (age < CATCH) b.lift = b.fallLift - 1.55 * (age / CATCH) ** 2;
@@ -104,7 +104,11 @@ export function recover(b: Bike, dt: number) {
 }
 // Both the launch test and the rendered mesh share the same lip and receiving
 // deck. Lock forward momentum at takeoff so braking in midair cannot extend range.
-export function crossDeck(b: Bike, previous: number, speed: number, dt: number) {
+export function crossDeck(b: Bike, previous: number, speed: number, dt: number, solidWidth?: number) {
+  if (solidWidth !== undefined) {
+    if (Math.abs(b.x) > solidWidth) fallOff(b);
+    return;
+  }
   const lip = Math.floor(previous / LAP) * LAP + LIP;
   if (!b.flight && previous < lip && b.at >= lip && b.x >= deck(lip, true).lo && b.x <= deck(lip, true).hi) {
     b.flight = FLIGHT;
@@ -127,6 +131,9 @@ export function crossDeck(b: Bike, previous: number, speed: number, dt: number) 
     b.lift = b.x > 0 ? rises(b.at) : 0;
     return;
   }
+  fallOff(b);
+}
+function fallOff(b: Bike) {
   b.fallX = b.x;
   b.fallLift = b.lift;
   b.fall = RESCUE;

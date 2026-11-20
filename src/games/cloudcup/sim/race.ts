@@ -18,6 +18,7 @@ import {
   easeBetween,
 } from './deck';
 import { LAP, WIDTH, courses } from './track';
+import { firebox, firingGear, firingLine, kilnWidth, pressureCells, rideSeam } from './kiln';
 export { LAP };
 export const FINISH = LAP * 3;
 export const distances = [3, 12, 24] as const;
@@ -28,6 +29,8 @@ export const pads = [78, 334, 375, 536, 729, 931].map((at, i) => ({
   x: [-0.78, 0.52, 0.82, -0.62, 0.15, -0.92][i],
 }));
 export type Rival = ReturnType<typeof chassis> & {
+  firing: ReturnType<typeof firingGear>;
+  release: number;
   at: number;
   x: number;
   lean: number;
@@ -64,11 +67,14 @@ export function createRace(ctx: GameContext) {
     ctx.tuning.num('tradeWindFtp', 0.78, 0.3, 1.3, 0.05),
     ctx.tuning.num('galeFtp', 1.02, 0.3, 1.5, 0.05),
   ];
+  const seamPace = ctx.tuning.num('seamPaceFraction', 0.8, 0.5, 1, 0.05);
   const grade = ctx.tuning.num('overloadGrade', 2.5, 0, 5, 0.25);
   const purge = ctx.tuning.num('purgeFtp', 1.1, 0.9, 1.4, 0.05);
   const purgeSeconds = ctx.tuning.num('purgeSeconds', 2, 1, 4, 0.25);
   const rivals: Rival[] = [-0.55, 0.72, 0.05].map((x, i) => ({
     ...chassis(),
+    firing: firingGear(),
+    release: 0,
     at: [1.6, 4, 9][i],
     x,
     lean: 0,
@@ -81,6 +87,8 @@ export function createRace(ctx: GameContext) {
   }));
   const s = {
     ...chassis(),
+    firing: firingGear(),
+    seamPowered: false,
     menu: true,
     tier: 1,
     course: 0,
@@ -179,7 +187,8 @@ export function createRace(ctx: GameContext) {
     s.notice -= dt;
     s.impact = Math.max(0, s.impact - dt);
     s.reload = Math.max(0, s.reload - dt);
-    const rescuing = recover(s, dt);
+    const kiln = s.course === 1;
+    const rescuing = recover(s, dt, !kiln);
     const previousJumps = s.jumps;
     s.shield = Math.max(0, s.shield - dt);
     s.tow = Math.max(0, s.tow - dt);
@@ -199,6 +208,7 @@ export function createRace(ctx: GameContext) {
       edge ||
       (Math.abs(pd) > 0.18 ? Math.sign(pd) * clamp(0.38 + (Math.abs(pd) - 0.18) * 1.45, 0, 1) : 0);
     const effort = clamp(ctx.bike().ftpFraction, 0, 2);
+    s.seamPowered = kiln && effort >= pace[s.tier]() * seamPace();
     const drift = -turn * 0.58 * Math.pow(s.speed / cruise(), 2);
     s.lateralSpeed += (steer * 1.95 + drift - s.lateralSpeed) * (1 - Math.exp(-dt * (steer ? 5 : 9)));
     if (!rescuing) {
@@ -223,6 +233,8 @@ export function createRace(ctx: GameContext) {
           Math.abs(r.x - s.x) < 0.25,
       );
     s.draft = clamp(s.draft + dt * (inWake ? 1.3 : -2.4), 0, 1);
+    const span = deck(s.at, s.x > 0);
+    const edgeX = kiln ? kilnWidth(s.at) : Math.max(Math.abs(span.lo), Math.abs(span.hi));
     const target =
       cruise() *
       Math.sqrt(effort) *
@@ -230,15 +242,13 @@ export function createRace(ctx: GameContext) {
       (s.boost > 0 ? 1.36 : 1) *
       (s.tow > 0 ? 1.23 : 1) *
       (s.slow > 0 ? 0.72 : 1) *
-      (Math.abs(s.x) > Math.max(Math.abs(deck(s.at, s.x > 0).lo), Math.abs(deck(s.at, s.x > 0).hi)) - 0.13
-        ? 0.86
-        : 1);
+      (Math.abs(s.x) > edgeX - 0.13 ? 0.86 : 1);
     s.speed += (target - s.speed) * (1 - Math.exp(-dt * (target > s.speed ? 1.25 : 0.75)));
     if (rescuing) s.speed = s.fall ? 0 : target * 0.45;
     else if (s.flight) s.speed = s.launchSpeed;
     const last = s.at;
     s.at = Math.min(s.finishAt, s.at + (rescuing ? 0 : s.speed * dt));
-    if (!rescuing) crossDeck(s, last, s.speed, dt);
+    if (!rescuing) crossDeck(s, last, s.speed, dt, kiln ? kilnWidth(s.at) : undefined);
     if (s.fall && !rescuing) {
       if (s.at === s.finishAt) s.at = last;
       s.boost = 0;
@@ -266,9 +276,14 @@ export function createRace(ctx: GameContext) {
         say('Jets clear');
       }
     }
+    if (kiln && rideSeam(s.firing, last, s.at, s.x, !s.fall && s.seamPowered && !rescuing)) {
+      s.boost = 3.8;
+      s.boosts++;
+      say('Pressure release');
+    }
     const pad = pads[s.next % pads.length],
       marker = pad.at + Math.floor(s.next / pads.length) * LAP;
-    if (last < marker && s.at >= marker) {
+    if (!kiln && last < marker && s.at >= marker) {
       s.next++;
       if (!s.fall && Math.abs(s.x - pad.x) < 0.31) {
         s.boost = 2.8;
@@ -276,8 +291,9 @@ export function createRace(ctx: GameContext) {
         say('Afterburner');
       }
     }
-    const crate = salvage[s.nextCrate % salvage.length],
-      crateAt = crate.at + Math.floor(s.nextCrate / salvage.length) * LAP;
+    const cells = kiln ? pressureCells : salvage;
+    const crate = cells[s.nextCrate % cells.length],
+      crateAt = crate.at + Math.floor(s.nextCrate / cells.length) * LAP;
     if (last < crateAt && s.at >= crateAt) {
       s.nextCrate++;
       if (!s.fall && Math.abs(s.x - crate.x) < 0.35) {
@@ -298,7 +314,7 @@ export function createRace(ctx: GameContext) {
     const regrouping = s.time < regroupUntil;
     const lead = regrouping ? pointRider : Math.floor(s.time / 12) % 3;
     rivals.forEach((r, i) => {
-      if (r.finish !== null || recover(r, dt)) return;
+      if (r.finish !== null || recover(r, dt, !kiln)) return;
       const oldAt = r.at,
         oldJumps = r.jumps;
       const gap = r.at - s.at,
@@ -316,26 +332,35 @@ export function createRace(ctx: GameContext) {
         : Math.sin(s.time * 0.27 + i * 2) * 0.88;
       if (regrouping && nearby) wantedX = exitLine + (flank ? flankSide * 0.58 : 0);
       const ahead = r.at + 14,
-        fork = Math.max(forkWidth(ahead), forkWidth(r.at));
+        fork = kiln ? 0 : Math.max(forkWidth(ahead), forkWidth(r.at));
       const lapDistance = lapAt(r.at);
       // Switch spends a short effort on the approach. A hit can still spoil the jump.
-      const jumpRun = i === 2 && s.tier > 0 && !regrouping && lapDistance >= 148 && lapDistance < LAND + 12;
+      const jumpRun =
+        !kiln && i === 2 && s.tier > 0 && !regrouping && lapDistance >= 148 && lapDistance < LAND + 12;
       if (jumpRun) wantedX += (rampLine(ahead) - wantedX) * easeBetween(lapDistance, 148, 186);
       if (fork > 0) {
         const takeRamp = jumpRun || (i === 2 && paceSpeed >= LAUNCH_SPEED * 1.02);
         const line = takeRamp ? rampLine(ahead) : safeLine(ahead);
         wantedX = wantedX * (1 - fork) + line * fork;
-      } else if (narrowWidth(ahead) > 0 || narrowWidth(r.at) > 0) wantedX = clamp(wantedX, -0.38, 0.38);
+      } else if (!kiln && (narrowWidth(ahead) > 0 || narrowWidth(r.at) > 0))
+        wantedX = clamp(wantedX, -0.38, 0.38);
+      if (kiln) {
+        const run = firebox(ahead);
+        if (run && i === 2 && !r.stun) wantedX = firingLine(run, lapAt(ahead));
+        const limit = kilnWidth(ahead) - 0.18;
+        wantedX = clamp(wantedX, -limit, limit);
+      }
       const vx = r.stun || r.windup ? 0 : clamp((clamp(wantedX, -1.65, 1.3) - r.x) * 1.7, -0.85, 0.85);
       r.x += (vx + r.shove) * dt;
       r.shove *= Math.exp(-dt * 4);
-      r.lean += (clamp(-vx * 0.36 - turn * 0.2, -0.6, 0.6) - r.lean) * dt * 5;
+      r.lean += (clamp(-vx * 0.36 - courses[s.course].track(r.at).turn * 0.2, -0.6, 0.6) - r.lean) * dt * 5;
       const wantedGap = regrouping && flank ? 16 + flankSide * 3 : flank ? 1.5 : 9;
       const tactical = nearby
         ? clamp(s.speed + (wantedGap - gap) * 0.85, paceSpeed * 0.8, paceSpeed * 1.13)
         : paceSpeed;
       const approach = jumpRun && lapDistance < LIP ? easeBetween(lapDistance, 164, LIP - 8) : 0;
-      const packSpeed = tactical * packPace(gap);
+      r.release = Math.max(0, r.release - dt);
+      const packSpeed = tactical * packPace(gap) * (r.release ? 1.36 : 1);
       const speed = r.flight
         ? r.launchSpeed
         : (packSpeed + approach * Math.max(0, cruise() * 1.09 - packSpeed)) *
@@ -343,7 +368,8 @@ export function createRace(ctx: GameContext) {
           Math.min(1, s.time * 1.35);
 
       r.at = Math.min(s.finishAt, r.at + speed * dt);
-      crossDeck(r, oldAt, speed, dt);
+      crossDeck(r, oldAt, speed, dt, kiln ? kilnWidth(r.at) : undefined);
+      if (kiln && rideSeam(r.firing, oldAt, r.at, r.x, !r.fall && !r.stun)) r.release = 3.8;
       if (r.fall) {
         if (r.at === s.finishAt) r.at = oldAt;
         if (r.stun > 0) {
@@ -456,7 +482,12 @@ export function createRace(ctx: GameContext) {
       ],
       touchControls: s.menu ? ['left', 'right', 'up', 'b', 'a'] : ['left', 'right', 'a', 'b'],
     }),
-    snapshot: () => ({ ...s, purgeFtp: purge() }),
+    snapshot: () => ({
+      ...s,
+      firing: { ...s.firing },
+      seamFtp: pace[s.tier]() * seamPace(),
+      purgeFtp: purge(),
+    }),
     summary: () => ({
       Place: s.place,
       Class: classes[s.tier],
@@ -466,7 +497,7 @@ export function createRace(ctx: GameContext) {
       Strikes: s.strikes,
       Counters: s.counters,
       Falls: s.falls,
-      Jumps: s.jumps,
+      ...(s.course === 1 ? { Releases: s.firing.releases } : { Jumps: s.jumps }),
       RingOuts: s.ringOuts,
       Salvage: s.crates,
       Hits: s.hits,

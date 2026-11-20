@@ -1,9 +1,12 @@
 import { play, sfxGraph } from '../../../audio/sfx';
 import { setVoice, stopVoices } from '../../../audio/voices';
+import { rattleChain } from './chainAudio';
+import { fireboxLight } from '../sim/kiln';
 import { CATCH, RESCUE } from '../sim/deck';
 import { type RaceView } from '../sim/race';
 
 export class RallySound {
+  private winding = -1;
   private previous?: RaceView;
   private sleep?: ReturnType<typeof setTimeout>;
   update(s: RaceView) {
@@ -31,6 +34,27 @@ export class RallySound {
       filter: { type: 'bandpass', freq: 450 + load * 1230, q: 0.75 },
       glide: 0.22,
     });
+    if (s.course === 1) {
+      const heat = fireboxLight(s.at);
+      setVoice('scrapjet.kiln', {
+        wave: 'triangle',
+        freq: 55 + heat * 11,
+        gain: heat * 0.063,
+        filter: { type: 'lowpass', freq: 220, q: 0.7 },
+        glide: 0.22,
+      });
+      setVoice('scrapjet.pressure', {
+        wave: 'noise',
+        freq: 0,
+        gain: s.firing.onSeam ? 0.037 : 0,
+        filter: { type: 'bandpass', freq: 570 + Math.min(1, s.firing.coverage) * 1100, q: 2.6 },
+        glide: 0.13,
+      });
+      if (prev && s.firing.releases > prev.firing.releases) play('whoosh', { pitch: 0.68, vol: 0.62 });
+    }
+    const winding = s.rivals.findIndex((r) => r.windup > 0);
+    if (winding >= 0 && this.winding !== winding) rattleChain(s.rivals[winding].x < s.x ? -1 : 1);
+    this.winding = winding;
     if (!prev) return;
     if (s.flight && !prev.flight) play('whoosh', { pitch: 0.86, vol: 0.35 });
     if (s.jumps > prev.jumps) {
@@ -48,6 +72,7 @@ export class RallySound {
   }
   stop() {
     clearTimeout(this.sleep);
+    this.winding = -1;
     stopVoices('scrapjet.');
   }
 }

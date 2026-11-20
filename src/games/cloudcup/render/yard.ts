@@ -13,7 +13,6 @@ import {
 } from '../sim/deck';
 import { buildRails, launchPlate } from './viaduct';
 import { buildFoundry } from './foundry';
-import { buildKilns } from './kilns';
 import { buildSalvage } from './salvage';
 import { pads } from '../sim/race';
 
@@ -64,7 +63,6 @@ export function buildYard(
   ]);
   deck.receiveShadow = true;
   scene.add(deck);
-  if (course === courses[1]) buildKilns(scene, course);
   buildRails(scene, course);
   const animatePour = buildFoundry(scene, course);
   const blocks: { matrix: T.Matrix4; color: T.Color }[] = [];
@@ -124,7 +122,7 @@ export function buildYard(
   const sectors = [
     [40, course.name.toUpperCase()],
     [JOIN + 12, 'THE CRUSHER'],
-    [610, course === courses[1] ? 'QUARRY RIM' : 'BONEYARD'],
+    [610, 'BONEYARD'],
     [915, 'LAST CHANCE'],
   ] as const;
   for (const [at, name] of sectors) {

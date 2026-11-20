@@ -7,6 +7,9 @@ import { lapAt, LIP, LAUNCH_SPEED, CATCH, DROP, RESCUE, easeBetween } from '../s
 import { buildBike } from './bike';
 import { buildWake } from './wake';
 import { buildCranes } from './crane';
+import { timingLine } from './timingLine';
+import { buildFiringWorks } from './firingWorks';
+import { firebox, fireboxLight, requiredCoverage } from '../sim/kiln';
 import { buildYard } from './yard';
 import './rally.css';
 
@@ -39,7 +42,7 @@ export class Renderer implements GameRenderer {
   private scene!: T.Scene;
   private cranes!: ReturnType<typeof buildCranes>;
   private yards = new Map<number, { root: T.Group; animate: ReturnType<typeof buildYard> }>();
-  private yardMaps?: [T.Texture, T.Texture];
+  private yardMaps?: [T.Texture, T.Texture, T.Texture, T.Texture];
   private activeCourse = -1;
   private camera = new T.PerspectiveCamera(58, 1, 0.15, 360);
   private gl!: T.WebGLRenderer;
@@ -59,11 +62,15 @@ export class Renderer implements GameRenderer {
   private height = 1;
   private animateYard?: (time: number, distance: number) => void;
   private sound = new RallySound();
+  private skyLight = new T.HemisphereLight('#ffead1', '#8d6575', 2.1);
+  private moon = new T.Color('#adcbe6');
+  private fire = new T.Color('#ffab66');
   private sun = new T.DirectionalLight('#fff1bd', 2.15);
   private lastHud = '';
   private label!: HTMLElement;
   private lap!: HTMLElement;
   private combat!: HTMLElement;
+  private threat!: HTMLElement;
   private gauge!: HTMLElement;
   private cue!: HTMLElement;
   private menu!: HTMLElement;
@@ -89,7 +96,7 @@ export class Renderer implements GameRenderer {
     this.scene = new T.Scene();
     this.cranes = buildCranes(this.scene);
     this.scene.fog = new T.FogExp2('#d28d70', 0.008);
-    this.scene.add(new T.HemisphereLight('#ffead1', '#8d6575', 2.1));
+    this.scene.add(this.skyLight);
     const sun = this.sun;
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
@@ -197,7 +204,7 @@ export class Renderer implements GameRenderer {
     this.info = document.createElement('div');
     this.info.className = 'scrapjet-dash';
     this.info.innerHTML =
-      '<div class="sj-rank"><b></b><span></span></div><canvas class="sj-map" width="180" height="114"></canvas><div class="sj-combat"></div><div class="sj-speed"><div><b>0</b><small>KM/H</small></div><div class="sj-dial"><i></i><em></em></div><span></span></div><div class="sj-cue"></div><div class="sj-grid"><small>Magnet Mile · 3 laps</small><strong>SCRAPJET<br>RALLY</strong><span></span><small>Paddles · class &nbsp; B · course &nbsp; ↑ · distance &nbsp; A · race</small></div>';
+      '<div class="sj-rank"><b></b><span></span></div><canvas class="sj-map" width="180" height="114"></canvas><div class="sj-combat"></div><div class="sj-threat"></div><div class="sj-speed"><div><b>0</b><small>KM/H</small></div><div class="sj-dial"><i></i><em></em></div><span></span></div><div class="sj-cue"></div><div class="sj-grid"><small>SCRAPJET RALLY</small><strong></strong><p></p><span></span><small>Paddles · class &nbsp; B · course &nbsp; ↑ · distance &nbsp; A · race</small></div>';
     this.stage.append(this.info);
     this.label = this.info.querySelector('b')!;
     this.lap = this.info.querySelector('.sj-rank span')!;
@@ -205,19 +212,22 @@ export class Renderer implements GameRenderer {
     this.gauge = this.info.querySelector('.sj-speed')!;
     this.cue = this.info.querySelector('.sj-cue')!;
     this.menu = this.info.querySelector('.sj-grid')!;
+    this.threat = this.info.querySelector('.sj-threat')!;
     this.map = this.info.querySelector('canvas')!;
     this.routeMap = document.createElement('canvas');
     this.routeMap.width = 180;
     this.routeMap.height = 114;
     this.resize(host.clientWidth, host.clientHeight);
     this.assets = Promise.all(
-      ['slag-road', 'salvage-enamel'].map((name) => loader.loadAsync('/scrapjet/' + name + '.webp')),
-    ).then(([road, enamel]) => {
+      ['slag-road', 'salvage-enamel', 'kiln-plates', 'kiln-bricks'].map((name) =>
+        loader.loadAsync('/scrapjet/' + name + '.webp'),
+      ),
+    ).then(([road, enamel, plates, brick]) => {
       if (this.disposed) {
-        [road, enamel].forEach((t) => t.dispose());
+        [road, enamel, plates, brick].forEach((t) => t.dispose());
         return;
       }
-      this.yardMaps = [road, enamel];
+      this.yardMaps = [road, enamel, plates, brick];
       this.setCourse(0);
     });
     this.assets = Promise.all([this.assets, ...skinLoads]).then(() => undefined);
@@ -225,14 +235,23 @@ export class Renderer implements GameRenderer {
   private setCourse(id: number) {
     if (!this.yardMaps || this.activeCourse === id) return;
     this.stage.classList.toggle('kiln-dusk', id === 1);
-    (this.scene.fog as T.FogExp2).color.set(id === 1 ? '#9d8190' : '#d28d70');
-    this.sun.color.set(id === 1 ? '#ffd4a4' : '#fff1bd');
+    (this.scene.fog as T.FogExp2).color.set(id === 1 ? '#475b70' : '#d28d70');
+    this.root.classList.toggle('kiln-night', id === 1);
+    this.skyLight.color.set(id === 1 ? '#adafc1' : '#ffead1');
+    this.skyLight.groundColor.set(id === 1 ? '#435360' : '#8d6575');
+    this.sun.color.set(id === 1 ? '#adcbe6' : '#fff1bd');
     const previous = this.yards.get(this.activeCourse);
     if (previous) previous.root.visible = false;
     let yard = this.yards.get(id);
     if (!yard) {
       const root = new T.Group();
-      const animate = buildYard(root, ...this.yardMaps, this.gl.capabilities.getMaxAnisotropy(), courses[id]);
+      const [road, enamel, plates, brick] = this.yardMaps;
+      const aniso = this.gl.capabilities.getMaxAnisotropy();
+      const animate =
+        id === 1
+          ? buildFiringWorks(root, courses[id], plates, brick, aniso)
+          : buildYard(root, road, enamel, aniso, courses[id]);
+      timingLine(root, courses[id], id === 1 ? 1.58 : 1.32);
       yard = { root, animate };
       this.yards.set(id, yard);
       this.scene.add(root);
@@ -308,6 +327,7 @@ export class Renderer implements GameRenderer {
     this.setCourse(s.course);
     const { track, world } = courses[s.course];
     const f = track(s.at);
+    if (s.course === 1) this.sun.color.copy(this.moon).lerp(this.fire, fireboxLight(s.at));
     const actors = [
       {
         at: s.at,
@@ -392,7 +412,8 @@ export class Renderer implements GameRenderer {
       55 +
       rescueView * 8 +
       Math.min(15, s.speed * 0.38) +
-      (s.flight ? 2.8 * Math.sin(Math.PI * s.flight) : 0);
+      (s.flight ? 2.8 * Math.sin(Math.PI * s.flight) : 0) +
+      (s.boost > 0 ? 2.2 * Math.min(1, s.boost) : 0);
     if (Math.abs(fov - this.camera.fov) > 0.06) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
@@ -428,7 +449,7 @@ export class Renderer implements GameRenderer {
       }
       pos.needsUpdate = true;
     }
-    this.animateYard?.(s.time, s.at);
+    this.animateYard?.(s.menu ? performance.now() / 1000 : s.time, s.at);
     this.sun.target.position.set(f.x, f.y, f.z);
     this.sun.position.set(f.x - 25, f.y + 37, f.z + 18);
     this.gl.render(this.scene, this.camera);
@@ -448,8 +469,17 @@ export class Renderer implements GameRenderer {
     }
     const danger = s.rivals.find((r) => r.windup > 0);
     const d = lapAt(s.at);
-    const routeCue =
-      d >= 145 && d < LIP
+    const kiln = s.course === 1;
+    const run = kiln ? firebox(s.at) : undefined;
+    const routeCue = kiln
+      ? d >= 30 && d < 88
+        ? 'RIDE THE COPPER SEAM'
+        : d >= 350 && d < 420
+          ? 'COOLING FLUME'
+          : d >= 645 && d < 704
+            ? 'SECOND FIRING'
+            : ''
+      : d >= 145 && d < LIP
         ? s.x > 0.1
           ? ''
           : d < 208
@@ -458,6 +488,13 @@ export class Renderer implements GameRenderer {
         : d >= 610 && d < 672
           ? 'SINGLE SPAN   /   EXPOSED EDGES'
           : '';
+    this.threat.hidden = !danger || !!s.fall || s.menu;
+    if (danger) {
+      const left = danger.x < s.x;
+      this.threat.textContent = left ? '‹  CHAIN LEFT' : 'CHAIN RIGHT  ›';
+      this.threat.classList.toggle('left', left);
+      this.threat.style.setProperty('--wind', (100 * (1 - danger.windup / 1.15)).toFixed(0) + '%');
+    }
     const cue =
       s.at >= s.finishAt
         ? places[s.place - 1] + ' · FINISH'
@@ -475,17 +512,15 @@ export class Renderer implements GameRenderer {
                 '% FTP   ' +
                 Math.floor(s.purge * 100) +
                 '%'
-              : danger
-                ? (danger.x < s.x ? '‹ LEFT' : 'RIGHT ›') + '   /   INCOMING'
-                : s.notice > 0
-                  ? s.message
-                  : routeCue
-                    ? routeCue
-                    : s.draft > 0.7
-                      ? 'IN THE SLIPSTREAM'
-                      : '';
+              : s.notice > 0
+                ? s.message
+                : routeCue
+                  ? routeCue
+                  : s.draft > 0.7
+                    ? 'IN THE SLIPSTREAM'
+                    : '';
     const speed = Math.round(s.speed * 3.6);
-    const ramp = d >= 145 && d < LIP && s.x > 0.1 && !s.fall;
+    const ramp = !kiln && d >= 145 && d < LIP && s.x > 0.1 && !s.fall;
     const enough = s.speed >= LAUNCH_SPEED;
     const key = [
       ramp,
@@ -502,31 +537,55 @@ export class Renderer implements GameRenderer {
       !!s.reload,
       !!s.shield,
       Math.ceil(s.tow),
+      !!run,
+      s.firing.onSeam,
+      s.seamPowered,
+      Math.floor(s.firing.coverage * 25),
     ].join('|');
     if (key === this.lastHud) return;
     this.lastHud = key;
     this.info.classList.toggle('on-grid', s.menu);
-    this.menu.querySelector('small')!.textContent =
-      courses[s.course].name.toUpperCase() +
-      ' · ' +
-      s.laps +
-      ' LAPS · ' +
-      (s.laps === 3 ? '~2–4 MIN' : s.laps === 12 ? '~9–14 MIN' : '~18–28 MIN');
-    this.menu.querySelector('span')!.textContent = '‹  ' + classes[s.tier] + '  ›';
+    if (s.menu) {
+      this.menu.querySelector('strong')!.textContent = courses[s.course].name;
+      this.menu.querySelector('p')!.textContent = kiln
+        ? 'Trace the copper seam to launch out of the firing drum.'
+        : 'Take the service bridge or sprint the broken viaduct.';
+      this.menu.querySelector('span')!.textContent =
+        classes[s.tier] +
+        '   /   ' +
+        s.laps +
+        ' laps   /   ' +
+        (s.laps === 3 ? '2–4 min' : s.laps === 12 ? '9–14 min' : '18–28 min');
+    }
     this.label.textContent = places[s.place - 1];
     this.lap.textContent = 'LAP ' + s.lap + ' / ' + s.laps;
     this.gauge.querySelector('b')!.textContent = String(speed);
     this.gauge.style.setProperty('--speed', Math.min(100, speed / 1.4) + '%');
+    this.gauge.classList.toggle('pressure', !!run);
+    this.gauge.classList.toggle('charging', !!run && s.firing.onSeam);
+    if (run)
+      this.gauge.style.setProperty(
+        '--speed',
+        Math.round(Math.min(1, s.firing.coverage / requiredCoverage) * 100) + '%',
+      );
     this.gauge.style.setProperty('--launch', (LAUNCH_SPEED * 3.6) / 1.4 + '%');
     this.gauge.classList.toggle('approach', ramp);
     this.gauge.classList.toggle('over', (ramp && enough) || !!s.boost);
-    this.gauge.querySelector('span')!.textContent = ramp
-      ? Math.ceil(LAUNCH_SPEED * 3.6) + ' KM/H TO CLEAR'
-      : s.boost
-        ? 'AFTERBURNER'
-        : '';
+    this.gauge.querySelector('span')!.textContent = run
+      ? s.firing.coverage >= requiredCoverage
+        ? 'PRESSURE READY'
+        : !s.seamPowered
+          ? 'PEDAL · ' + Math.ceil(s.seamFtp * 100) + '% FTP'
+          : s.firing.onSeam
+            ? 'CHARGING · HOLD SEAM'
+            : 'ALIGN WITH SEAM'
+      : ramp
+        ? Math.ceil(LAUNCH_SPEED * 3.6) + ' KM/H TO CLEAR'
+        : s.boost
+          ? 'AFTERBURNER'
+          : '';
     this.cue.textContent = cue;
-    this.cue.classList.toggle('danger', !!danger || s.slow > 0);
+    this.cue.classList.toggle('danger', s.slow > 0);
     this.combat.textContent = s.shield
       ? 'SCRAP ARMOUR'
       : s.tow

@@ -230,3 +230,8 @@
   width:var(--wind); background: #ffbd6c;
 }
 .sj-threat.left::after { left:0; right:auto; }
+
+.scrapjet-stage.storm-shelf, .scrapjet-world.storm-night {
+  background-color: #363a59;
+  background-image: url('/scrapjet/stormglass.webp');
+}

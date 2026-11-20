@@ -124,6 +124,18 @@ function surveyCourse(name: string, line: typeof route) {
 
   return { name, track, world };
 }
-export const courses = [surveyCourse('Magnet Mile', route), surveyCourse('Kiln Switchbacks', quarry)];
+// The return deck passes beneath the crown at the center of this figure eight.
+function causeway(a: number) {
+  return {
+    x: 136 + 125 * Math.sin(a),
+    z: -112 * Math.sin(2 * a) - 14 * Math.sin(a),
+    y: 26 + 20 * Math.cos(a) + 5 * Math.sin(2 * a),
+  };
+}
+export const courses = [
+  surveyCourse('Magnet Mile', route),
+  surveyCourse('Kiln Switchbacks', quarry),
+  surveyCourse('Stormglass Causeway', causeway),
+];
 export type Course = (typeof courses)[number];
 export const { track, world } = courses[0];

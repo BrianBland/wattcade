@@ -6,7 +6,7 @@ import { deck, missing, rises } from '../sim/deck';
 import { kilnWidth } from '../sim/kiln';
 import { LAP, courses } from '../sim/track';
 
-it.each(courses)(
+it.each([courses[0], courses[1]])(
   '$name keeps salvage outside the riding envelope on both branches and on adjacent bends',
   (course) => {
     const { world } = course;

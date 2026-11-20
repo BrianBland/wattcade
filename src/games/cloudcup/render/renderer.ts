@@ -9,6 +9,8 @@ import { buildBike } from './bike';
 import { buildWake } from './wake';
 import { buildCranes } from './crane';
 import { timingLine } from './timingLine';
+import { buildCauseway } from './causeway';
+import { canCollectOnArrival, stations, stormWidth } from '../sim/stormglass';
 import { buildFiringWorks } from './firingWorks';
 import { firebox, fireboxLight, requiredCoverage } from '../sim/kiln';
 import { buildYard } from './yard';
@@ -36,6 +38,26 @@ function glowMap() {
   return new T.CanvasTexture(c);
 }
 
+function courseCue(s: RaceView, d: number) {
+  if (s.course === 2) {
+    const station = stations.find((g) => g.at > d && g.at - d < 52);
+    if (!station) return '';
+    if (station.exhibit) return 'GROUNDING FORK';
+    if (canCollectOnArrival(station, station.at - d, s.speed, s.time))
+      return station.side > 0 ? 'CHARGE STRIP  ›' : '‹  CHARGE STRIP';
+    return station.side > 0 ? '‹  KEEP LEFT' : 'KEEP RIGHT  ›';
+  }
+  if (s.course === 1) {
+    if (d >= 30 && d < 88) return 'RIDE THE COPPER SEAM';
+    if (d >= 350 && d < 420) return 'COOLING FLUME';
+    if (d >= 645 && d < 704) return 'SECOND FIRING';
+    return '';
+  }
+  if (d >= 145 && d < Math.min(LIP, 208) && s.x <= 0.1) return '← BRIDGE     /     RAMP →';
+  if (d >= 610 && d < 672) return 'SINGLE SPAN   /   EXPOSED EDGES';
+  return '';
+}
+
 export class Renderer implements GameRenderer {
   private root!: HTMLDivElement;
   private stage!: HTMLDivElement;
@@ -43,7 +65,7 @@ export class Renderer implements GameRenderer {
   private scene!: T.Scene;
   private cranes!: ReturnType<typeof buildCranes>;
   private yards = new Map<number, { root: T.Group; animate: ReturnType<typeof buildYard> }>();
-  private yardMaps?: [T.Texture, T.Texture, T.Texture, T.Texture];
+  private yardMaps?: [T.Texture, T.Texture, T.Texture, T.Texture, T.Texture];
   private activeCourse = -1;
   private camera = new T.PerspectiveCamera(58, 1, 0.15, 360);
   private gl!: T.WebGLRenderer;
@@ -220,39 +242,44 @@ export class Renderer implements GameRenderer {
     this.routeMap.height = 114;
     this.resize(host.clientWidth, host.clientHeight);
     this.assets = Promise.all(
-      ['slag-road', 'salvage-enamel', 'kiln-plates', 'kiln-bricks'].map((name) =>
+      ['slag-road', 'salvage-enamel', 'kiln-plates', 'kiln-bricks', 'stormglass'].map((name) =>
         loader.loadAsync('/scrapjet/' + name + '.webp'),
       ),
-    ).then(([road, enamel, plates, brick]) => {
+    ).then(([road, enamel, plates, brick, sky]) => {
       if (this.disposed) {
-        [road, enamel, plates, brick].forEach((t) => t.dispose());
+        [road, enamel, plates, brick, sky].forEach((t) => t.dispose());
         return;
       }
-      this.yardMaps = [road, enamel, plates, brick];
+      sky.colorSpace = T.SRGBColorSpace;
+      this.yardMaps = [road, enamel, plates, brick, sky];
       this.setCourse(0);
     });
     this.assets = Promise.all([this.assets, ...skinLoads]).then(() => undefined);
   }
   private setCourse(id: number) {
     if (!this.yardMaps || this.activeCourse === id) return;
+    const storm = id === 2;
+    this.stage.classList.toggle('storm-shelf', storm);
+    this.root.classList.toggle('storm-night', storm);
     this.stage.classList.toggle('kiln-dusk', id === 1);
-    (this.scene.fog as T.FogExp2).color.set(id === 1 ? '#475b70' : '#d28d70');
+    (this.scene.fog as T.FogExp2).color.set(storm ? '#716f92' : id === 1 ? '#475b70' : '#d28d70');
     this.root.classList.toggle('kiln-night', id === 1);
-    this.skyLight.color.set(id === 1 ? '#adafc1' : '#ffead1');
-    this.skyLight.groundColor.set(id === 1 ? '#435360' : '#8d6575');
-    this.sun.color.set(id === 1 ? '#adcbe6' : '#fff1bd');
+    this.skyLight.color.set(storm ? '#b7c7ee' : id === 1 ? '#adafc1' : '#ffead1');
+    this.skyLight.groundColor.set(storm ? '#62677c' : id === 1 ? '#435360' : '#8d6575');
+    this.sun.color.set(storm ? '#ffd4b8' : id === 1 ? '#adcbe6' : '#fff1bd');
     const previous = this.yards.get(this.activeCourse);
     if (previous) previous.root.visible = false;
     let yard = this.yards.get(id);
     if (!yard) {
       const root = new T.Group();
-      const [road, enamel, plates, brick] = this.yardMaps;
+      const [road, enamel, plates, brick, sky] = this.yardMaps;
       const aniso = this.gl.capabilities.getMaxAnisotropy();
-      const animate =
-        id === 1
+      const animate = storm
+        ? buildCauseway(root, courses[id], sky)
+        : id === 1
           ? buildFiringWorks(root, courses[id], plates, brick, aniso)
           : buildYard(root, road, enamel, aniso, courses[id]);
-      timingLine(root, courses[id], id === 1 ? 1.58 : 1.32);
+      timingLine(root, courses[id], storm ? stormWidth(0) : id === 1 ? 1.58 : 1.32);
       yard = { root, animate };
       this.yards.set(id, yard);
       this.scene.add(root);
@@ -473,23 +500,7 @@ export class Renderer implements GameRenderer {
     const d = lapAt(s.at);
     const kiln = s.course === 1;
     const run = kiln ? firebox(s.at) : undefined;
-    const routeCue = kiln
-      ? d >= 30 && d < 88
-        ? 'RIDE THE COPPER SEAM'
-        : d >= 350 && d < 420
-          ? 'COOLING FLUME'
-          : d >= 645 && d < 704
-            ? 'SECOND FIRING'
-            : ''
-      : d >= 145 && d < LIP
-        ? s.x > 0.1
-          ? ''
-          : d < 208
-            ? '← BRIDGE     /     RAMP →'
-            : ''
-        : d >= 610 && d < 672
-          ? 'SINGLE SPAN   /   EXPOSED EDGES'
-          : '';
+    const routeCue = courseCue(s, d);
     this.threat.hidden = !danger || !!s.fall || s.menu;
     if (danger) {
       const left = danger.x < s.x;
@@ -522,7 +533,7 @@ export class Renderer implements GameRenderer {
                     ? 'IN THE SLIPSTREAM'
                     : '';
     const speed = Math.round(s.speed * 3.6);
-    const ramp = !kiln && d >= 145 && d < LIP && s.x > 0.1 && !s.fall;
+    const ramp = s.course === 0 && d >= 145 && d < LIP && s.x > 0.1 && !s.fall;
     const enough = s.speed >= LAUNCH_SPEED;
     const key = [
       ramp,
@@ -549,9 +560,12 @@ export class Renderer implements GameRenderer {
     this.info.classList.toggle('on-grid', s.menu);
     if (s.menu) {
       this.menu.querySelector('strong')!.textContent = courses[s.course].name;
-      this.menu.querySelector('p')!.textContent = kiln
-        ? 'Trace the copper seam to launch out of the firing drum.'
-        : 'Take the service bridge or sprint the broken viaduct.';
+      this.menu.querySelector('p')!.textContent =
+        s.course === 2
+          ? 'Read the grounding forks. Catch a charge on the exposed edge.'
+          : kiln
+            ? 'Trace the copper seam to launch out of the firing drum.'
+            : 'Take the service bridge or sprint the broken viaduct.';
       this.menu.querySelector('span')!.textContent =
         classes[s.tier] +
         '   /   ' +
@@ -602,7 +616,7 @@ export class Renderer implements GameRenderer {
     this.bikes.forEach((b) => b.skeleton.dispose());
     const geometries = new Set<T.BufferGeometry>(),
       materials = new Set<T.Material>(),
-      textures = new Set<T.Texture>();
+      textures = new Set<T.Texture>(this.yardMaps);
     this.scene.traverse((obj) => {
       const m = obj as T.Mesh;
       if (m.geometry) geometries.add(m.geometry);

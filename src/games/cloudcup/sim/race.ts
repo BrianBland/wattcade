@@ -19,6 +19,14 @@ import {
 } from './deck';
 import { bikePose, bankBike } from './motion';
 import { LAP, WIDTH, courses } from './track';
+import {
+  collectorGear,
+  crossCollector,
+  canCollectOnArrival,
+  stations,
+  stormWidth,
+  stripCentre,
+} from './stormglass';
 import { firebox, firingGear, firingLine, kilnWidth, pressureCells, rideSeam } from './kiln';
 export { LAP };
 export const FINISH = LAP * 3;
@@ -31,6 +39,7 @@ export const pads = [78, 334, 375, 536, 729, 931].map((at, i) => ({
 }));
 export type Rival = ReturnType<typeof chassis> & {
   firing: ReturnType<typeof firingGear>;
+  collector: ReturnType<typeof collectorGear>;
   release: number;
   at: number;
   x: number;
@@ -75,6 +84,7 @@ export function createRace(ctx: GameContext) {
   const rivals: Rival[] = [-0.55, 0.72, 0.05].map((x, i) => ({
     ...chassis(),
     firing: firingGear(),
+    collector: collectorGear(),
     release: 0,
     at: [1.6, 4, 9][i],
     x,
@@ -89,6 +99,7 @@ export function createRace(ctx: GameContext) {
   const s = {
     ...chassis(),
     firing: firingGear(),
+    collector: collectorGear(),
     seamPowered: false,
     menu: true,
     tier: 1,
@@ -200,8 +211,11 @@ export function createRace(ctx: GameContext) {
     s.notice -= dt;
     s.impact = Math.max(0, s.impact - dt);
     s.reload = Math.max(0, s.reload - dt);
-    const kiln = s.course === 1;
-    const rescuing = recover(s, dt, !kiln);
+    const kiln = s.course === 1,
+      storm = s.course === 2,
+      viaduct = s.course === 0;
+    const solidWidth = kiln ? kilnWidth : storm ? stormWidth : undefined;
+    const rescuing = recover(s, dt, viaduct);
     const previousJumps = s.jumps;
     s.shield = Math.max(0, s.shield - dt);
     s.tow = Math.max(0, s.tow - dt);
@@ -252,7 +266,7 @@ export function createRace(ctx: GameContext) {
       );
     s.draft = clamp(s.draft + dt * (inWake ? 1.3 : -2.4), 0, 1);
     const span = deck(s.at, s.x > 0);
-    const edgeX = kiln ? kilnWidth(s.at) : Math.max(Math.abs(span.lo), Math.abs(span.hi));
+    const edgeX = solidWidth ? solidWidth(s.at) : Math.max(Math.abs(span.lo), Math.abs(span.hi));
     const target =
       cruise() *
       Math.sqrt(effort) *
@@ -260,13 +274,14 @@ export function createRace(ctx: GameContext) {
       (s.boost > 0 ? 1.36 : 1) *
       (s.tow > 0 ? 1.23 : 1) *
       (s.slow > 0 ? 0.72 : 1) *
+      (s.collector.drag ? 0.7 : 1) *
       (Math.abs(s.x) > edgeX - 0.13 ? 0.86 : 1);
     s.speed += (target - s.speed) * (1 - Math.exp(-dt * (target > s.speed ? 1.25 : 0.75)));
     if (rescuing) s.speed = s.fall ? 0 : target * 0.45;
     else if (s.flight) s.speed = s.launchSpeed;
     const last = s.at;
     s.at = Math.min(s.finishAt, s.at + (rescuing ? 0 : s.speed * dt));
-    if (!rescuing) crossDeck(s, last, s.speed, dt, kiln ? kilnWidth(s.at) : undefined);
+    if (!rescuing) crossDeck(s, last, s.speed, dt, solidWidth?.(s.at));
     if (s.fall && !rescuing) {
       if (s.at === s.finishAt) s.at = last;
       s.boost = 0;
@@ -277,6 +292,25 @@ export function createRace(ctx: GameContext) {
       s.purge = 0;
       ctx.resistance.clear('overload');
       say('Recovery magnet');
+    }
+    if (storm && !s.fall && !rescuing) {
+      const event = crossCollector(s.collector, last, s.at, s.x, s.time, dt);
+      if (event === 'hit') {
+        if (s.shield) {
+          s.shield = 0;
+          s.collector.drag = 0;
+          say('Armour held');
+        } else {
+          s.speed *= 0.8;
+          s.impact = 0.22;
+          s.impactX = 0;
+          say('Ground fault');
+        }
+      } else if (event === 'clear') {
+        s.boost = 2.4;
+        s.boosts++;
+        say('Charge caught');
+      }
     }
     if (s.jumps > previousJumps) {
       s.boost = 2.8;
@@ -301,7 +335,7 @@ export function createRace(ctx: GameContext) {
     }
     const pad = pads[s.next % pads.length],
       marker = pad.at + Math.floor(s.next / pads.length) * LAP;
-    if (!kiln && last < marker && s.at >= marker) {
+    if (viaduct && last < marker && s.at >= marker) {
       s.next++;
       if (!s.fall && Math.abs(s.x - pad.x) < 0.31) {
         s.boost = 2.8;
@@ -332,7 +366,7 @@ export function createRace(ctx: GameContext) {
     const regrouping = s.time < regroupUntil;
     const lead = regrouping ? pointRider : Math.floor(s.time / 12) % 3;
     rivals.forEach((r, i) => {
-      if (r.finish !== null || recover(r, dt, !kiln)) return;
+      if (r.finish !== null || recover(r, dt, viaduct)) return;
       const oldAt = r.at,
         oldJumps = r.jumps;
       const gap = r.at - s.at,
@@ -350,22 +384,35 @@ export function createRace(ctx: GameContext) {
         : Math.sin(s.time * 0.27 + i * 2) * 0.88;
       if (regrouping && nearby) wantedX = exitLine + (flank ? flankSide * 0.58 : 0);
       const ahead = r.at + 14,
-        fork = kiln ? 0 : Math.max(forkWidth(ahead), forkWidth(r.at));
+        fork = viaduct ? Math.max(forkWidth(ahead), forkWidth(r.at)) : 0;
       const lapDistance = lapAt(r.at);
       // Switch spends a short effort on the approach. A hit can still spoil the jump.
       const jumpRun =
-        !kiln && i === 2 && s.tier > 0 && !regrouping && lapDistance >= 148 && lapDistance < LAND + 12;
+        viaduct && i === 2 && s.tier > 0 && !regrouping && lapDistance >= 148 && lapDistance < LAND + 12;
       if (jumpRun) wantedX += (rampLine(ahead) - wantedX) * easeBetween(lapDistance, 148, 186);
       if (fork > 0) {
         const takeRamp = jumpRun || (i === 2 && paceSpeed >= LAUNCH_SPEED * 1.02);
         const line = takeRamp ? rampLine(ahead) : safeLine(ahead);
         wantedX = wantedX * (1 - fork) + line * fork;
-      } else if (!kiln && (narrowWidth(ahead) > 0 || narrowWidth(r.at) > 0))
+      } else if (viaduct && (narrowWidth(ahead) > 0 || narrowWidth(r.at) > 0))
         wantedX = clamp(wantedX, -0.38, 0.38);
       if (kiln) {
         const run = firebox(ahead);
         if (run && i === 2 && !r.stun) wantedX = firingLine(run, lapAt(ahead));
         const limit = kilnWidth(ahead) - 0.18;
+        wantedX = clamp(wantedX, -limit, limit);
+      }
+      if (storm) {
+        for (const station of stations) {
+          const gap = station.at - lapDistance;
+          if (station.exhibit || gap < -2 || gap > 52) continue;
+          const line =
+            i === 2 && canCollectOnArrival(station, gap, paceSpeed, s.time)
+              ? station.side * stripCentre
+              : -station.side * 0.25;
+          wantedX += (line - wantedX) * easeBetween(52 - gap, 0, 24);
+        }
+        const limit = stormWidth(ahead) - 0.18;
         wantedX = clamp(wantedX, -limit, limit);
       }
       const vx = r.stun || r.windup ? 0 : clamp((clamp(wantedX, -1.65, 1.3) - r.x) * 1.7, -0.85, 0.85);
@@ -383,10 +430,13 @@ export function createRace(ctx: GameContext) {
         ? r.launchSpeed
         : (packSpeed + approach * Math.max(0, cruise() * 1.09 - packSpeed)) *
           (r.stun ? 0.54 : 1) *
+          (r.collector.drag ? 0.7 : 1) *
           Math.min(1, s.time * 1.35);
 
       r.at = Math.min(s.finishAt, r.at + speed * dt);
-      crossDeck(r, oldAt, speed, dt, kiln ? kilnWidth(r.at) : undefined);
+      crossDeck(r, oldAt, speed, dt, solidWidth?.(r.at));
+      if (storm && !r.fall && crossCollector(r.collector, oldAt, r.at, r.x, s.time, dt) === 'clear')
+        r.release = 2.4;
       if (kiln && rideSeam(r.firing, oldAt, r.at, r.x, !r.fall && !r.stun)) r.release = 3.8;
       if (r.fall) {
         if (r.at === s.finishAt) r.at = oldAt;
@@ -504,6 +554,7 @@ export function createRace(ctx: GameContext) {
       ...s,
       previous,
       firing: { ...s.firing },
+      collector: { ...s.collector },
       seamFtp: pace[s.tier]() * seamPace(),
       purgeFtp: purge(),
     }),
@@ -516,7 +567,11 @@ export function createRace(ctx: GameContext) {
       Strikes: s.strikes,
       Counters: s.counters,
       Falls: s.falls,
-      ...(s.course === 1 ? { Releases: s.firing.releases } : { Jumps: s.jumps }),
+      ...(s.course === 1
+        ? { Releases: s.firing.releases }
+        : s.course === 2
+          ? { Charges: s.collector.clears, Faults: s.collector.hits }
+          : { Jumps: s.jumps }),
       RingOuts: s.ringOuts,
       Salvage: s.crates,
       Hits: s.hits,

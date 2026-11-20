@@ -40,7 +40,9 @@ const session = createGameSession({
     state: () => ({ ...base, pressed, held, source: 'keyboard' }),
   },
 });
-if (new URLSearchParams(location.search).get('course') === 'kiln') {
+const gridCourse = new URLSearchParams(location.search).get('course');
+const courseSteps = gridCourse === 'stormglass' ? 2 : gridCourse === 'kiln' ? 1 : 0;
+for (let i = 0; i < courseSteps; i++) {
   edges.add('b');
   session.step(1);
 }
@@ -84,7 +86,12 @@ function draw(time: number) {
   };
   session.frame(Math.min(0.1, (time - previous) / 1000));
   previous = time;
-  renderer.render(session.sim.snapshot(), session.ctx.bike(), session.ctx.input(), session.loop.frameFraction);
+  renderer.render(
+    session.sim.snapshot(),
+    session.ctx.bike(),
+    session.ctx.input(),
+    session.loop.frameFraction,
+  );
   if (!session.sim.inMenu?.() && !distanceButton.hidden) {
     leftAction.textContent = 'Left sweep · Z';
     courseButton.textContent = 'Right sweep · X';

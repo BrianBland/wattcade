@@ -437,3 +437,31 @@ it.each(courses)('$name eases into the bank across survey joints and the lap lin
     previous = bank;
   }
 });
+
+it('runs a full Stormglass race on the centre line or contesting both edge strips at the same FTP', () => {
+  function ride(contest: boolean) {
+    const r = race(200);
+    r.press('b');
+    r.press('b');
+    r.press('a');
+    r.session.fakeBike!.useScript(null);
+    r.session.fakeBike!.manual = { cadence: 85, power: 156, hr: null };
+    for (let tick = 0; tick < 30 * 240 && r.snap().at < FINISH; tick++) {
+      const s = r.snap(),
+        d = s.at % LAP;
+      const target = contest ? (d > 205 && d < 294 ? 0.98 : d > 706 && d < 798 ? -0.98 : 0) : 0;
+      const error = target - s.x - s.lateralSpeed * 0.16;
+      r.paddle(Math.abs(error) > 0.045 ? Math.sign(error) : 0);
+      r.session.step(1);
+    }
+    const result = r.snap();
+    expect(result.at).toBe(FINISH);
+    expect(result.course).toBe(2);
+    expect(result.rivals[2].collector.clears).toBeGreaterThan(0);
+    return result.collector;
+  }
+  expect(ride(false)).toMatchObject({ hits: 0, clears: 0 });
+  const edges = ride(true);
+  expect(edges.clears + edges.hits).toBe(6);
+  expect(edges.clears).toBeGreaterThan(0);
+});

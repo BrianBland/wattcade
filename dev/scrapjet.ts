@@ -84,7 +84,7 @@ function draw(time: number) {
   };
   session.frame(Math.min(0.1, (time - previous) / 1000));
   previous = time;
-  renderer.render(session.sim.snapshot(), session.ctx.bike(), session.ctx.input());
+  renderer.render(session.sim.snapshot(), session.ctx.bike(), session.ctx.input(), session.loop.frameFraction);
   if (!session.sim.inMenu?.() && !distanceButton.hidden) {
     leftAction.textContent = 'Left sweep · Z';
     courseButton.textContent = 'Right sweep · X';

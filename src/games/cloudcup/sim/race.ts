@@ -17,6 +17,7 @@ import {
   LAND,
   easeBetween,
 } from './deck';
+import { bikePose, bankBike } from './motion';
 import { LAP, WIDTH, courses } from './track';
 import { firebox, firingGear, firingLine, kilnWidth, pressureCells, rideSeam } from './kiln';
 export { LAP };
@@ -97,6 +98,7 @@ export function createRace(ctx: GameContext) {
     at: 0,
     x: 0,
     lateralSpeed: 0,
+    rollRate: 0,
     speed: 0,
     lean: 0,
     cameraX: 0,
@@ -128,6 +130,16 @@ export function createRace(ctx: GameContext) {
     next: 0,
     rivals,
   };
+  function capturePose() {
+    return {
+      player: bikePose(s),
+      rivals: rivals.map(bikePose),
+      cameraX: s.cameraX,
+      speed: s.speed,
+      time: s.time,
+    };
+  }
+  let previous = capturePose();
   let paddleReady = true;
   // After a hit the attacker takes point along the contested line. The
   // victim can follow that bike out of overload before the crew comes back.
@@ -183,6 +195,7 @@ export function createRace(ctx: GameContext) {
       if (input.pressed.has('a')) s.menu = false;
       return;
     }
+    previous = capturePose();
     s.time += dt;
     s.notice -= dt;
     s.impact = Math.max(0, s.impact - dt);
@@ -201,7 +214,7 @@ export function createRace(ctx: GameContext) {
       s.swings++;
     }
     s.swing = Math.max(0, s.swing - dt);
-    const turn = courses[s.course].track(s.at).turn;
+    const { turn, bank } = courses[s.course].track(s.at);
     const keys = Number(input.held.has('right')) - Number(input.held.has('left'));
     const steer =
       keys ||
@@ -209,7 +222,8 @@ export function createRace(ctx: GameContext) {
       (Math.abs(pd) > 0.18 ? Math.sign(pd) * clamp(0.38 + (Math.abs(pd) - 0.18) * 1.45, 0, 1) : 0);
     const effort = clamp(ctx.bike().ftpFraction, 0, 2);
     s.seamPowered = kiln && effort >= pace[s.tier]() * seamPace();
-    const drift = -turn * 0.58 * Math.pow(s.speed / cruise(), 2);
+    const speedLoad = Math.pow(s.speed / cruise(), 2);
+    const drift = -turn * 0.58 * speedLoad;
     s.lateralSpeed += (steer * 1.95 + drift - s.lateralSpeed) * (1 - Math.exp(-dt * (steer ? 5 : 9)));
     if (!rescuing) {
       s.x += (s.lateralSpeed * (s.flight ? 0.32 : 1) + s.shove) * dt;
@@ -218,7 +232,11 @@ export function createRace(ctx: GameContext) {
       s.lateralSpeed = 0;
       s.speed = 0;
     }
-    s.lean += (clamp(-steer * 0.38 - turn * 0.3, -0.64, 0.64) - s.lean) * (1 - Math.exp(-dt * 6));
+    // A trim shifts the line immediately. The visual bank follows that lateral
+    // movement, with a little direct input to load the suspension on turn-in.
+    const steeringLoad = 0.22 * steer + (0.78 * (s.lateralSpeed - drift)) / 1.95;
+    const cornerLean = bank * 1.65 * Math.min(1, speedLoad);
+    bankBike(s, clamp(-steeringLoad * 0.38 + cornerLean, -0.64, 0.64), dt);
     s.cameraX += (s.x * 0.76 - s.cameraX) * (1 - Math.exp(-dt * 3.7));
     const inWake =
       !rescuing &&
@@ -484,6 +502,7 @@ export function createRace(ctx: GameContext) {
     }),
     snapshot: () => ({
       ...s,
+      previous,
       firing: { ...s.firing },
       seamFtp: pace[s.tier]() * seamPace(),
       purgeFtp: purge(),

@@ -17,8 +17,9 @@ import {
   packPace,
   prize,
 } from '../sim/deck';
-import { LAP, track, world } from '../sim/track';
+import { LAP, courses, track, world } from '../sim/track';
 import { firebox, firingLine } from '../sim/kiln';
+import { displayRace } from '../render/motion';
 import { playBounds } from '../render/renderer';
 function race(ftp = 200) {
   const profile = { ...testProfile(), ftp },
@@ -371,4 +372,68 @@ it('pays the firing line at class effort and lets the center and low-power rider
   const easy = crossDrum(0.45, true, 200);
   expect(easy.at).toBeGreaterThan(332);
   expect(easy.firing.releases).toBe(0);
+});
+
+it.each([60, 120])('draws the bank, chassis and chase camera between physics ticks at %i Hz', (refresh) => {
+  const r = race();
+  r.press('a');
+  r.paddle(1);
+  r.session.step(4);
+  let last = displayRace(r.snap(), 0);
+  for (let i = 0; i < refresh / 5; i++) {
+    r.session.frame(1 / refresh);
+    const sim = r.snap();
+    const view = displayRace(sim, r.session.loop.frameFraction);
+    expect(view.x).toBeGreaterThan(last.x);
+    expect(view.at).toBeGreaterThan(last.at);
+    expect(view.cameraX).toBeGreaterThan(last.cameraX);
+    expect(view.lean).toBeLessThan(last.lean);
+    expect(view.rivals[0].at).toBeGreaterThan(last.rivals[0].at);
+    expect(sim.x).toBeGreaterThanOrEqual(view.x);
+    last = view;
+  }
+  r.session.frame(0.093);
+  const s = r.snap(),
+    fraction = r.session.loop.frameFraction;
+  expect(fraction).toBeGreaterThan(0);
+  expect(fraction).toBeLessThan(1);
+  expect(displayRace(s, fraction).time).toBeCloseTo(s.time - (1 - fraction) / 30, 9);
+  r.session.pause();
+  r.session.frame(1);
+  expect(displayRace(r.snap(), r.session.loop.frameFraction)).toEqual(displayRace(s, fraction));
+});
+
+it('absorbs alternating paddle trims while a held reversal crosses upright once', () => {
+  const r = race();
+  r.press('a');
+  let maxChange = 0;
+  for (let i = 0; i < 20; i++) {
+    const lean = r.snap().lean;
+    r.paddle(i % 2 ? -1 : 1);
+    r.session.step(1);
+    maxChange = Math.max(maxChange, Math.abs(r.snap().lean - lean));
+  }
+  expect((maxChange * 180) / Math.PI).toBeLessThan(1.1);
+  r.paddle(1);
+  r.session.step(11);
+  expect(r.snap().lean).toBeLessThan(-0.16);
+  r.paddle(-1);
+  let crossings = 0;
+  for (let i = 0; i < 17; i++) {
+    const sign = Math.sign(r.snap().lean);
+    r.session.step(1);
+    if (sign !== Math.sign(r.snap().lean)) crossings++;
+  }
+  expect(crossings).toBe(1);
+  expect(r.snap().lean).toBeGreaterThan(0.16);
+  expect(r.snap().falls).toBe(0);
+});
+
+it.each(courses)('$name eases into the bank across survey joints and the lap line', (course) => {
+  let previous = course.track(-0.25).bank;
+  for (let d = 0; d <= LAP; d += 0.25) {
+    const bank = course.track(d).bank;
+    expect((Math.abs(bank - previous) * 180) / Math.PI).toBeLessThan(0.25);
+    previous = bank;
+  }
 });

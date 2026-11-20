@@ -9,6 +9,9 @@ export class GameLoop {
   private acc = 0;
   constructor(private clock: SimClock, private onStep: (dt: number) => void, private effectiveScale: () => number = () => clock.timeScale) {}
 
+  /** Display position between the two most recent fixed-step poses. */
+  get frameFraction(): number { return Math.max(0, Math.min(1, this.acc / FIXED_DT)); }
+
   frame(realDtS: number): number {
     if (this.paused) return 0;
     this.acc += realDtS * this.effectiveScale();

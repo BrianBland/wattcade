@@ -21,18 +21,18 @@ await r.ready?.();
 r.setInsets?.({ top: 0, right: 0, bottom: 0, left: 0 });
 type W = { __frames?: number; __advance?: (ms: number) => void; __vclock?: (ms: number) => void };
 const w = window as unknown as W;
-const frame = () => { r.render(session.sim.snapshot(), session.bikeStore.get(), session.ctx.input()); w.__frames = (w.__frames ?? 0) + 1; };
+const frame = (fraction: number) => { r.render(session.sim.snapshot(), session.bikeStore.get(), session.ctx.input(), fraction); w.__frames = (w.__frames ?? 0) + 1; };
 // manual=1 (capture script): time only moves when the script calls __advance(ms); performance.now is virtual (__vclock).
 if (q.get('manual')) {
   let acc = 0;
-  w.__advance = (ms) => { w.__vclock?.(ms); acc += ms / 1000; const n = Math.floor(acc * 30); acc -= n / 30; if (n) session.step(n); frame(); };
+  w.__advance = (ms) => { w.__vclock?.(ms); acc += ms / 1000; const n = Math.floor(acc * 30); acc -= n / 30; if (n) session.step(n); frame(acc * 30); };
 } else {
 let last = performance.now(), acc = 0;
 const loop = (now: number) => {
   acc += Math.min(0.1, (now - last) / 1000); last = now;
   const n = Math.floor(acc * 30); acc -= n / 30;
   if (n) session.step(n);
-  frame();
+  frame(acc * 30);
   requestAnimationFrame(loop);
 };
 requestAnimationFrame(loop);

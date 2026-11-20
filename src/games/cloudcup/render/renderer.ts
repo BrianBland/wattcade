@@ -1,3 +1,4 @@
+import { displayRace } from './motion';
 import { RallySound } from './sound';
 import * as T from 'three';
 import { NO_INSETS, type GameRenderer, type Insets } from '../../../contracts';
@@ -323,7 +324,8 @@ export class Renderer implements GameRenderer {
     }
     mesh.instanceMatrix.needsUpdate = true;
   }
-  render(s: RaceView) {
+  render(snapshot: RaceView, _bike?: unknown, _input?: unknown, frameFraction = 1) {
+    const s = displayRace(snapshot, frameFraction);
     this.setCourse(s.course);
     const { track, world } = courses[s.course];
     const f = track(s.at);
@@ -399,7 +401,7 @@ export class Renderer implements GameRenderer {
     const compression = this.touchdowns[0] && age < 0.55 ? Math.sin(age * 15) * Math.exp(-age * 7) : 0;
     const j = s.impact * Math.sin(s.time * 97) * 0.23;
     this.camera.position.set(eye.x + j, eye.y + j - compression * 0.32 + Math.max(0, s.lift) * 0.67, eye.z);
-    const roll = s.lean * 0.15 + f.turn * 0.065;
+    const roll = s.lean * 0.15 - f.bank * 0.36;
     this.camera.up.set(Math.cos(f.yaw) * Math.sin(roll), Math.cos(roll), Math.sin(f.yaw) * Math.sin(roll));
     if (rescueView > 0) {
       const tow = world(s.at, s.x, 1.55 + s.lift * 0.7);
@@ -453,8 +455,8 @@ export class Renderer implements GameRenderer {
     this.sun.target.position.set(f.x, f.y, f.z);
     this.sun.position.set(f.x - 25, f.y + 37, f.z + 18);
     this.gl.render(this.scene, this.camera);
-    this.drawHud(s);
-    this.sound.update(s);
+    this.drawHud(snapshot);
+    this.sound.update(snapshot);
   }
   private drawHud(s: RaceView) {
     const g = this.map.getContext('2d')!;

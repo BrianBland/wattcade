@@ -74,8 +74,7 @@ function surveyCourse(name: string, line: typeof route) {
     );
     return { ...p, yaw, turn };
   });
-  function track(at: number) {
-    const distance = ((((at % LAP) + LAP) % LAP) / LAP) * arc[count];
+  function interval(distance: number) {
     let lo = 0,
       hi = count;
     while (lo + 1 < hi) {
@@ -83,9 +82,24 @@ function surveyCourse(name: string, line: typeof route) {
       if (arc[mid] <= distance) lo = mid;
       else hi = mid;
     }
+    return { lo, hi, t: (distance - arc[lo]) / (arc[hi] - arc[lo]) };
+  }
+  // Lay in the road bank over the approach and exit of a bend. Instantaneous
+  // curvature still drives handling, including at a quarry survey joint.
+  const length = arc[count];
+  const banks = arc.map((distance) => {
+    let sum = 0;
+    for (let m = -8; m <= 8; m++) {
+      const { lo, hi, t } = interval((distance + m + length) % length);
+      sum += (9 - Math.abs(m)) * (frames[lo].turn + (frames[hi].turn - frames[lo].turn) * t);
+    }
+    return -Math.atan((0.18 * sum) / 81);
+  });
+  function track(at: number) {
+    const distance = ((((at % LAP) + LAP) % LAP) / LAP) * length;
+    const { lo, hi, t } = interval(distance);
     const a = frames[lo],
-      b = frames[hi],
-      t = (distance - arc[lo]) / (arc[hi] - arc[lo]);
+      b = frames[hi];
     const yaw = a.yaw + t * Math.atan2(Math.sin(b.yaw - a.yaw), Math.cos(b.yaw - a.yaw));
     return {
       x: a.x + (b.x - a.x) * t,
@@ -93,6 +107,7 @@ function surveyCourse(name: string, line: typeof route) {
       z: a.z + (b.z - a.z) * t,
       yaw,
       turn: a.turn + (b.turn - a.turn) * t,
+      bank: banks[lo] + (banks[hi] - banks[lo]) * t,
     };
   }
   function world(at: number, side: number, lift = 0) {
@@ -100,10 +115,10 @@ function surveyCourse(name: string, line: typeof route) {
       offset = WIDTH * side;
     return {
       x: p.x + Math.cos(p.yaw) * offset,
-      y: p.y - offset * p.turn * 0.18 + lift,
+      y: p.y + offset * Math.tan(p.bank) + lift,
       z: p.z + Math.sin(p.yaw) * offset,
       yaw: p.yaw,
-      bank: -Math.atan(p.turn * 0.18),
+      bank: p.bank,
     };
   }
 

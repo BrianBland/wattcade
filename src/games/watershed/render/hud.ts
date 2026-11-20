@@ -61,7 +61,34 @@ const MENU_CSS = `
 .ws-menu .warm.on { border-color:#7fb6e0; background:rgba(127,182,224,.16) } .ws-menu .warm .box { width:18px; height:18px; border-radius:5px; border:2px solid rgba(255,255,255,.7); display:inline-grid; place-items:center; font-size:13px; line-height:1 }
 .ws-menu .go { margin-top:14px; display:inline-block; cursor:pointer; padding:10px 26px; border-radius:14px; background:#2f7d3f; font-weight:800; font-size:18px }
 .ws-menu .hint { margin-top:8px; font-size:13px; opacity:.75 }
+.ws-menu { overflow-y:auto; box-sizing:border-box }
+.ws-menu .lvls { display:grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap:8px; text-align:left }
+.ws-menu .lv { cursor:pointer; padding:8px 10px; border-radius:12px; background:rgba(255,255,255,.07); border:2px solid transparent; transition: transform .15s; position:relative }
+.ws-menu .lv.sel { border-color:#ffd23f; background:rgba(255,210,63,.14); transform: scale(1.03) }
+.ws-menu .lv.locked { opacity:.42; cursor:default }
+.ws-menu .lv .no { font-size:11px; letter-spacing:.08em; opacity:.75; text-transform:uppercase }
+.ws-menu .lv b { display:block; font-size:16px; margin:1px 0 3px }
+.ws-menu .lv .dr { font-size:13px; letter-spacing:1px } .ws-menu .lv .mn { float:right; font-size:12px; opacity:.75 }
+.ws-menu .about { margin:12px 0 2px; font-size:15px } .ws-menu .about .g { color:#ffd23f } .ws-menu .about small { display:block; opacity:.8; font-size:13px; margin-top:3px }
+.ws-menu .lens { display:flex; gap:8px; justify-content:center; margin-top:10px; flex-wrap:wrap }
+.ws-menu .ln { cursor:pointer; padding:6px 12px; border-radius:10px; background:rgba(255,255,255,.07); border:2px solid transparent; font-size:14px }
+.ws-menu .ln.sel { border-color:#ffd23f; background:rgba(255,210,63,.14) }
+.ws-block .lvl { margin-top:5px; font-size:12px; opacity:.92; display:flex; flex-wrap:wrap; gap:2px 10px }
+.ws-block .lvl .got { color:#7dff9a }
 `;
+/** The stats panel's label for a level's goal number. */
+const GOAL_STAT: Record<string, string> = { 'first-spring': 'Earth carved', 'grist-mill': 'Flour', 'beaver-crew': 'Flour', breadbasket: 'Harvests', 'millbrook-flood': 'Surges held', 'dam-buster': 'Dam worn', homecoming: 'Salmon home', delta: 'Delta' };
+/** The goal's number against its target: seconds as m:ss, a 0..1 goal (the dam) as %, counts with separators. */
+function goalText(g: NonNullable<WatershedSnapshot['level']>['goal']): string {
+  if (g.target === 1) return `${Math.round(Math.min(1, g.value) * 100)}%`;
+  const f = (v: number) => (g.unit === ' s' ? fmt(v) : Math.round(v).toLocaleString('en-US'));
+  return `${f(g.value)} / ${f(g.target)}`;
+}
+/** The campaign line under the block: level, drops so far and the two bonus goals (✓ once met). */
+function levelLine(s: WatershedSnapshot): string {
+  const L = s.level!, lev = s.jobs.levee;
+  return `<div class="lvl"><span>L${L.n} ${'💧'.repeat(L.drops)}${'○'.repeat(3 - L.drops)}</span>${L.bonus.map((b) => `<span class="${b.got ? 'got' : ''}">${b.got ? '✓' : '○'} ${b.label}</span>`).join('')}${lev !== null ? `<span>Levee ${Math.round(lev * 100)}%</span>` : ''}</div>`;
+}
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export class Hud {
@@ -104,18 +131,23 @@ export class Hud {
     if (!m) return;
     const L = layout(this.size[0], this.size[1], this.insetB);
     this.menuEl.style.top = `${Math.max(12, L.UH * 0.16)}px`;
-    const key = `${m.sel}:${m.skipWarmup}`;
+    this.menuEl.style.maxHeight = `${Math.max(160, L.UH - Math.max(12, L.UH * 0.16) - 12)}px`;
+    const key = `${m.level}:${m.sel}:${m.skipWarmup}`;
     if (key !== this.menuKey) {
       this.menuKey = key;
-      this.menuEl.innerHTML = `<h2>Choose your ride</h2><div class="sub">Same water cycle, sized to your workout: ERG all the way.</div><div class="opts">${m.options.map((o, i) => {
-        const tot = o.blocks.reduce((a, b) => a + b.minutes, 0);
-        return `<div class="opt${i === m.sel ? ' sel' : ''}" data-min="${o.length}"><b>${o.minutes} min</b><small>${o.blurb}</small><div class="tl">${o.blocks.map((b) => `<i style="flex:${b.minutes / tot};background:${PHASE_COLOR[b.phase]}"></i>`).join('')}</div></div>`;
-      }).join('')}</div><div class="warm${m.skipWarmup ? ' on' : ''}"><span class="box">${m.skipWarmup ? '✓' : ''}</span>Already warm: skip evaporation &amp; cloud, start at the rain</div><br><div class="go">▶ Start</div><div class="hint"></div>`;
-      this.menuEl.querySelectorAll<HTMLElement>('.opt').forEach((el) => el.addEventListener('pointerdown', () => this.send?.({ type: 'length', minutes: Number(el.dataset.min) })));
+      const cur = m.levels[m.level], free = cur.id === 'free';
+      const tl = (blocks: Array<{ phase: string; minutes: number }>) => { const tot = blocks.reduce((a, b) => a + b.minutes, 0); return `<div class="tl">${blocks.map((b) => `<i style="flex:${b.minutes / tot};background:${PHASE_COLOR[b.phase]}"></i>`).join('')}</div>`; };
+      const drops = (n: number) => '💧'.repeat(n) + '<span style="opacity:.45">○</span>'.repeat(3 - n);
+      this.menuEl.innerHTML = `<h2>Choose your ride</h2><div class="sub">Campaign: ${m.drops} of ${m.maxDrops} 💧 · one goal per ride, ERG all the way.</div><div class="lvls">${m.levels.map((l, i) => `<div class="lv${i === m.level ? ' sel' : ''}${l.locked ? ' locked' : ''}" data-id="${l.id}"><span class="no">${l.id === 'free' ? 'Free Ride' : `Level ${l.n}`}${l.locked ? ' 🔒' : ''}</span><b>${l.name}</b><span class="dr">${l.id === 'free' ? '∞' : drops(l.drops)}</span><span class="mn">${l.minutes} min</span>${tl(l.blocks)}</div>`).join('')}</div>`
+        + `<div class="about"><span class="g">◎ ${cur.goal}</span><small>${cur.blurb}</small>${cur.bonus.length ? `<small>Bonus drops: ${cur.bonus.join(' · ')}</small>` : ''}</div>`
+        + (free ? `<div class="lens">${m.options.map((o, i) => `<div class="ln${i === m.sel ? ' sel' : ''}" data-min="${o.length}"><b>${o.minutes} min</b> · ${o.blurb}</div>`).join('')}</div>` : '')
+        + `<div class="warm${m.skipWarmup ? ' on' : ''}"><span class="box">${m.skipWarmup ? '✓' : ''}</span>Already warm: skip evaporation &amp; cloud, start at the rain</div><br><div class="go">▶ Start</div><div class="hint"></div>`;
+      this.menuEl.querySelectorAll<HTMLElement>('.lv:not(.locked)').forEach((el) => el.addEventListener('pointerdown', () => this.send?.({ type: 'level', id: el.dataset.id })));
+      this.menuEl.querySelectorAll<HTMLElement>('.ln').forEach((el) => el.addEventListener('pointerdown', () => this.send?.({ type: 'length', minutes: Number(el.dataset.min) })));
       this.menuEl.querySelector('.warm')?.addEventListener('pointerdown', () => this.send?.({ type: 'warmup', skip: !m.skipWarmup }));
       this.menuEl.querySelector('.go')?.addEventListener('pointerdown', () => this.send?.({ type: 'start' }));
     }
-    (this.menuEl.querySelector('.hint') as HTMLElement).textContent = `◀▶ choose · Y warm-up · A start · starts by itself in ${Math.ceil(m.left)} s`;
+    (this.menuEl.querySelector('.hint') as HTMLElement).textContent = `◀▶ level${m.levels[m.level].id === 'free' ? ' · ▲▼ length' : ''} · Y warm-up · A start · starts by itself in ${Math.ceil(m.left)} s`;
   }
 
   onResetView(cb: () => void) { this.resetView = cb; }
@@ -159,7 +191,8 @@ export class Hud {
     this.block.innerHTML = `<div class="nm">${b.name}<b>${fmt(b.left)}</b></div>`
       + `<span class="st" style="background:${STYLE_COLOR[b.style]}">${STYLE_WORD[b.style]}${b.rpm ? ` ${b.rpm.min}${b.rpm.max ? `–${b.rpm.max}` : '+'} rpm` : ''}</span>`
       + ` <span style="font-size:13px;opacity:.8">ERG ${Math.round(b.ftp * 100)}% FTP</span>`
-      + (o ? `<div class="obj ${o.state}"><b>${o.state === 'done' ? '✓ ' : o.state === 'failed' ? '✗ ' : '◎ '}${o.title}</b><div class="pbar"><i style="width:${Math.round(o.progress * 100)}%"></i></div></div>` : `<div class="hint">${b.hint}</div>`);
+      + (o ? `<div class="obj ${o.state}"><b>${o.state === 'done' ? '✓ ' : o.state === 'failed' ? '✗ ' : '◎ '}${o.title}</b><div class="pbar"><i style="width:${Math.round(o.progress * 100)}%"></i></div></div>` : `<div class="hint">${b.hint}</div>`)
+      + (s.level ? levelLine(s) : '');
     const f = s.salmon, sky = s.sky;
     this.stats.innerHTML = s.phase === 'evaporate'
       ? `<span>Vapor</span><b>${Math.round(sky.vapor)}</b><span>Sunlight</span><b>${sky.inSun ? '☀️ yes' : '—'}</b>`
@@ -169,6 +202,9 @@ export class Hud {
       ? `<span>Rainfall</span><b>${Math.round(sky.rained)}</b><span>Cloud left</span><b>${Math.round(sky.size)}</b>`
       : f
       ? `<span class="fish">Salmon run ${f.run}</span><span>School</span><b>${f.alive} 🐟</b><span>Home</span><b>${f.home}</b><span>Lost</span><b>${f.lost}</b>`
+      : s.level
+      ? `<span>${GOAL_STAT[s.level.id] ?? 'Goal'}</span><b>${goalText(s.level.goal)}</b>`
+        + `<span>Gorge depth</span><b>${(s.deepestCut * 4).toFixed(0)} m</b>`
       : `<span>Gorge depth</span><b>${(s.deepestCut * 4).toFixed(0)} m</b>`
         + `<span>Flour · Planks</span><b>${Math.round(s.jobs.mills[0].output)} · ${Math.round(s.jobs.mills[1].output)}</b>`
         + `<span>Harvests</span><b>${s.jobs.fields.reduce((a, f) => a + f.harvests, 0)}</b>`;

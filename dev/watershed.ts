@@ -1,5 +1,6 @@
 // Dev harness: run Watershed on the fake bike without the shell.
 //   /dev/watershed.html?script=cadence-follow&min=15&autopilot=1&inset=120&speed=1
+//   ?level=grist-mill plays a campaign level; ?menu=1&progress={"first-spring":3} shows the picker with saved drops
 import { createGameSession, NullInput, testProfile } from '../src/core';
 import { InputHub } from '../src/input';
 import { module } from '../src/games/watershed';
@@ -7,12 +8,14 @@ import { module } from '../src/games/watershed';
 const q = new URLSearchParams(location.search);
 const script = q.get('script') ?? 'cadence-follow';
 const inset = Number(q.get('inset') ?? 120), speed = Number(q.get('speed') ?? 1);
+const profile = testProfile();
+if (q.get('progress')) profile.gameData = { ...profile.gameData, watershed: { rides: 1, levels: JSON.parse(q.get('progress')!) } };
 const hub = new InputHub();
 hub.attachKeyboard(window);
 const session = createGameSession({
-  game: module, profile: testProfile(), input: q.get('autopilot') ? new NullInput() : hub, fake: { script }, seed: Number(q.get('seed') ?? 1),
+  game: module, profile, input: q.get('autopilot') ? new NullInput() : hub, fake: { script }, seed: Number(q.get('seed') ?? 1),
   // ?menu=1 shows the pre-game ride-length menu; otherwise ?length= (default 45) starts straight away
-  simOpts: { ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('menu') ? {} : { length: Number(q.get('length') ?? 45) }), ...(q.get('events') ? { events: q.get('events')!.split(',') } : {}) },
+  simOpts: { ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('menu') ? {} : q.get('level') ? { level: q.get('level')! } : { length: Number(q.get('length') ?? 45) }), ...(q.get('events') ? { events: q.get('events')!.split(',') } : {}) },
 });
 session.step(Math.round(Number(q.get('min') ?? 0) * 60 * 30));
 const app = document.getElementById('app')!, bar = document.getElementById('hudfake')!;

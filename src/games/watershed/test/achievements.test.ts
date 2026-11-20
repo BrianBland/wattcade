@@ -53,3 +53,12 @@ it('the sim records geological completion events, not only visual cues', async (
   expect(r.events.filter(e => e.type === 'eventDone').map(e => e.data?.kind).sort()).toEqual(['earthquake','landslide']);
   expect(r.events.some(e => e.type === 'rideDone')).toBe(true);
 }, 30_000);
+it('campaign feats come from the level summary', () => {
+  const ok = (id: string, g: Record<string, number | string>) => !!a(id).check!(defaultProfile(), rec(g), []);
+  expect(ok('ws_level_clear', { level: 'grist-mill', levelGoal: 1, levelDrops: 1 })).toBe(true);
+  expect(ok('ws_level_clear', { level: 'free', levelGoal: 0 })).toBe(false);
+  expect(ok('ws_full_bucket', { levelGoal: 1, levelDrops: 3 })).toBe(true);
+  expect(ok('ws_full_bucket', { levelGoal: 1, levelDrops: 2 })).toBe(false);
+  expect(ok('ws_campaign', { levelsCleared: 8 })).toBe(true);
+  expect(ok('ws_campaign', { levelsCleared: 7 })).toBe(false);
+});

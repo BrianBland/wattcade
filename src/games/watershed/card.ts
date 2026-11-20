@@ -1,10 +1,18 @@
 // Arcade card: banner art + progress line (shell calls these; keep tiny, no renderer imports).
-export interface WatershedSave { rides?: number; bestCarved?: number; bestDelta?: number; bestSalmon?: number; bestScore?: number; lastLength?: number }
+export interface WatershedSave { rides?: number; bestCarved?: number; bestDelta?: number; bestSalmon?: number; bestScore?: number; lastLength?: number;
+  /** Campaign: best drops (0..3) per level id, and the last picker entry played. */
+  levels?: Record<string, number>; lastLevel?: string }
+
+/** Campaign size (kept here so the card needs no sim import). */
+const CAMPAIGN_LEVELS = 8;
 
 export function progressLine(save: unknown): string | null {
   const s = save as WatershedSave | undefined;
   if (!s?.rides) return null;
-  return `${s.rides} ride${s.rides === 1 ? '' : 's'}${s.bestScore ? ` · best score ${s.bestScore}` : ''}${s.bestSalmon ? ` · ${s.bestSalmon} salmon home` : ''}`;
+  const vals = Object.values(s.levels ?? {});
+  const cleared = vals.filter((d) => d >= 1).length, drops = vals.reduce((a, d) => a + Math.min(3, d), 0);
+  const camp = cleared ? ` · level ${Math.min(CAMPAIGN_LEVELS, cleared + 1)}/${CAMPAIGN_LEVELS}, ${drops} 💧` : '';
+  return `${s.rides} ride${s.rides === 1 ? '' : 's'}${camp}${s.bestScore && !camp ? ` · best score ${s.bestScore}` : ''}${s.bestSalmon && !camp ? ` · ${s.bestSalmon} salmon home` : ''}`;
 }
 
 /** A valley falling to the sea with fat exaggerated drops bouncing down a river. 230×100 units. */

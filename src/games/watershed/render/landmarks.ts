@@ -14,7 +14,7 @@ export function landmarks(s: Pick<WatershedSnapshot, 'sourceX' | 'jobs'>): Landm
   const v = s.jobs.village;
   out.push({ id: 'village', label: 'Millbrook', icon: '🏘️', x: v.x, y: v.y });
   const d = s.jobs.dam;
-  if (d && !d.broken) out.push({ id: 'dam', label: 'Beaver dam', icon: '🦫', x: d.x, y: d.y });
+  if (d && !d.broken) out.push({ id: 'dam', label: d.kind === 'log' ? 'Log dam' : d.kind === 'gate' ? 'Beaver gate' : 'Beaver dam', icon: d.kind === 'log' ? '🪵' : '🦫', x: d.x, y: d.y });
   return out;
 }
 

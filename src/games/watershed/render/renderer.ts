@@ -46,8 +46,10 @@ const EVENT_TEXT: Record<string, { warn: [string, string]; hit: [string, string]
   volcano: { warn: ['The mountain is waking up…', 'Smoke over the ridge'], hit: ['Eruption!', 'Lava has sealed the easy saddle: carve another way'] },
   meteor: { warn: ['Incoming!', 'Something is falling from the sky…'], hit: ['METEOR!', '…well, that\'s a new lake'] },
 };
-const JOB_DONE: Record<string, string> = { grist: 'The grist mill is grinding flour', saw: 'The sawmill is cutting planks', village: 'Millbrook stayed dry', dam: 'The beavers move on', fields: 'The fields are thriving' };
-const JOB_MISS: Record<string, string> = { grist: 'Carve through to the mill and grind for heavy water', saw: 'The sawmill wants fast water: spin', village: 'The flood reached the houses', dam: 'Spin harder (A: surge) to wear the dam down', fields: 'Run the river beside the fields' };
+const JOB_DONE: Record<string, string> = { grist: 'The grist mill is grinding flour', saw: 'The sawmill is cutting planks', village: 'Millbrook stayed dry', dam: 'The beavers move on', fields: 'The fields are thriving',
+  carve: 'You carved a valley', harvest: 'The barns are full', salmon: 'The salmon are home', delta: 'There\'s room for a harbour town' };
+const JOB_MISS: Record<string, string> = { grist: 'Carve through to the mill and grind for heavy water', saw: 'The sawmill wants fast water: spin', village: 'The flood reached the houses', dam: 'Spin harder (A: surge) to wear the dam down', fields: 'Run the river beside the fields',
+  carve: 'Grind: heavy water carves', harvest: 'Run the river beside the fields, not over them', salmon: 'Dodge the bears and eagles', delta: 'Spin to carry more silt to the coast' };
 const BOOST_TEXT: Record<string, string> = { evaporate: 'Heat wave!', cloud: 'Inhale!', rain: 'Cloudburst!', river: 'Surge!', salmon: 'Sprint!' };
 const BLOCK_SUB: Record<string, string> = {
   grind: 'Grind it out: heavy water carves deep', spin: 'Spin it up: light water races silt to the sea',
@@ -477,7 +479,21 @@ export class WatershedRenderer implements GameRenderer {
         case 'gorge': play('milestone'); this.hud?.popup(`Gorge ${Number(d.depth) * 4} m deep`, 'Heavy water cuts deep', 2.5); break;
         case 'deltaGrew': play('chime', { vol: 0.6 }); break;
         case 'rideDone': play('unique'); break;
+        default: this.levelCue(c.type, d);
       }
+    }
+  }
+  /** Campaign level cues: the goal at the start, beaver gates, the levee, surges and the level result. */
+  private levelCue(type: string, d: NonNullable<Cue['data']>) {
+    const drops = (n: number) => '💧'.repeat(n) + '○'.repeat(Math.max(0, 3 - n));
+    switch (type) {
+      case 'levelStart': this.hud?.popup(`Level ${d.n}: ${d.name}`, `${d.goal}. ${d.teaches}`, 6); play('horn', { vol: 0.5 }); break;
+      case 'gate': this.hud?.popup('Beaver gate', 'The crew is damming that saddle. Hold the band: they build faster', 3); play('plop'); break;
+      case 'gateBuilt': this.hud?.popup('Gate built!', 'The river has to find another way', 2.5, 'salmon'); play('chime'); break;
+      case 'levee': this.hud?.popup(`Levee ${d.built}% built`, Number(d.built) >= 100 ? 'Millbrook is walled in' : 'Hold the band: the villagers keep digging', 2.5); play('chime', { vol: 0.6 }); break;
+      case 'surgeHeld': this.hud?.popup('Surge held!', `Millbrook stayed dry (${d.held} of 3)`, 3, 'salmon'); play('reward', { vol: 0.7 }); break;
+      case 'surgeLost': this.hud?.popup('Millbrook flooded', 'The surge reached the houses', 3, 'warn'); play('deny', { vol: 0.5 }); break;
+      case 'levelDone': this.hud?.popup(d.goal ? `Level ${d.n} cleared! ${drops(Number(d.drops))}` : `Level ${d.n} not cleared`, d.goal ? `${d.campaignDrops} drops in the campaign` : 'Try it again from the level picker', 8, d.goal ? 'salmon' : 'warn'); play(d.goal ? 'reward' : 'deny'); break;
     }
   }
   /** Popups and sounds as geological events change state. */

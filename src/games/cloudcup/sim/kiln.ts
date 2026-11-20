@@ -3,7 +3,7 @@
 import { lapAt, easeBetween } from './deck';
 
 export const firingRuns = [
-  { entry: 88, exit: 332, from: -0.74, to: 0.68 },
+  { entry: 88, exit: 332, from: -0.74, to: -0.74 },
   { entry: 704, exit: 908, from: 0.82, to: -0.8 },
 ];
 export const pressureCells = [
@@ -14,7 +14,7 @@ export const pressureCells = [
 export function kilnWidth(at: number) {
   const d = lapAt(at);
   const flume = easeBetween(d, 374, 445) * (1 - easeBetween(d, 568, 650));
-  return 1.58 - 0.78 * flume;
+  return 1.58 - 0.26 * flume;
 }
 export function firingLine(run: (typeof firingRuns)[number], at: number) {
   const t = (at - run.entry) / (run.exit - run.entry);

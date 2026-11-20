@@ -53,7 +53,13 @@ function quarry(a: number) {
   return { x: sample(0), y: sample(1), z: sample(2) };
 }
 export const WIDTH = 4.6;
-function surveyCourse(name: string, line: typeof route) {
+// Additional crossfall in the flume's long left turn. Ease out before the
+// return switchback so the horizon is already settled at the next decision.
+export function flumeCamber(at: number) {
+  const t = (at - 394) / (540 - 394);
+  return t > 0 && t < 1 ? 0.25 * Math.sin(Math.PI * t) ** 2 : 0;
+}
+function surveyCourse(name: string, line: typeof route, camber?: (d: number) => number) {
   const survey = Array.from({ length: count + 1 }, (_, i) => line((i * 2 * Math.PI) / count));
   const arc = [0];
   for (let i = 1; i <= count; i++) {
@@ -107,7 +113,7 @@ function surveyCourse(name: string, line: typeof route) {
       z: a.z + (b.z - a.z) * t,
       yaw,
       turn: a.turn + (b.turn - a.turn) * t,
-      bank: banks[lo] + (banks[hi] - banks[lo]) * t,
+      bank: banks[lo] + (banks[hi] - banks[lo]) * t + (camber?.((distance / length) * LAP) ?? 0),
     };
   }
   function world(at: number, side: number, lift = 0) {
@@ -134,7 +140,7 @@ function causeway(a: number) {
 }
 export const courses = [
   surveyCourse('Magnet Mile', route),
-  surveyCourse('Kiln Switchbacks', quarry),
+  surveyCourse('Kiln Switchbacks', quarry, flumeCamber),
   surveyCourse('Stormglass Causeway', causeway),
 ];
 export type Course = (typeof courses)[number];

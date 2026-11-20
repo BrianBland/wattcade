@@ -259,7 +259,7 @@ it('can shove a rival over the edge or get knocked off by the crew', () => {
     // the other leaves the flanker free to complete its attack.
     for (let i = 0; i < 300; i++) {
       const s = r.snap(),
-        error = (attack ? 0.75 : 0.95) - s.x - s.lateralSpeed * 0.15;
+        error = (attack ? 0.75 : -0.95) - s.x - s.lateralSpeed * 0.15;
       r.paddle(Math.abs(error) > 0.04 ? Math.sign(error) : 0);
       if (attack && !s.reload && s.rivals.some((p) => p.x > s.x && Math.abs(p.at - s.at) < 2.9 && !p.stun))
         r.press('b');
@@ -464,4 +464,42 @@ it('runs a full Stormglass race on the centre line or contesting both edge strip
   const edges = ride(true);
   expect(edges.clears + edges.hits).toBe(6);
   expect(edges.clears).toBeGreaterThan(0);
+});
+
+it('lets a Hotshot carry class effort over the slag gap by lining up the approach pad', () => {
+  const ride = (route: 'pad' | 'miss' | 'bridge') => {
+    const r = race();
+    r.press('a');
+    const bike = r.session.fakeBike!;
+    bike.useScript(null);
+    bike.manual = { cadence: 86, power: 156, hr: null };
+    for (let i = 0; i < 30 * 30 && r.snap().at < 293 && !r.snap().falls; i++) {
+      const s = r.snap(),
+        d = s.at;
+      let x = 0;
+      if (d > 135) x = route === 'bridge' ? -1.05 : route === 'miss' && d < 207 ? 0.48 : 0.98;
+      const error = x - s.x - s.lateralSpeed * 0.16;
+      r.paddle(Math.abs(error) > 0.045 ? Math.sign(error) : 0);
+      const rival = s.rivals.find((p) => p.windup > 0.22 && p.windup < 0.76);
+      if (rival && !s.reload) r.press(rival.x < s.x ? 'a' : 'b');
+      else r.session.step(1);
+    }
+    return r.snap();
+  };
+  expect(ride('pad')).toMatchObject({ jumps: 1, falls: 0 });
+  expect(ride('miss')).toMatchObject({ jumps: 0, falls: 1 });
+  expect(ride('bridge')).toMatchObject({ jumps: 0, falls: 0 });
+});
+
+it('advances the chain between consecutive physics poses at 60 Hz', () => {
+  const r = race();
+  r.press('a');
+  r.press('b');
+  r.session.step(3);
+  const s = r.snap(),
+    start = displayRace(s, 0),
+    half = displayRace(s, 0.5);
+  expect(start.swing - s.swing).toBeCloseTo(1 / 30);
+  expect(start.swing - half.swing).toBeCloseTo(1 / 60);
+  expect(half.swing - s.swing).toBeCloseTo(1 / 60);
 });

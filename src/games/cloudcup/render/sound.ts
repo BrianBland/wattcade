@@ -1,3 +1,4 @@
+import { SWING } from '../sim/chain';
 import { play, sfxGraph } from '../../../audio/sfx';
 import { setVoice, stopVoices } from '../../../audio/voices';
 import { rattleChain } from './chainAudio';
@@ -80,7 +81,9 @@ export class RallySound {
     if (s.falls > prev.falls) play('whoosh', { pitch: 0.56, vol: 0.62 });
     if (prev.fall > RESCUE - CATCH && s.fall <= RESCUE - CATCH) play('clank', { pitch: 0.69, vol: 0.42 });
     if (prev.fall && !s.fall) play('ignite', { pitch: 0.82, vol: 0.32 });
-    if (s.swings > prev.swings) play('whoosh', { pitch: 1.45, vol: 0.46 });
+    if (s.swings > prev.swings) play('clank', { pitch: 1.53, vol: 0.24 });
+    if (prev.swing > SWING * 0.69 && s.swing <= SWING * 0.69 && s.swing > 0)
+      play('whoosh', { pitch: 0.86, vol: 0.49 });
     if (s.strikes > prev.strikes) play('clank', { pitch: 0.73, vol: 0.9 });
     if (s.hits > prev.hits) play('wreck', { pitch: 0.83, vol: 0.65 });
     if (s.boosts > prev.boosts) play('ignite', { vol: 0.56 });

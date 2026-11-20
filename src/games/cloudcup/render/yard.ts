@@ -156,9 +156,15 @@ export function buildYard(
     }
   }
   for (const pad of pads) {
+    for (let j = 0; j < 6; j++) {
+      // Build the insulated copper bed in short sections to follow the bank.
+      block(pad.at - j * 0.9, pad.x, 0.034, 0.59 * WIDTH, 0.055, 1.02, '#64483f');
+      for (const sign of [-1, 1])
+        block(pad.at - j * 0.9, pad.x + sign * 0.29, 0.068, 0.1, 0.06, 0.9, '#f2b96b');
+    }
     for (let j = 0; j < 4; j++) {
       for (const d of [-1, 1]) {
-        const p = world(pad.at - j * 1.15, pad.x + d * 0.13, 0.08);
+        const p = world(pad.at - j * 1.15, pad.x + d * 0.13, 0.13);
         scratch.position.set(p.x, p.y, p.z);
         scratch.rotation.set(0, -p.yaw + d * 0.62, p.bank, 'YXZ');
         scratch.scale.set(0.32, 0.075, 1.6);

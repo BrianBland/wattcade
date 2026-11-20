@@ -104,6 +104,14 @@ export function buildFiringWorks(
     }
   }
 
+  // Porcelain tiles on the raised outside edge describe the bank before
+  // the rider enters it. Repeated insets along the kerb give a speed cue.
+  for (let d = 396; d < 540; d += 4) {
+    const a = kilnWidth(d),
+      b = kilnWidth(d + 4);
+    strip(d % 8 ? white : steel, d, d + 4, a - 0.22, a - 0.065, 0.038, 0.038, b - 0.22, b - 0.065);
+  }
+
   // Each shell has a full return under the suspended road; riders see
   // the circular opening, the dark outer steel and the recessed brick lining.
   const angular = 32;

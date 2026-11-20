@@ -1,3 +1,4 @@
+import { sweepGesture } from '../sim/chain';
 import * as T from 'three';
 
 // Rigid weights preserve the painted armor. Two-link arms can lift a glove
@@ -27,15 +28,15 @@ export function riderRig() {
       .sub(rest[i + 1])
       .normalize(),
   }));
-  function pose(lean: number, side: number, wind: number, phase: number, settle: number) {
-    const draw = wind ? 1 - wind / 1.15 : 0;
-    const sweep = phase ? Math.sin(Math.PI * phase) : 0;
-    const twist = side * (draw * 0.62 + sweep * (0.64 - 1.28 * phase));
+  const grips = [bones[5].position, bones[8].position];
+  function pose(lean: number, side: number, phase: number, settle: number) {
+    const move = sweepGesture(phase),
+      twist = side * move.twist;
     const torso = bones[1];
     torso.rotation.set(-0.11 * Math.abs(lean) - settle * 0.18, twist, lean * 0.36, 'YXZ');
     const head = bones[2];
     head.position.copy(rest[2]).sub(rest[1]).applyQuaternion(torso.quaternion).add(rest[1]);
-    head.rotation.set(-settle * 0.1, -side * (draw * 0.47 + sweep * 0.3), -lean * 0.18, 'YXZ');
+    head.rotation.set(-settle * 0.1, -twist * 0.44, -lean * 0.18, 'YXZ');
     for (let k = 0; k < 2; k++) {
       const i = 3 + k * 3,
         sign = k ? 1 : -1,
@@ -44,11 +45,7 @@ export function riderRig() {
         hand = bones[i + 2];
       shoulder.position.copy(rest[i]).sub(rest[1]).applyQuaternion(torso.quaternion).add(rest[1]);
       hand.position.copy(rest[i + 2]);
-      if (sign === side) {
-        hand.position.x += sign * (0.29 * draw + 0.56 * sweep);
-        hand.position.y += 0.57 * draw + 0.37 * sweep;
-        hand.position.z += 0.53 * draw + sweep * (0.93 * phase + 0.12);
-      }
+      if (sign === side) hand.position.set(sign * move.x, move.y, move.z);
       const length = armLengths[k];
       delta.copy(hand.position).sub(shoulder.position);
       const reach = T.MathUtils.clamp(
@@ -75,7 +72,7 @@ export function riderRig() {
       );
       hand.quaternion.copy(elbow.quaternion);
     }
-    return bones[side < 0 ? 5 : 8].position;
+    return grips;
   }
   return { bones, skeleton, pose };
 }

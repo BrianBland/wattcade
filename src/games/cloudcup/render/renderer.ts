@@ -1,8 +1,10 @@
+import { buildChain } from './chain';
+import { drawnPhase, SWING, rivalSwing } from '../sim/chain';
 import { displayRace } from './motion';
 import { RallySound } from './sound';
 import * as T from 'three';
 import { NO_INSETS, type GameRenderer, type Insets } from '../../../contracts';
-import { chainTip, classes, LAP, SWING, type RaceView } from '../sim/race';
+import { classes, LAP, type RaceView } from '../sim/race';
 import { courses } from '../sim/track';
 import { lapAt, LIP, LAUNCH_SPEED, CATCH, DROP, RESCUE, easeBetween } from '../sim/deck';
 import { buildBike } from './bike';
@@ -48,12 +50,12 @@ function courseCue(s: RaceView, d: number) {
     return station.side > 0 ? '‹  KEEP LEFT' : 'KEEP RIGHT  ›';
   }
   if (s.course === 1) {
-    if (d >= 30 && d < 88) return 'RIDE THE COPPER SEAM';
-    if (d >= 350 && d < 420) return 'COOLING FLUME';
-    if (d >= 645 && d < 704) return 'SECOND FIRING';
+    if (d >= 30 && d < 88) return 'HOLD THE LEFT SEAM';
+    if (d >= 350 && d < 420) return 'BANKED FLUME  ‹';
+    if (d >= 645 && d < 704) return 'FOLLOW THE CROSSOVER';
     return '';
   }
-  if (d >= 145 && d < Math.min(LIP, 208) && s.x <= 0.1) return '← BRIDGE     /     RAMP →';
+  if (d >= 145 && d < Math.min(LIP, 208) && s.x <= 0.1) return '‹  BRIDGE    /    BOOST JUMP  ›';
   if (d >= 610 && d < 672) return 'SINGLE SPAN   /   EXPOSED EDGES';
   return '';
 }
@@ -76,7 +78,7 @@ export class Renderer implements GameRenderer {
   private touchdowns = [0, 0, 0, 0];
   private jumpCounts = [0, 0, 0, 0];
   private shades: T.Mesh[] = [];
-  private chain: T.InstancedMesh[] = [];
+  private chain: ReturnType<typeof buildChain>[] = [];
   private warning: T.Sprite[] = [];
   private sparks!: T.Points;
   private streak!: T.LineSegments;
@@ -171,20 +173,9 @@ export class Renderer implements GameRenderer {
       );
       this.shades.push(shadow);
       this.scene.add(shadow);
-      const links = new T.InstancedMesh(
-        new T.TorusGeometry(0.113, 0.034, 5, 10),
-        new T.MeshStandardMaterial({
-          color: i ? '#ffb058' : '#caffff',
-          emissive: i ? '#b73b10' : '#148d98',
-          emissiveIntensity: 0.85,
-          metalness: 0.65,
-          roughness: 0.32,
-        }),
-        16,
-      );
-      links.frustumCulled = false;
-      this.chain.push(links);
-      bike.group.add(links);
+      const chain = buildChain();
+      this.chain.push(chain);
+      bike.group.add(chain.mesh);
       const light = new T.Sprite(
         new T.SpriteMaterial({
           map: glow,
@@ -330,27 +321,6 @@ export class Renderer implements GameRenderer {
     this.camera.aspect = b.w / b.h;
     this.camera.updateProjectionMatrix();
   }
-  private links(i: number, side: number, phase: number, wind: number, hand: T.Vector3) {
-    const mesh = this.chain[i];
-    mesh.visible = phase > 0 || wind > 0;
-    if (!mesh.visible) return;
-    const tip = wind > 0 ? { x: side * (0.85 + 0.26 * (1 - wind / 1.15)), z: -0.92 } : chainTip(phase, side);
-    const angle = Math.atan2(tip.z, Math.abs(tip.x));
-    const dummy = new T.Object3D();
-    for (let k = 0; k < 16; k++) {
-      const t = k / 15;
-      dummy.position.set(
-        hand.x * (1 - t) + tip.x * t,
-        hand.y * (1 - t) + 1.26 * t + 0.22 * Math.sin(t * 3.4),
-        hand.z * (1 - t) + tip.z * t,
-      );
-      dummy.rotation.set(k % 2 ? 0.95 : 0.12, -angle * side, 0.12);
-      dummy.scale.set(1.4, 0.76, 1);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(k, dummy.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
-  }
   render(snapshot: RaceView, _bike?: unknown, _input?: unknown, frameFraction = 1) {
     const s = displayRace(snapshot, frameFraction);
     this.setCourse(s.course);
@@ -408,9 +378,18 @@ export class Renderer implements GameRenderer {
       const r2 = s.rivals[i - 1],
         wind = r2?.windup ?? 0;
       const side = i ? r2.side : s.side;
-      const phase = i ? (r2.strike ? 1 - r2.strike / 0.34 : 0) : s.swing ? 1 - s.swing / SWING : 0;
-      const hand = this.bikes[i].pose(r.lean, side, wind, phase, settle);
-      this.links(i, side, phase, wind, hand);
+      const phase =
+        wind > 0
+          ? drawnPhase * (1 - wind / 1.15)
+          : i
+            ? r2.strike
+              ? 1 - ((1 - drawnPhase) * r2.strike) / rivalSwing
+              : 0
+            : s.swing
+              ? 1 - s.swing / SWING
+              : 0;
+      const hands = this.bikes[i].pose(r.lean, side, phase, settle);
+      this.chain[i].pose(side, phase, hands);
       const light = this.warning[i];
       light.visible = wind > 0;
       light.position.set((r2?.side ?? 1) * 0.65, 1.45, 0.1);
@@ -564,11 +543,13 @@ export class Renderer implements GameRenderer {
         s.course === 2
           ? 'Read the grounding forks. Catch a charge on the exposed edge.'
           : kiln
-            ? 'Trace the copper seam to launch out of the firing drum.'
-            : 'Take the service bridge or sprint the broken viaduct.';
+            ? 'Hold the first seam. Ride the high bank, then follow the copper across the return drum.'
+            : 'Bridge left. Line up the right boost pad to clear the broken viaduct.';
       this.menu.querySelector('span')!.textContent =
         classes[s.tier] +
-        '   /   ' +
+        ' · ' +
+        Math.round(100 * s.paceFtp) +
+        '% FTP pace   /   ' +
         s.laps +
         ' laps   /   ' +
         (s.laps === 3 ? '2–4 min' : s.laps === 12 ? '9–14 min' : '18–28 min');
@@ -607,7 +588,7 @@ export class Renderer implements GameRenderer {
       : s.tow
         ? 'TOW CELL  ·  ' + Math.ceil(s.tow) + 's'
         : s.reload
-          ? 'CHAIN REELING'
+          ? 'CHAIN RECOVERY'
           : 'A ‹   CHAIN   › B';
   }
   unmount() {

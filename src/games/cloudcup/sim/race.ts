@@ -18,7 +18,7 @@ import {
   easeBetween,
 } from './deck';
 import { bikePose, bankBike } from './motion';
-import { LAP, WIDTH, courses } from './track';
+import { LAP, courses, flumeCamber } from './track';
 import {
   collectorGear,
   crossCollector,
@@ -28,15 +28,19 @@ import {
   stripCentre,
 } from './stormglass';
 import { firebox, firingGear, firingLine, kilnWidth, pressureCells, rideSeam } from './kiln';
+import { drawnPhase, rivalSwing, swingConnects, SWING } from './chain';
+export { swingConnects } from './chain';
 export { LAP };
 export const FINISH = LAP * 3;
 export const distances = [3, 12, 24] as const;
 export const classes = ['Rookie', 'Hotshot', 'Outlaw'] as const;
 export const pilots = ['Rivet', 'Mantis', 'Switch'];
-export const pads = [78, 334, 375, 536, 729, 931].map((at, i) => ({
-  at,
-  x: [-0.78, 0.52, 0.82, -0.62, 0.15, -0.92][i],
-}));
+export const pads = [
+  { at: 78, x: 0.72 },
+  { at: 205, x: 0.92 },
+  { at: 536, x: -0.62 },
+  { at: 931, x: -0.92 },
+];
 export type Rival = ReturnType<typeof chassis> & {
   firing: ReturnType<typeof firingGear>;
   collector: ReturnType<typeof collectorGear>;
@@ -51,25 +55,7 @@ export type Rival = ReturnType<typeof chassis> & {
   cooldown: number;
   finish: number | null;
 };
-export const SWING = 0.48;
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
-export function inReach(gap: number, across: number, side: number) {
-  return Math.abs(gap) < 3.8 && across * side > 0.05 && across * side < 0.88;
-}
-// The same moving tip drives both the rendered links and the contact test.
-export function chainTip(phase: number, side: number) {
-  const reach = 0.7 + 3.25 * Math.sin(Math.PI * phase),
-    angle = -1.55 + phase * 3.1;
-  return { x: side * (0.47 + Math.cos(angle) * reach), z: 0.36 + Math.sin(angle) * reach };
-}
-export function swingConnects(gap: number, across: number, side: number, phase: number) {
-  if (!inReach(gap, across, side)) return false;
-  const tip = chainTip(phase, side),
-    dx = across * WIDTH,
-    dz = -gap;
-  const t = clamp((dx * tip.x + dz * tip.z) / (tip.x * tip.x + tip.z * tip.z), 0, 1);
-  return Math.hypot(dx - t * tip.x, (dz - t * tip.z) * 0.68) < 0.95;
-}
 export function createRace(ctx: GameContext) {
   const cruise = ctx.tuning.num('speedAtFtp', 24, 12, 35, 1);
   const pace = [
@@ -143,8 +129,8 @@ export function createRace(ctx: GameContext) {
   };
   function capturePose() {
     return {
-      player: bikePose(s),
-      rivals: rivals.map(bikePose),
+      player: { ...bikePose(s), swing: s.swing },
+      rivals: rivals.map((r) => ({ ...bikePose(r), strike: r.strike, windup: r.windup })),
       cameraX: s.cameraX,
       speed: s.speed,
       time: s.time,
@@ -237,7 +223,8 @@ export function createRace(ctx: GameContext) {
     const effort = clamp(ctx.bike().ftpFraction, 0, 2);
     s.seamPowered = kiln && effort >= pace[s.tier]() * seamPace();
     const speedLoad = Math.pow(s.speed / cruise(), 2);
-    const drift = -turn * 0.58 * speedLoad;
+    const support = kiln ? flumeCamber(lapAt(s.at)) / 0.25 : 0;
+    const drift = -turn * 0.58 * speedLoad * (1 - 0.46 * support);
     s.lateralSpeed += (steer * 1.95 + drift - s.lateralSpeed) * (1 - Math.exp(-dt * (steer ? 5 : 9)));
     if (!rescuing) {
       s.x += (s.lateralSpeed * (s.flight ? 0.32 : 1) + s.shove) * dt;
@@ -423,17 +410,19 @@ export function createRace(ctx: GameContext) {
       const tactical = nearby
         ? clamp(s.speed + (wantedGap - gap) * 0.85, paceSpeed * 0.8, paceSpeed * 1.13)
         : paceSpeed;
-      const approach = jumpRun && lapDistance < LIP ? easeBetween(lapDistance, 164, LIP - 8) : 0;
       r.release = Math.max(0, r.release - dt);
       const packSpeed = tactical * packPace(gap) * (r.release ? 1.36 : 1);
       const speed = r.flight
         ? r.launchSpeed
-        : (packSpeed + approach * Math.max(0, cruise() * 1.09 - packSpeed)) *
-          (r.stun ? 0.54 : 1) *
-          (r.collector.drag ? 0.7 : 1) *
-          Math.min(1, s.time * 1.35);
+        : packSpeed * (r.stun ? 0.54 : 1) * (r.collector.drag ? 0.7 : 1) * Math.min(1, s.time * 1.35);
 
       r.at = Math.min(s.finishAt, r.at + speed * dt);
+      if (viaduct && !r.flight) {
+        for (const pad of pads) {
+          const marker = Math.floor(oldAt / LAP) * LAP + pad.at;
+          if (oldAt < marker && r.at >= marker && Math.abs(r.x - pad.x) < 0.31) r.release = 2.8;
+        }
+      }
       crossDeck(r, oldAt, speed, dt, solidWidth?.(r.at));
       if (storm && !r.fall && crossCollector(r.collector, oldAt, r.at, r.x, s.time, dt) === 'clear')
         r.release = 2.4;
@@ -461,8 +450,7 @@ export function createRace(ctx: GameContext) {
         !s.flight &&
         !r.flight &&
         !r.grace &&
-        s.swing > 0.035 &&
-        s.swing < 0.42 &&
+        s.swing > 0 &&
         !s.contact &&
         swingConnects(dz, dx, s.side, 1 - s.swing / SWING)
       ) {
@@ -485,13 +473,13 @@ export function createRace(ctx: GameContext) {
         !s.grace &&
         !r.flight &&
         !s.slow &&
-        swingConnects(-dz, -dx, r.side, 1 - r.strike / 0.34)
+        swingConnects(-dz, -dx, r.side, 1 - ((1 - drawnPhase) * r.strike) / rivalSwing)
       )
         damage(r.side, i);
       if (r.windup) {
         r.windup = Math.max(0, r.windup - dt);
         if (!r.windup) {
-          r.strike = 0.34;
+          r.strike = rivalSwing;
           r.cooldown = 6;
         }
       } else if (
@@ -555,6 +543,7 @@ export function createRace(ctx: GameContext) {
       previous,
       firing: { ...s.firing },
       collector: { ...s.collector },
+      paceFtp: pace[s.tier](),
       seamFtp: pace[s.tier]() * seamPace(),
       purgeFtp: purge(),
     }),

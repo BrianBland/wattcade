@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fieldClearsHud, layout, type Box } from '../render/layout';
+import { BOSS_CARD_SLAM, bossCard, fieldClearsHud, layout, type Box } from '../render/layout';
 import { radialLayout } from '../render/construction';
 import { fieldRect } from '../render/fieldView';
 import { BASE_X, BASE_Y } from '../sim/defs';
@@ -110,6 +110,21 @@ describe('Dynamo Defense layout vs HUD inset', () => {
     expect(fieldClearsHud(L.field, inset.occlusions!)).toBe(true);
     for (const b of [L.status, L.current, L.garage, L.workshop, L.brood, ...(L.objective ? [L.objective] : [])]) {
       expect(inset.occlusions!.some(hood => overlaps(b, hood))).toBe(false);
+    }
+  });
+});
+
+describe('Dynamo Defense boss name card', () => {
+  const sizes: Array<[number, number]> = [[1180, 820], [1366, 1024], [1024, 768], [820, 1180], [390, 844], [844, 390], [1920, 1080]];
+  for (const [W, H] of sizes) for (const inset of [0, 90]) it(`${W}x${H} inset ${inset}: card stays over the field, clear of the status column`, () => {
+    const L = layout(W, H, inset, true);
+    for (const [titleW, subW] of [[300, 200], [900, 700], [2000, 1200]]) {
+      const c = bossCard(L, titleW, subW);
+      const half = Math.max(titleW, subW) * BOSS_CARD_SLAM * c.fit / 2;
+      expect(c.x - half).toBeGreaterThanOrEqual(L.banner.x - L.banner.w / 2);
+      expect(c.x + half).toBeLessThanOrEqual(L.banner.x + L.banner.w / 2);
+      if (L.column) expect(c.x - half, 'right of the status column').toBeGreaterThan(L.status.x + L.status.w);
+      expect(c.y).toBeLessThan(H - inset);
     }
   });
 });

@@ -6,7 +6,7 @@ import { LEVEL_0, levelGeometry, type TdGeometry, type TdLevel } from '../sim/le
 import { BOSS_NAME, BOSS_TRICK } from '../sim/boss';
 import { toScreen, toWorld } from './fieldView';
 import type { EnemyView, Fx, TdSnapshot, TowerView } from '../sim/types';
-import { layout, type TdLayout } from './layout';
+import { bossCard, layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt, TOWER_ICON_COLOR } from './sprites';
 import { TD } from './theme';
 import { NARROW_W, TdHud, type Hit } from './panels';
@@ -658,17 +658,19 @@ export class TdRenderer implements GameRenderer {
       const age = this.wall - this.intro.at;
       if (s.phase === 'run' && age >= 0 && age < 2.8) {
         const k2 = Math.min(1, age / 0.25), a = age < 2.2 ? 1 : 1 - (age - 2.2) / 0.6, scale = 1.35 - 0.35 * (1 - Math.pow(1 - k2, 3));
-        const size = Math.round(Math.min(this.W * 0.075, 64 * L.u)), y = L.banner.y;
-        g.save(); g.globalAlpha = a * k2; g.translate(this.W / 2, y); g.scale(scale, scale); g.textAlign = 'center';
+        const size = Math.round(Math.min(L.banner.w * 0.075, 64 * L.u));
         const title = BOSS_NAME[this.intro.color].toUpperCase().split('').join(' ');
+        const sub = `${BOSS_TRICK[this.intro.color]} · shift to V when Exposed`;
+        g.save(); g.textAlign = 'center';
+        g.font = `900 ${size}px system-ui, sans-serif`; const titleW = g.measureText(title).width;
+        g.font = `700 ${Math.round(size * 0.32)}px system-ui, sans-serif`; const subW = g.measureText(sub).width;
+        const card = bossCard(L, titleW, subW); // centred over the field, clear of the landscape status column
+        g.globalAlpha = a * k2; g.translate(card.x, card.y); g.scale(scale * card.fit, scale * card.fit);
         g.font = `900 ${size}px system-ui, sans-serif`;
-        const fit = Math.min(1, (this.W * 0.9) / Math.max(1, g.measureText(title).width * 1.35)); // fits at the slam-in scale
-        g.scale(fit, fit);
         g.lineWidth = Math.max(4, size * 0.12); g.strokeStyle = 'rgba(20,12,0,0.85)';
         g.strokeText(title, 0, 0); const gr = g.createLinearGradient(0, -size, 0, 0); gr.addColorStop(0, '#fff2b0'); gr.addColorStop(1, COL[this.intro.color]);
         g.fillStyle = gr; g.fillText(title, 0, 0);
         g.font = `700 ${Math.round(size * 0.32)}px system-ui, sans-serif`; g.fillStyle = 'rgba(255,236,190,0.9)'; g.lineWidth = 3;
-        const sub = `${BOSS_TRICK[this.intro.color]} · shift to V when Exposed`;
         g.strokeText(sub, 0, size * 0.62); g.fillText(sub, 0, size * 0.62); g.restore();
       }
     }

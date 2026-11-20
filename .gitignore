@@ -8,6 +8,7 @@ out
 .venv-media/
 .env.local
 .cache/
+.ci-metrics/
 # Arcade card clips are build output: CI records them on deploy (npm run capture:cards).
 /public/cards/
 

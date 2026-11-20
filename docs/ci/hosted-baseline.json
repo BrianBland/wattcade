@@ -1,0 +1,2079 @@
+{
+  "exact_revision": {
+    "run_id": 42256637327,
+    "sha": "3d4137d0592abc027681df7939e52454eeac4740",
+    "event": "push",
+    "conclusion": "success",
+    "created_at": "2026-11-06T16:54:03Z",
+    "jobs": [
+      {
+        "job_id": 128025460070,
+        "name": "check",
+        "conclusion": "success",
+        "started_at": "2026-11-06T16:54:07Z",
+        "completed_at": "2026-11-06T17:01:09Z",
+        "labels": [
+          "ubuntu-latest"
+        ],
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-11-06T16:54:08Z",
+            "completed_at": "2026-11-06T16:54:08Z"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-11-06T16:54:08Z",
+            "completed_at": "2026-11-06T16:54:12Z"
+          },
+          {
+            "name": "Run actions/setup-node@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-11-06T16:54:12Z",
+            "completed_at": "2026-11-06T16:54:14Z"
+          },
+          {
+            "name": "Run npm ci",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-11-06T16:54:14Z",
+            "completed_at": "2026-11-06T16:54:22Z"
+          },
+          {
+            "name": "Run npm run typecheck",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-11-06T16:54:22Z",
+            "completed_at": "2026-11-06T16:54:25Z"
+          },
+          {
+            "name": "Run python3 scripts/td-check-assets.py",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6,
+            "started_at": "2026-11-06T16:54:25Z",
+            "completed_at": "2026-11-06T16:54:25Z"
+          },
+          {
+            "name": "Run npm test",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7,
+            "started_at": "2026-11-06T16:54:25Z",
+            "completed_at": "2026-11-06T17:01:06Z"
+          },
+          {
+            "name": "Run npm run build",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8,
+            "started_at": "2026-11-06T17:01:06Z",
+            "completed_at": "2026-11-06T17:01:07Z"
+          },
+          {
+            "name": "Post Run actions/setup-node@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 15,
+            "started_at": "2026-11-06T17:01:07Z",
+            "completed_at": "2026-11-06T17:01:07Z"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 16,
+            "started_at": "2026-11-06T17:01:07Z",
+            "completed_at": "2026-11-06T17:01:08Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 17,
+            "started_at": "2026-11-06T17:01:08Z",
+            "completed_at": "2026-11-06T17:01:08Z"
+          }
+        ]
+      }
+    ]
+  },
+  "convenience_sample": [
+    {
+      "run_id": 44146285817,
+      "sha": "82a67da9732d0a2957a668ef9a05793bfdcd00e2",
+      "event": "pull_request",
+      "conclusion": "success",
+      "created_at": "2026-11-17T18:17:46Z",
+      "jobs": [
+        {
+          "job_id": 134262188090,
+          "name": "check",
+          "conclusion": "success",
+          "started_at": "2026-11-17T18:17:50Z",
+          "completed_at": "2026-11-17T18:23:39Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T18:17:50Z",
+              "completed_at": "2026-11-17T18:17:51Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T18:17:51Z",
+              "completed_at": "2026-11-17T18:17:54Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T18:17:54Z",
+              "completed_at": "2026-11-17T18:17:58Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T18:17:58Z",
+              "completed_at": "2026-11-17T18:18:05Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T18:18:05Z",
+              "completed_at": "2026-11-17T18:18:07Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T18:18:07Z",
+              "completed_at": "2026-11-17T18:18:07Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-11-17T18:18:07Z",
+              "completed_at": "2026-11-17T18:23:35Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-11-17T18:23:35Z",
+              "completed_at": "2026-11-17T18:23:37Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-11-17T18:23:37Z",
+              "completed_at": "2026-11-17T18:23:37Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T18:23:37Z",
+              "completed_at": "2026-11-17T18:23:37Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T18:23:37Z",
+              "completed_at": "2026-11-17T18:23:37Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": 44141705213,
+      "sha": "31e3ab6f51a8e8da8a213019e512b06ace103ac0",
+      "event": "pull_request",
+      "conclusion": "success",
+      "created_at": "2026-11-17T17:52:20Z",
+      "jobs": [
+        {
+          "job_id": 134245928400,
+          "name": "check",
+          "conclusion": "success",
+          "started_at": "2026-11-17T17:52:23Z",
+          "completed_at": "2026-11-17T17:59:36Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T17:52:24Z",
+              "completed_at": "2026-11-17T17:52:25Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T17:52:25Z",
+              "completed_at": "2026-11-17T17:52:27Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T17:52:27Z",
+              "completed_at": "2026-11-17T17:52:29Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T17:52:29Z",
+              "completed_at": "2026-11-17T17:52:37Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T17:52:37Z",
+              "completed_at": "2026-11-17T17:52:40Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T17:52:40Z",
+              "completed_at": "2026-11-17T17:52:40Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-11-17T17:52:40Z",
+              "completed_at": "2026-11-17T17:59:32Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-11-17T17:59:32Z",
+              "completed_at": "2026-11-17T17:59:34Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-11-17T17:59:34Z",
+              "completed_at": "2026-11-17T17:59:34Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T17:59:34Z",
+              "completed_at": "2026-11-17T17:59:34Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T17:59:34Z",
+              "completed_at": "2026-11-17T17:59:34Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": 44066150362,
+      "sha": "bc0c3b4af3b64a6767a92cbebf505a5b6e859a95",
+      "event": "pull_request",
+      "conclusion": "success",
+      "created_at": "2026-11-17T10:34:56Z",
+      "jobs": [
+        {
+          "job_id": 133980228198,
+          "name": "check",
+          "conclusion": "success",
+          "started_at": "2026-11-17T10:35:00Z",
+          "completed_at": "2026-11-17T10:42:57Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T10:35:01Z",
+              "completed_at": "2026-11-17T10:35:02Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T10:35:02Z",
+              "completed_at": "2026-11-17T10:35:05Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T10:35:05Z",
+              "completed_at": "2026-11-17T10:35:08Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T10:35:08Z",
+              "completed_at": "2026-11-17T10:35:18Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T10:35:18Z",
+              "completed_at": "2026-11-17T10:35:21Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T10:35:21Z",
+              "completed_at": "2026-11-17T10:35:21Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-11-17T10:35:21Z",
+              "completed_at": "2026-11-17T10:42:52Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-11-17T10:42:52Z",
+              "completed_at": "2026-11-17T10:42:54Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-11-17T10:42:54Z",
+              "completed_at": "2026-11-17T10:42:54Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T10:42:54Z",
+              "completed_at": "2026-11-17T10:42:54Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T10:42:54Z",
+              "completed_at": "2026-11-17T10:42:54Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": 44034360529,
+      "sha": "2888609e1179bc0c5b68b59129a04b7605678f25",
+      "event": "pull_request",
+      "conclusion": "success",
+      "created_at": "2026-11-17T06:51:52Z",
+      "jobs": [
+        {
+          "job_id": 133873550652,
+          "name": "check",
+          "conclusion": "success",
+          "started_at": "2026-11-17T06:51:55Z",
+          "completed_at": "2026-11-17T06:57:00Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T06:51:56Z",
+              "completed_at": "2026-11-17T06:51:58Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T06:51:58Z",
+              "completed_at": "2026-11-17T06:52:04Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T06:52:04Z",
+              "completed_at": "2026-11-17T06:52:08Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T06:52:08Z",
+              "completed_at": "2026-11-17T06:52:14Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T06:52:14Z",
+              "completed_at": "2026-11-17T06:52:16Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T06:52:16Z",
+              "completed_at": "2026-11-17T06:52:16Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-11-17T06:52:16Z",
+              "completed_at": "2026-11-17T06:56:57Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-11-17T06:56:57Z",
+              "completed_at": "2026-11-17T06:56:58Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-11-17T06:56:58Z",
+              "completed_at": "2026-11-17T06:56:58Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T06:56:58Z",
+              "completed_at": "2026-11-17T06:56:58Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T06:56:58Z",
+              "completed_at": "2026-11-17T06:56:58Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": 44032908132,
+      "sha": "393da936469860a82943657227546fe6f8b7e53f",
+      "event": "pull_request",
+      "conclusion": "success",
+      "created_at": "2026-11-17T06:40:07Z",
+      "jobs": [
+        {
+          "job_id": 133868843128,
+          "name": "check",
+          "conclusion": "success",
+          "started_at": "2026-11-17T06:40:10Z",
+          "completed_at": "2026-11-17T06:47:34Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T06:40:11Z",
+              "completed_at": "2026-11-17T06:40:11Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T06:40:12Z",
+              "completed_at": "2026-11-17T06:40:14Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T06:40:14Z",
+              "completed_at": "2026-11-17T06:40:15Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T06:40:15Z",
+              "completed_at": "2026-11-17T06:40:23Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T06:40:23Z",
+              "completed_at": "2026-11-17T06:40:26Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T06:40:26Z",
+              "completed_at": "2026-11-17T06:40:27Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-11-17T06:40:27Z",
+              "completed_at": "2026-11-17T06:47:30Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-11-17T06:47:30Z",
+              "completed_at": "2026-11-17T06:47:32Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-11-17T06:47:32Z",
+              "completed_at": "2026-11-17T06:47:32Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T06:47:32Z",
+              "completed_at": "2026-11-17T06:47:32Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T06:47:32Z",
+              "completed_at": "2026-11-17T06:47:32Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": 44031634873,
+      "sha": "fa433e77b6c0c778f16df63201717a1279b15507",
+      "event": "pull_request",
+      "conclusion": "success",
+      "created_at": "2026-11-17T06:29:53Z",
+      "jobs": [
+        {
+          "job_id": 133864738607,
+          "name": "check",
+          "conclusion": "success",
+          "started_at": "2026-11-17T06:29:56Z",
+          "completed_at": "2026-11-17T06:37:44Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T06:29:56Z",
+              "completed_at": "2026-11-17T06:29:57Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T06:29:57Z",
+              "completed_at": "2026-11-17T06:30:00Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T06:30:00Z",
+              "completed_at": "2026-11-17T06:30:01Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T06:30:01Z",
+              "completed_at": "2026-11-17T06:30:10Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T06:30:10Z",
+              "completed_at": "2026-11-17T06:30:13Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T06:30:13Z",
+              "completed_at": "2026-11-17T06:30:13Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-11-17T06:30:13Z",
+              "completed_at": "2026-11-17T06:37:40Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-11-17T06:37:40Z",
+              "completed_at": "2026-11-17T06:37:41Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-11-17T06:37:41Z",
+              "completed_at": "2026-11-17T06:37:42Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T06:37:42Z",
+              "completed_at": "2026-11-17T06:37:42Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T06:37:42Z",
+              "completed_at": "2026-11-17T06:37:42Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": 44030191711,
+      "sha": "7754cb5a04b672f986ff10d70fba13ca0af72dd1",
+      "event": "pull_request",
+      "conclusion": "success",
+      "created_at": "2026-11-17T06:18:06Z",
+      "jobs": [
+        {
+          "job_id": 133859992804,
+          "name": "check",
+          "conclusion": "success",
+          "started_at": "2026-11-17T06:18:09Z",
+          "completed_at": "2026-11-17T06:25:35Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T06:18:10Z",
+              "completed_at": "2026-11-17T06:18:10Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T06:18:10Z",
+              "completed_at": "2026-11-17T06:18:12Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T06:18:12Z",
+              "completed_at": "2026-11-17T06:18:14Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T06:18:14Z",
+              "completed_at": "2026-11-17T06:18:22Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T06:18:22Z",
+              "completed_at": "2026-11-17T06:18:26Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T06:18:26Z",
+              "completed_at": "2026-11-17T06:18:26Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-11-17T06:18:26Z",
+              "completed_at": "2026-11-17T06:25:31Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-11-17T06:25:31Z",
+              "completed_at": "2026-11-17T06:25:33Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-11-17T06:25:33Z",
+              "completed_at": "2026-11-17T06:25:33Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T06:25:33Z",
+              "completed_at": "2026-11-17T06:25:33Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T06:25:33Z",
+              "completed_at": "2026-11-17T06:25:34Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": 44028600153,
+      "sha": "40db586245de2b7fe971fabb0955d718ba9a8191",
+      "event": "push",
+      "conclusion": "success",
+      "created_at": "2026-11-17T06:05:09Z",
+      "jobs": [
+        {
+          "job_id": 133854819563,
+          "name": "check",
+          "conclusion": "success",
+          "started_at": "2026-11-17T06:05:12Z",
+          "completed_at": "2026-11-17T06:12:37Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T06:05:13Z",
+              "completed_at": "2026-11-17T06:05:13Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T06:05:13Z",
+              "completed_at": "2026-11-17T06:05:15Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T06:05:15Z",
+              "completed_at": "2026-11-17T06:05:17Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T06:05:17Z",
+              "completed_at": "2026-11-17T06:05:24Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T06:05:24Z",
+              "completed_at": "2026-11-17T06:05:28Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T06:05:28Z",
+              "completed_at": "2026-11-17T06:05:28Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-11-17T06:05:28Z",
+              "completed_at": "2026-11-17T06:12:33Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-11-17T06:12:33Z",
+              "completed_at": "2026-11-17T06:12:35Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-11-17T06:12:35Z",
+              "completed_at": "2026-11-17T06:12:35Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T06:12:35Z",
+              "completed_at": "2026-11-17T06:12:35Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T06:12:35Z",
+              "completed_at": "2026-11-17T06:12:35Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": 44028312897,
+      "sha": "6158407f7e75ece6b9c7d37e7aecc694937b3bb5",
+      "event": "pull_request",
+      "conclusion": "success",
+      "created_at": "2026-11-17T06:02:46Z",
+      "jobs": [
+        {
+          "job_id": 133853988320,
+          "name": "check",
+          "conclusion": "success",
+          "started_at": "2026-11-17T06:03:04Z",
+          "completed_at": "2026-11-17T06:08:59Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T06:03:05Z",
+              "completed_at": "2026-11-17T06:03:06Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T06:03:06Z",
+              "completed_at": "2026-11-17T06:03:09Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T06:03:09Z",
+              "completed_at": "2026-11-17T06:03:12Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T06:03:12Z",
+              "completed_at": "2026-11-17T06:03:22Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T06:03:22Z",
+              "completed_at": "2026-11-17T06:03:24Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T06:03:24Z",
+              "completed_at": "2026-11-17T06:03:24Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-11-17T06:03:24Z",
+              "completed_at": "2026-11-17T06:08:55Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-11-17T06:08:55Z",
+              "completed_at": "2026-11-17T06:08:56Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-11-17T06:08:56Z",
+              "completed_at": "2026-11-17T06:08:56Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T06:08:56Z",
+              "completed_at": "2026-11-17T06:08:56Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T06:08:56Z",
+              "completed_at": "2026-11-17T06:08:56Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": 44027804760,
+      "sha": "a1f2c193a52798e929191e602e7847b85510a04d",
+      "event": "pull_request",
+      "conclusion": "cancelled",
+      "created_at": "2026-11-17T05:58:30Z",
+      "jobs": [
+        {
+          "job_id": 133852252990,
+          "name": "check",
+          "conclusion": "cancelled",
+          "started_at": "2026-11-17T05:58:33Z",
+          "completed_at": "2026-11-17T06:03:01Z",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-17T05:58:34Z",
+              "completed_at": "2026-11-17T05:58:35Z"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-11-17T05:58:35Z",
+              "completed_at": "2026-11-17T05:58:38Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-11-17T05:58:38Z",
+              "completed_at": "2026-11-17T05:58:39Z"
+            },
+            {
+              "name": "Run npm ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-11-17T05:58:39Z",
+              "completed_at": "2026-11-17T05:58:46Z"
+            },
+            {
+              "name": "Run npm run typecheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-11-17T05:58:46Z",
+              "completed_at": "2026-11-17T05:58:49Z"
+            },
+            {
+              "name": "Run python3 scripts/td-check-assets.py",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-11-17T05:58:49Z",
+              "completed_at": "2026-11-17T05:58:49Z"
+            },
+            {
+              "name": "Run npm test",
+              "status": "completed",
+              "conclusion": "cancelled",
+              "number": 7,
+              "started_at": "2026-11-17T05:58:49Z",
+              "completed_at": "2026-11-17T06:02:59Z"
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 8,
+              "started_at": "2026-11-17T06:02:59Z",
+              "completed_at": "2026-11-17T06:02:59Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 15,
+              "started_at": "2026-11-17T06:02:59Z",
+              "completed_at": "2026-11-17T06:02:59Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-11-17T06:02:59Z",
+              "completed_at": "2026-11-17T06:02:59Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-11-17T06:02:59Z",
+              "completed_at": "2026-11-17T06:03:00Z"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "selection": "First ten CI runs in newest-first per_page=30 all-workflow response; not random; exact revision queried separately.",
+  "timing_unit": "seconds from Actions timestamps; per-file durations in milliseconds from exact-revision Vitest log",
+  "exact_revision_test_timings": [
+    {
+      "file": "src/games/watershed/test/scenarios.full.test.ts",
+      "ms": 187194
+    },
+    {
+      "file": "src/games/watershed/test/scenarios.spin.test.ts",
+      "ms": 117340
+    },
+    {
+      "file": "src/games/watershed/test/scenarios.grind.test.ts",
+      "ms": 100924
+    },
+    {
+      "file": "src/games/starfighter/test/sim.test.ts",
+      "ms": 97020
+    },
+    {
+      "file": "src/core/qa.sanity.test.ts",
+      "ms": 53332
+    },
+    {
+      "file": "src/progression/scenarios.test.ts",
+      "ms": 53072
+    },
+    {
+      "file": "src/games/dungeon/test/dungeon.test.ts",
+      "ms": 41319
+    },
+    {
+      "file": "src/games/towerdefense/test/actions.test.ts",
+      "ms": 40126
+    },
+    {
+      "file": "src/games/seaside/test/scenarios.test.ts",
+      "ms": 32234
+    },
+    {
+      "file": "src/games/watershed/test/sim.test.ts",
+      "ms": 29853
+    },
+    {
+      "file": "src/games/towerdefense/test/sim.test.ts",
+      "ms": 28698
+    },
+    {
+      "file": "src/media/test/drift.test.ts",
+      "ms": 27644
+    },
+    {
+      "file": "src/games/seaside/test/sim.test.ts",
+      "ms": 22563
+    },
+    {
+      "file": "src/games/hamster/test/hamster.test.ts",
+      "ms": 17474
+    },
+    {
+      "file": "src/media/test/analysis.test.ts",
+      "ms": 11623
+    },
+    {
+      "file": "src/games/dungeon/test/achievements.test.ts",
+      "ms": 11114
+    },
+    {
+      "file": "src/games/starfighter/test/weapons.test.ts",
+      "ms": 10698
+    },
+    {
+      "file": "src/games/lighthouse/test/sim.test.ts",
+      "ms": 10147
+    },
+    {
+      "file": "src/games/starfighter/test/achievements.test.ts",
+      "ms": 9449
+    },
+    {
+      "file": "src/games/dungeon/test/acceptance.test.ts",
+      "ms": 8160
+    },
+    {
+      "file": "src/games/seaside/test/shop.test.ts",
+      "ms": 7180
+    },
+    {
+      "file": "src/games/watershed/test/achievements.test.ts",
+      "ms": 7156
+    },
+    {
+      "file": "src/games/lighthouse/test/scenarios.test.ts",
+      "ms": 5261
+    },
+    {
+      "file": "src/games/towerdefense/test/achievements.test.ts",
+      "ms": 4456
+    },
+    {
+      "file": "scripts/media-resolver/server.test.ts",
+      "ms": 4195
+    },
+    {
+      "file": "src/games/dungeon/test/stances.test.ts",
+      "ms": 3772
+    },
+    {
+      "file": "src/games/towerdefense/test/balance.test.ts",
+      "ms": 3454
+    },
+    {
+      "file": "src/games/towerdefense/test/combat.test.ts",
+      "ms": 3251
+    },
+    {
+      "file": "src/games/seaside/test/corridor.test.ts",
+      "ms": 2696
+    },
+    {
+      "file": "src/shell/savedSetup.test.ts",
+      "ms": 2527
+    },
+    {
+      "file": "src/games/towerdefense/test/overdrive.test.ts",
+      "ms": 2399
+    },
+    {
+      "file": "src/games/towerdefense/test/turret.test.ts",
+      "ms": 2293
+    },
+    {
+      "file": "src/games/cadenza/test/rolling.test.ts",
+      "ms": 2206
+    },
+    {
+      "file": "src/games/lighthouse/test/achievements.test.ts",
+      "ms": 2063
+    },
+    {
+      "file": "src/games/cadenza/test/sim.test.ts",
+      "ms": 1830
+    },
+    {
+      "file": "src/games/dungeon/test/ai.test.ts",
+      "ms": 1738
+    },
+    {
+      "file": "src/games/insets.test.ts",
+      "ms": 1662
+    },
+    {
+      "file": "src/games/seaside/test/gate.test.ts",
+      "ms": 1640
+    },
+    {
+      "file": "src/games/seaside/test/streaming.test.ts",
+      "ms": 1609
+    },
+    {
+      "file": "src/games/warmup/test/traffic.test.ts",
+      "ms": 1557
+    },
+    {
+      "file": "src/games/warmup/test/sim.test.ts",
+      "ms": 1534
+    },
+    {
+      "file": "src/games/towerdefense/test/aliens.test.ts",
+      "ms": 1470
+    },
+    {
+      "file": "src/games/seaside/test/belly.test.ts",
+      "ms": 1365
+    },
+    {
+      "file": "src/games/seaside/test/roadMesh.test.ts",
+      "ms": 1299
+    },
+    {
+      "file": "src/games/towerdefense/test/gibs.test.ts",
+      "ms": 1167
+    },
+    {
+      "file": "src/games/towerdefense/test/runs.test.ts",
+      "ms": 1024
+    },
+    {
+      "file": "src/games/cadenza/test/achievements.test.ts",
+      "ms": 972
+    },
+    {
+      "file": "src/shell/hud/gameIndicators.test.ts",
+      "ms": 925
+    },
+    {
+      "file": "src/games/seaside/test/cavern.test.ts",
+      "ms": 892
+    },
+    {
+      "file": "src/games/cadenza/test/render.test.ts",
+      "ms": 813
+    },
+    {
+      "file": "src/probe/shift.test.ts",
+      "ms": 802
+    },
+    {
+      "file": "src/games/starfighter/test/drive.test.ts",
+      "ms": 685
+    },
+    {
+      "file": "src/probe/saved.test.ts",
+      "ms": 654
+    },
+    {
+      "file": "src/games/seaside/test/greedy.test.ts",
+      "ms": 642
+    },
+    {
+      "file": "src/progression/progression.test.ts",
+      "ms": 632
+    },
+    {
+      "file": "src/media/test/rolling.test.ts",
+      "ms": 607
+    },
+    {
+      "file": "src/shell/hud/compactGames.test.ts",
+      "ms": 564
+    },
+    {
+      "file": "src/games/cadenza/test/hud.test.ts",
+      "ms": 562
+    },
+    {
+      "file": "src/games/cadenza/test/track.test.ts",
+      "ms": 553
+    },
+    {
+      "file": "src/core/sessionRecording.test.ts",
+      "ms": 514
+    },
+    {
+      "file": "src/games/warmup/test/new-biomes.test.ts",
+      "ms": 512
+    },
+    {
+      "file": "src/games/cadenza/test/city.test.ts",
+      "ms": 466
+    },
+    {
+      "file": "src/cosmetics/cosmetics.test.ts",
+      "ms": 441
+    },
+    {
+      "file": "src/games/cadenza/test/ride.test.ts",
+      "ms": 436
+    },
+    {
+      "file": "src/games/seaside/test/flight.test.ts",
+      "ms": 421
+    },
+    {
+      "file": "src/media/test/mix.test.ts",
+      "ms": 396
+    },
+    {
+      "file": "src/games/towerdefense/test/hitFeedback.test.ts",
+      "ms": 390
+    },
+    {
+      "file": "src/core/core.test.ts",
+      "ms": 385
+    },
+    {
+      "file": "src/media/test/medialib.test.ts",
+      "ms": 381
+    },
+    {
+      "file": "src/games/watershed/test/salmon.test.ts",
+      "ms": 346
+    },
+    {
+      "file": "src/media/test/freeze.test.ts",
+      "ms": 329
+    },
+    {
+      "file": "src/games/seaside/test/bellyWorld.test.ts",
+      "ms": 329
+    },
+    {
+      "file": "src/input/touch.test.ts",
+      "ms": 310
+    },
+    {
+      "file": "src/shell/screens/Locker.test.tsx",
+      "ms": 293
+    },
+    {
+      "file": "src/shell/hud/HudLayer.test.tsx",
+      "ms": 253
+    },
+    {
+      "file": "src/media/test/online.test.ts",
+      "ms": 248
+    },
+    {
+      "file": "src/games/watershed/test/events.test.ts",
+      "ms": 243
+    },
+    {
+      "file": "src/media/test/engine.test.ts",
+      "ms": 240
+    },
+    {
+      "file": "src/media/test/streaming-engine.test.ts",
+      "ms": 236
+    },
+    {
+      "file": "src/shell/hud/ZoneWidget.test.tsx",
+      "ms": 219
+    },
+    {
+      "file": "src/games/towerdefense/test/construction.test.ts",
+      "ms": 217
+    },
+    {
+      "file": "src/games/towerdefense/test/cables.test.ts",
+      "ms": 207
+    },
+    {
+      "file": "src/games/seaside/test/island.test.ts",
+      "ms": 199
+    },
+    {
+      "file": "src/core/media.test.ts",
+      "ms": 178
+    },
+    {
+      "file": "src/games/towerdefense/test/hud.test.ts",
+      "ms": 175
+    },
+    {
+      "file": "src/games/dungeon/test/pixel.test.ts",
+      "ms": 172
+    },
+    {
+      "file": "src/shell/screens/ProfileEditor.test.tsx",
+      "ms": 171
+    },
+    {
+      "file": "src/games/dungeon/test/font.test.ts",
+      "ms": 160
+    },
+    {
+      "file": "src/games/towerdefense/test/layout.test.ts",
+      "ms": 156
+    },
+    {
+      "file": "src/games/cadenza/render/craft.test.ts",
+      "ms": 152
+    },
+    {
+      "file": "src/games/seaside/test/workout.test.ts",
+      "ms": 135
+    },
+    {
+      "file": "src/games/cadenza/test/ships.test.ts",
+      "ms": 134
+    },
+    {
+      "file": "src/games/seaside/test/morning.test.ts",
+      "ms": 120
+    },
+    {
+      "file": "src/shell/screens/Summary.test.tsx",
+      "ms": 118
+    },
+    {
+      "file": "src/shell/screens/GameHost.test.tsx",
+      "ms": 117
+    },
+    {
+      "file": "src/shell/screens/ArcadeMenu.test.tsx",
+      "ms": 113
+    },
+    {
+      "file": "src/shell/screens/Connect.test.tsx",
+      "ms": 108
+    },
+    {
+      "file": "src/games/lighthouse/test/ambience.test.ts",
+      "ms": 98
+    },
+    {
+      "file": "src/games/seaside/test/sunShadow.test.ts",
+      "ms": 98
+    },
+    {
+      "file": "src/shell/hud/Pad.test.tsx",
+      "ms": 95
+    },
+    {
+      "file": "src/games/hamster/test/gestures.test.ts",
+      "ms": 95
+    },
+    {
+      "file": "src/games/seaside/test/fishingPose.test.ts",
+      "ms": 93
+    },
+    {
+      "file": "src/devices/ftms/native.test.ts",
+      "ms": 91
+    },
+    {
+      "file": "src/games/seaside/test/fishing.test.ts",
+      "ms": 90
+    },
+    {
+      "file": "src/progression/achievements.test.ts",
+      "ms": 88
+    },
+    {
+      "file": "src/shell/game/GameIntro.test.tsx",
+      "ms": 87
+    },
+    {
+      "file": "src/games/seaside/test/ending.test.ts",
+      "ms": 85
+    },
+    {
+      "file": "src/ui/components.test.tsx",
+      "ms": 84
+    },
+    {
+      "file": "src/probe/exportLog.test.ts",
+      "ms": 77
+    },
+    {
+      "file": "src/shell/savedDiscovery.test.ts",
+      "ms": 75
+    },
+    {
+      "file": "src/games/dungeon/test/director.test.ts",
+      "ms": 74
+    },
+    {
+      "file": "src/devices/ftms/ftms.test.ts",
+      "ms": 70
+    },
+    {
+      "file": "src/games/dungeon/test/sprites.test.ts",
+      "ms": 70
+    },
+    {
+      "file": "src/games/starfighter/test/route.test.ts",
+      "ms": 68
+    },
+    {
+      "file": "src/shell/drivein/youtube.test.ts",
+      "ms": 65
+    },
+    {
+      "file": "src/shell/components/MediaServerConnection.test.tsx",
+      "ms": 63
+    },
+    {
+      "file": "src/shell/screens/CosmeticRewards.test.tsx",
+      "ms": 57
+    },
+    {
+      "file": "src/games/warmup/test/render.test.ts",
+      "ms": 55
+    },
+    {
+      "file": "src/shell/hud/insets.test.ts",
+      "ms": 55
+    },
+    {
+      "file": "src/shell/screens/ProfilePicker.test.tsx",
+      "ms": 54
+    },
+    {
+      "file": "src/shell/media/useSearchKeyboard.test.tsx",
+      "ms": 51
+    },
+    {
+      "file": "src/media/online/client.test.ts",
+      "ms": 50
+    },
+    {
+      "file": "src/media/online/prefetch.test.ts",
+      "ms": 49
+    },
+    {
+      "file": "src/games/seaside/test/sound.test.ts",
+      "ms": 47
+    },
+    {
+      "file": "src/shell/screens/PauseMenu.test.tsx",
+      "ms": 47
+    },
+    {
+      "file": "src/games/towerdefense/test/battlefield.test.ts",
+      "ms": 42
+    },
+    {
+      "file": "src/shell/arcade.test.ts",
+      "ms": 42
+    },
+    {
+      "file": "src/shell/components/Toasts.test.tsx",
+      "ms": 42
+    },
+    {
+      "file": "src/shell/cards.test.ts",
+      "ms": 40
+    },
+    {
+      "file": "src/shell/App.test.tsx",
+      "ms": 39
+    },
+    {
+      "file": "src/shell/components/RiderAvatar.test.tsx",
+      "ms": 38
+    },
+    {
+      "file": "src/games/seaside/test/looks.test.ts",
+      "ms": 37
+    },
+    {
+      "file": "src/shell/media/BufferProgress.test.tsx",
+      "ms": 37
+    },
+    {
+      "file": "src/shell/chrome/ChromeHints.test.tsx",
+      "ms": 36
+    },
+    {
+      "file": "src/debug/trainerTest.test.tsx",
+      "ms": 35
+    },
+    {
+      "file": "src/devices/zwiftRide/controller.test.ts",
+      "ms": 33
+    },
+    {
+      "file": "src/games/towerdefense/test/machinery.test.ts",
+      "ms": 33
+    },
+    {
+      "file": "src/media/test/library.test.ts",
+      "ms": 32
+    },
+    {
+      "file": "src/devices/ftms/trainer.test.ts",
+      "ms": 31
+    },
+    {
+      "file": "scripts/media-resolver/playlist.test.ts",
+      "ms": 30
+    },
+    {
+      "file": "src/shell/media/MediaTimingStats.test.tsx",
+      "ms": 30
+    },
+    {
+      "file": "src/devices/bluetooth/lifecycle.test.ts",
+      "ms": 25
+    },
+    {
+      "file": "scripts/media-resolver/service.test.ts",
+      "ms": 24
+    },
+    {
+      "file": "src/cosmetics/migrate.test.ts",
+      "ms": 24
+    },
+    {
+      "file": "src/games/seaside/test/mesh.test.ts",
+      "ms": 24
+    },
+    {
+      "file": "src/games/seaside/test/layout.test.ts",
+      "ms": 24
+    },
+    {
+      "file": "src/devices/hr/monitor.test.ts",
+      "ms": 22
+    },
+    {
+      "file": "src/media/online/ordered.test.ts",
+      "ms": 22
+    },
+    {
+      "file": "src/games/starfighter/test/terrain.test.ts",
+      "ms": 22
+    },
+    {
+      "file": "src/games/warmup/test/achievements.test.ts",
+      "ms": 21
+    },
+    {
+      "file": "src/progression/rebalance.test.ts",
+      "ms": 19
+    },
+    {
+      "file": "src/units.test.ts",
+      "ms": 19
+    },
+    {
+      "file": "src/input/hub.test.ts",
+      "ms": 18
+    },
+    {
+      "file": "src/progression/wardrobe.test.ts",
+      "ms": 18
+    },
+    {
+      "file": "src/shell/drivein/drivein.test.ts",
+      "ms": 17
+    },
+    {
+      "file": "src/devices/zwiftRide/codec.test.ts",
+      "ms": 17
+    },
+    {
+      "file": "src/games/seaside/test/shopLayout.test.ts",
+      "ms": 16
+    },
+    {
+      "file": "src/games/seaside/test/pull.test.ts",
+      "ms": 15
+    },
+    {
+      "file": "src/games/towerdefense/test/road.test.ts",
+      "ms": 15
+    },
+    {
+      "file": "src/devices/ftms/steps.test.ts",
+      "ms": 15
+    },
+    {
+      "file": "src/media/queue/queue.test.ts",
+      "ms": 14
+    },
+    {
+      "file": "src/games/seaside/test/economy.test.ts",
+      "ms": 14
+    },
+    {
+      "file": "src/games/seaside/test/graph.test.ts",
+      "ms": 14
+    },
+    {
+      "file": "src/games/dungeon/test/boss.test.ts",
+      "ms": 14
+    },
+    {
+      "file": "src/core/nativeGears.test.ts",
+      "ms": 13
+    },
+    {
+      "file": "src/ui/canvas.test.ts",
+      "ms": 13
+    },
+    {
+      "file": "src/games/watershed/test/layout.test.ts",
+      "ms": 13
+    },
+    {
+      "file": "src/media/test/config.test.ts",
+      "ms": 12
+    },
+    {
+      "file": "src/games/starfighter/test/segments.test.ts",
+      "ms": 11
+    },
+    {
+      "file": "src/games/towerdefense/test/dynamoSound.test.ts",
+      "ms": 11
+    },
+    {
+      "file": "src/shell/hud/zoneMath.test.ts",
+      "ms": 11
+    },
+    {
+      "file": "src/games/towerdefense/test/assets.test.ts",
+      "ms": 11
+    },
+    {
+      "file": "src/core/renames.test.ts",
+      "ms": 10
+    },
+    {
+      "file": "src/games/dungeon/test/layout.test.ts",
+      "ms": 10
+    },
+    {
+      "file": "src/games/seaside/test/route.test.ts",
+      "ms": 10
+    },
+    {
+      "file": "src/games/seaside/test/narrative.test.ts",
+      "ms": 10
+    },
+    {
+      "file": "src/games/seaside/test/dispose.test.ts",
+      "ms": 10
+    },
+    {
+      "file": "src/devices/zwiftTrainer/codec.test.ts",
+      "ms": 10
+    },
+    {
+      "file": "src/games/cadenza/test/degradation.test.ts",
+      "ms": 10
+    },
+    {
+      "file": "src/games/lighthouse/test/panel.test.ts",
+      "ms": 10
+    },
+    {
+      "file": "src/shell/media/pickerModel.test.ts",
+      "ms": 9
+    },
+    {
+      "file": "src/shell/editorFields.test.ts",
+      "ms": 9
+    },
+    {
+      "file": "src/shell/format.test.ts",
+      "ms": 9
+    },
+    {
+      "file": "src/games/towerdefense/test/structureFx.test.ts",
+      "ms": 9
+    },
+    {
+      "file": "src/media/online/timing.test.ts",
+      "ms": 9
+    },
+    {
+      "file": "src/shell/hud/padModel.test.ts",
+      "ms": 8
+    },
+    {
+      "file": "src/games/seaside/test/pace.test.ts",
+      "ms": 8
+    },
+    {
+      "file": "src/media/test/buffer.test.ts",
+      "ms": 8
+    },
+    {
+      "file": "src/games/cadenza/test/gauge.test.ts",
+      "ms": 8
+    },
+    {
+      "file": "src/shell/drivein/persist.test.ts",
+      "ms": 8
+    },
+    {
+      "file": "src/games/scenarios.coverage.test.ts",
+      "ms": 8
+    },
+    {
+      "file": "src/games/dungeon/test/arsenal.test.ts",
+      "ms": 7
+    },
+    {
+      "file": "src/shell/nav.test.ts",
+      "ms": 7
+    },
+    {
+      "file": "src/games/seaside/test/monologue.test.ts",
+      "ms": 7
+    },
+    {
+      "file": "src/games/lighthouse/test/postcard.test.ts",
+      "ms": 7
+    },
+    {
+      "file": "src/games/watershed/test/upsample.test.ts",
+      "ms": 7
+    },
+    {
+      "file": "src/shell/achievementGroups.test.ts",
+      "ms": 7
+    },
+    {
+      "file": "src/games/kit/actionButton.test.ts",
+      "ms": 7
+    },
+    {
+      "file": "src/shell/controlGlyphs.test.ts",
+      "ms": 7
+    },
+    {
+      "file": "src/games/cadenza/test/layout.test.ts",
+      "ms": 7
+    },
+    {
+      "file": "src/shell/hud/ActionIndicators.test.ts",
+      "ms": 6
+    },
+    {
+      "file": "src/devices/zwiftRide/group.test.ts",
+      "ms": 6
+    },
+    {
+      "file": "src/shell/game/ending.test.ts",
+      "ms": 6
+    },
+    {
+      "file": "src/games/hamster/test/layout.test.ts",
+      "ms": 6
+    },
+    {
+      "file": "src/shell/hud/layout.test.ts",
+      "ms": 6
+    },
+    {
+      "file": "src/input/mapping.test.ts",
+      "ms": 6
+    },
+    {
+      "file": "src/games/warmup/test/daylight.test.ts",
+      "ms": 6
+    },
+    {
+      "file": "src/probe/format.test.ts",
+      "ms": 6
+    },
+    {
+      "file": "src/games/hamster/test/ticker.test.ts",
+      "ms": 5
+    },
+    {
+      "file": "src/shell/countGate.test.ts",
+      "ms": 5
+    },
+    {
+      "file": "src/games/seaside/test/viewLayout.test.ts",
+      "ms": 5
+    },
+    {
+      "file": "src/shell/warmup/frameGate.test.ts",
+      "ms": 5
+    },
+    {
+      "file": "src/games/starfighter/test/layout.test.ts",
+      "ms": 5
+    },
+    {
+      "file": "src/devices/hr/hr.test.ts",
+      "ms": 5
+    },
+    {
+      "file": "src/ui/tokens.test.ts",
+      "ms": 5
+    },
+    {
+      "file": "src/core/cooldown.test.ts",
+      "ms": 4
+    },
+    {
+      "file": "src/shell/fakeKeys.test.ts",
+      "ms": 4
+    },
+    {
+      "file": "src/games/watershed/test/scenarios.coverage.test.ts",
+      "ms": 4
+    }
+  ]
+}

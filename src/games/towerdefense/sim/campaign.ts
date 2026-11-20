@@ -100,7 +100,7 @@ export function endlessMap(seed: number, grounds: readonly GroundStyle[] = GROUN
 }
 
 /** Stars from the share of base HP not lost over the level, heals not counted (a fall is no stars). */
-export function starsFor(hpFrac: number, two = 0.5, three = 0.85): 1 | 2 | 3 {
+export function starsFor(hpFrac: number, two = 0.5, three = 1): 1 | 2 | 3 {
   return hpFrac >= three ? 3 : hpFrac >= two ? 2 : 1;
 }
 /** The campaign levels open to play: the first, and each one after a cleared level. */

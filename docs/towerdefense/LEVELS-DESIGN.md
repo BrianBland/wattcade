@@ -22,7 +22,8 @@ trainer modes and called efforts; the sections below are updated to match it.
 - **Chaining:** the clear screen offers **Next level**. The next level starts straight away, and its warm-up wave
   is the bridge between the two levels. Scrap resets and the base is rebuilt. **Finish** returns to the overworld.
 - Clear grade: 1–3 **stars** from the base HP lost over the whole level, clear heals not counted (owner,
-  2026-11-09): clear / at most 50 % lost / at most 15 % lost (`starTwoHp`, `starThreeHp`). A fall fails the level, with
+  2026-11-09): clear / at most 50 % lost / flawless, no base damage (`starTwoHp`, `starThreeHp`; owner, 2026-11-19:
+  3★ was at most 15 % lost). A fall fails the level, with
   no stars.
 
 ## 2. Workout fit
@@ -75,13 +76,13 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
 
 - Balance (continuous combat, 2026-11-19): riders at a share of the suggested tier's power (`follow-power`),
   build bot and weapon bot, campaign levels I-1, I-3, I-5 and III-3 (15/25/40/25 min), seeds 1–2. One boss break-
-  through costs 30 HP, so it alone drops a level to 2★. Details in [BALANCE.md](BALANCE.md).
+  through costs 30 HP. 3★ means a flawless clear (no base damage). Details in [BALANCE.md](BALANCE.md).
 
   | Rider | Easy | Steady | Hard |
   |---|---|---|---|
   | 100 % and 115 % | all 3★ | all 3★ | all 3★ |
-  | 85 % | 7 × 3★, 1 × 2★ | 5 × 3★, 3 × 2★ | 4 × 3★, 4 × 2★ |
-  | 70 % | 3 × 3★, 3 × 2★, 2 × 1★ | 1 × 3★, 5 × 2★, 2 falls | 6 × 2★, 2 falls |
+  | 85 % | 6 × 3★, 2 × 2★ | 5 × 3★, 3 × 2★ | 4 × 3★, 4 × 2★ |
+  | 70 % | 2 × 3★, 4 × 2★, 2 × 1★ | 6 × 2★, 2 falls | 6 × 2★, 2 falls |
 
 ## 5. Meta: unlocks replace the Garage
 

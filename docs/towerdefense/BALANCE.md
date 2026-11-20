@@ -20,14 +20,15 @@ rider at that strength gets. These are synthetic riders, not a fatigue model or 
 ## Campaign: stars by rider strength
 
 `--campaign=0,2,4,12 --seeds=1,2`: Outpost I, III, V (15, 25, 40 min) and Badlands III (25 min, deeper).
-Two runs per cell; `e` marks a boss break-through (30 HP, which alone costs the third star).
+Two runs per cell; `e` marks a boss break-through (30 HP). 3★ is a flawless clear with no base damage (owner,
+2026-11-19; it was at most 15 % lost), 2★ at most 50 % lost; the table applies that rule to the runs' recorded losses.
 
 | Rider | Intensity | Outpost I | Outpost III | Outpost V | Badlands III |
 | --- | --- | --- | --- | --- | --- |
-| 70 % | Easy | 3 / 3 | 2e / 3 | 2 / 2e | 1e / 1e |
-| 70 % | Steady | 3 / 2e | 2e / 2e | 2 / 2e | fell / fell |
+| 70 % | Easy | 2 / 3 | 2e / 3 | 2 / 2e | 1e / 1e |
+| 70 % | Steady | 2 / 2e | 2e / 2e | 2 / 2e | fell / fell |
 | 70 % | Hard | 2 / 2e | 2e / 2e | 2 / 2e | fell / fell |
-| 85 % | Easy | 3 / 3 | 3 / 3 | 3 / 2e | 3 / 3 |
+| 85 % | Easy | 3 / 3 | 3 / 3 | 3 / 2e | 2 / 3 |
 | 85 % | Steady | 3 / 3 | 3 / 3 | 3 / 2e | 2e / 2e |
 | 85 % | Hard | 3 / 3 | 2e / 3 | 3 / 2e | 2e / 2e |
 | 100 % | all | 3 / 3 | 3 / 3 | 3 / 3 | 3 / 3 |

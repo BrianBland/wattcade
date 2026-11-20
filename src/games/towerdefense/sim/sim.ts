@@ -198,7 +198,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const splitRoadHp = T.num('splitRoadHp', 0.8, 0.5, 1, 0.05, 'forks and merges: road walkers\' HP x this (a tower sees only one of the routes)');
   // Stars count every hit the base took over the level: clear heals keep the base standing, but don't erase leaks.
   const starTwo = T.num('starTwoHp', 0.5, 0, 1, 0.05, 'two stars: at most this share of base HP lost over the whole level (heals not counted)');
-  const starThree = T.num('starThreeHp', 0.85, 0, 1, 0.05, 'three stars: at most 1 - this share of base HP lost over the whole level');
+  const starThree = T.num('starThreeHp', 1, 0, 1, 0.05, 'three stars: at most 1 - this share of base HP lost over the whole level (1 = flawless, no base damage)');
   const endlessRamp = T.num('endlessRamp', 0.7, 0.2, 2, 0.05, 'Endless: difficulty waves per segment (segments are shorter than the old waves, so the ramp per minute stays put)');
   const levelPeak = T.num('levelPeakWave', 7, 2, 30, 1, 'a level\'s last wave fights like this endless wave (+ the level\'s depth)');
   const firstLullS = T.num('firstLullS', 15, 0, 120, 1, 'quiet start of a level or run: time to pick a first tower, then the flow starts and never stops');

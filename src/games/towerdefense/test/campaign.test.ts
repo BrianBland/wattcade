@@ -29,7 +29,7 @@ describe('level wave lists', () => {
     expect(campaignOpen({})).toBe(0);
     expect(campaignOpen({ c1: 1, c2: 3 })).toBe(2);
     expect(quickRide(5, 30)).toEqual(quickRide(5, 30));
-    expect([starsFor(0.2), starsFor(0.6), starsFor(0.84), starsFor(0.9)]).toEqual([1, 2, 2, 3]);
+    expect([starsFor(0.2), starsFor(0.6), starsFor(0.84), starsFor(0.99), starsFor(1)]).toEqual([1, 2, 2, 2, 3]);
   });
 });
 

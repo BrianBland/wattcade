@@ -20,6 +20,7 @@ import { adoptWarm, disposeWarm, takeWarmGame } from '../game/prewarm';
 import { rememberInsets } from '../game/gameInsets';
 import { achievementToast, toast } from '../components/Toasts';
 import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
+import { keepScreenAwake } from '../wakeLock';
 
 /** Ride milestone toast every this many pedalling seconds. */
 export const MILESTONE_S = 600;
@@ -115,7 +116,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   useEffect(() => {
     loadingRef.current = true; setLoading(true); setError('');
     const warmJob = takeWarmGame(game.id, profile.id);
-    let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null, lock: { release(): Promise<void> } | null = null;
+    let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null;
     const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
     const remember = (i: Insets) => { const el = mount.current; if (el) rememberInsets(game.id, el.clientWidth, el.clientHeight, hasConnectedController(), i); return i; };
     const hudLayout = () => { if (!disposed) renderer?.setInsets?.(remember(readInsets())); };
@@ -128,7 +129,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     const unlock = () => unlockAudio();
     window.addEventListener('pointerdown', unlock); window.addEventListener('keydown', unlock);
     const offSys = onSystem((a) => { if (a === 'pause') setPause(!pausedRef.current); else if (a === 'panic') debugActions.panic(true); });
-    (navigator as any).wakeLock?.request?.('screen').then((l: any) => { lock = l; }).catch(() => {});
+    const releaseWake = keepScreenAwake(); // re-acquired after the page hides; video fallback on iOS
     const seen = { ach: new Set<string>(), level: profile.level, milestone: 0, nextCheck: 10 };
     const celebrate = () => {
       const pv = previewAward(profile); if (!pv) return;
@@ -233,7 +234,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     })();
     return () => {
       disposed = true; window.removeEventListener(HUD_LAYOUT_EVENT, hudLayout); detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
-      renderer?.unmount(); rendererRef.current = null; void lock?.release();
+      renderer?.unmount(); rendererRef.current = null; releaseWake();
       music.current?.engine.setFx({ degrade: 0 }); music.current?.engine.stop(); music.current = null; duckAmbient('music', false);
     };
   }, [game]);

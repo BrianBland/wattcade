@@ -6,14 +6,15 @@
 - Single road: `fieldView.ts` is the one world↔screen transform (uniform scale; landscape turned 90°, turret left). Sprites stay upright; aims add `view.rot`.
 - Ground: `td/environment/road/{portrait,landscape}.webp` via `PAINT_BOXES`; landscape falls back to the turned portrait painting, then vector ground.
 - DOM status/current-brood rows reserve space above the portrait field; landscape places status upper left, objective/crew in the middle and brood/forecast lower left above actual controls; field scale/position stay unchanged.
-- Fireballs lob from the outpost's manifest muzzle and leave burning ground; flyers pass over the fire.
+- Fireballs lob from the outpost's manifest muzzle and leave burning ground (`burnFx.ts`): noise-painted textures (`fireTex.ts`: charred crust, molten cracks, 16-frame flame loops) baked during the loading hold, flames over ground actors, embers/soot, a 5 s cooling scar; flyers pass over the fire.
 - Flamethrower cones start at the tower's manifest muzzle, with particles and a short ground-only cone.
 - The hive mouth breathes in the incoming brood colour; brood-tinted splats remain independent of the painting.
 - Brood-tinted splats and curled husks remain for the wave, then fade; both are capped at 160 decals.
 - Power cables (`cables.ts`): grid-routed from under the deck to each pad, never across the road (only pad 2 feeds through pad 6); a pulse per pedal half-stroke. Muzzles come from outpost manifest anchors; towers get contact shadows.
 - Outpost: crank-driven flywheel, cosmetic rider through the masked cab, six-phase Gatling, sequential rail caps.
 - Selected weapon head aims; HP thresholds enable cumulative damage overlays and shot effects light the muzzle.
-- Towers: approved compact-burner Flamethrower A replaces the Mortar stand-in; Tesla/Prism and reused Mortar chassis/fittings are unchanged; retired weapon pieces are pruned. All production rigs must decode before gameplay.
+- Towers: Tesla, compact-burner Flamethrower A, Prism and the Mortar (its original rig restored from 44514c3: barrel recoil, no effect strips; shells and the concussion sparks are drawn in code). All production rigs must decode before gameplay.
+- Tower colours: `TOWER_ICON_COLOR` (field rings, pad lights) and `theme.ts` `TOWER_TINT` (workshop rows: lamp strip, wash, rim, name). Mortar = hazard yellow, kept paler/greener than boss gold and the brass trim. Review: `/dev/td-battlefield.html?ws=1&rich=1&row=3`.
 - Part pixels, nozzle flare strips and muzzle anchors share parent aim/recoil transforms (`puppetPose.ts`); tier coordinates select the highest unlocked L1/L3/L5 tip/flare offset, including L2/L4.
 - Frame emission follows manifest animation keys; fixed sockets and cab do not inherit flywheel motion.
 - Ground lighting before actors preserves silhouette contrast; cached quarter-resolution ambient darkness
@@ -30,4 +31,4 @@
 - Real iPad/Bluefy frame-rate validation remains a hardware check; Chromium timings are not an iPad claim.
 - Merge #141: retain shared HUD actions/radial construction; reserve the fallback dock only without shell controls.
 - Merge #143: adopt DOM status/announcements while retaining painted registration and padded outpost clearance.
-- objectives.ts selects live effort/boss targets, progress and recovery/set cues; the landscape card replaces central calls and shows Auto-crew/queued orders. Compact screens keep transient announcements.
+- objectives.ts picks the ride's current job from the flow stage and the boss (suggested tier, Exposed openings, set progress); the landscape card also holds the upright radar. Compact screens keep transient announcements.

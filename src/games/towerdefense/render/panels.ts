@@ -2,9 +2,10 @@
 import { knownLevel } from '../sim/levelCache';
 import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
-import type { TdSnapshot } from '../sim/types';
+import type { RadarBlip, RadarView, TdSnapshot } from '../sim/types';
+import { roman } from '../sim/tiers';
 import type { Box, TdLayout } from './layout';
-import { constructionStatus, rideObjective } from './objectives';
+import { STAGE_NAME, constructionStatus, flowLabel, rideObjective } from './objectives';
 import { levelImage, levelSelectHtml, modesHtml, styleName, type ArtLookup } from './levelSelect';
 import type { TdLevel } from '../sim/level';
 import { THEME_CSS } from './theme';
@@ -32,12 +33,37 @@ const CSS = `
 .td-hp .bar > i { background:var(--lime); }
 .td-hp.low .bar > i { background:var(--bad); }
 .td-scrap { text-align:right; color:var(--warn); }
-.td-current { display:flex; gap:16px; justify-content:space-between; align-items:center; }
-.td-current b { color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; }
+.td-current { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); grid-template-areas:"brood tier next"; gap:6px 14px; align-items:center; }
+.td-brood { grid-area:brood; min-width:0; }
+.td-brood b { display:block; color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .td-current small { display:block; margin-top:3px; }
+.td-tier { grid-area:tier; display:flex; align-items:center; gap:8px; min-width:0; pointer-events:auto; }
+.td-gate { flex:1 1 auto; width:150px; min-width:110px; display:flex; flex-direction:column; gap:3px; padding:3px 4px 4px; background:var(--td-well); border:1px solid #000; border-radius:3px; box-shadow:inset 0 2px 5px #000, 0 1px 0 #ffdca014; }
+.td-slots { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:3px; align-items:end; }
+.td-slots > * { position:relative; display:grid; place-items:center; height:16px; font-size:10px; font-weight:800; font-style:normal; line-height:1; letter-spacing:.03em; color:var(--td-mute); border:1px solid #000; border-radius:2px;
+  background:linear-gradient(180deg, #ffffff08, transparent 60%), var(--td-plateLo); box-shadow:inset 0 1px 0 #ffdca00f; transition:background .2s, height .2s; }
+.td-slots > :nth-child(2) { height:18px; } .td-slots > :nth-child(3) { height:19px; } .td-slots > :nth-child(4) { height:21px; } .td-slots > :nth-child(5) { height:23px; }
+.td-slots > .lit { color:#2a1c0a; background:linear-gradient(180deg, #c9964a, #8f6327); box-shadow:inset 0 1px 0 #ffdb8e55; }
+.td-slots > b { color:var(--td-ink); font-size:12px; background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass) 50%, var(--td-brassLo)); box-shadow:inset 0 1px 0 #fff9, 0 0 10px #e8b24aaa; text-shadow:none; }
+.td-slots > .call { outline:1px solid var(--td-copper); outline-offset:1px; box-shadow:0 0 8px #c8743c88; }
+.td-slots > span.call:not(.lit) { color:#e59a62; }
+.td-load { position:relative; height:4px; border-radius:1px; background:#000; overflow:hidden; }
+.td-load > i { display:block; height:100%; background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass)); box-shadow:0 0 6px #e8b24a88; transition:width .3s; }
+.td-load.short > i { background:linear-gradient(180deg, #ff8a5c, var(--td-copper)); box-shadow:none; }
+.td-key { flex:none; width:34px; height:34px; display:grid; place-items:center; padding:0 0 2px; border:1px solid #000; border-radius:4px; cursor:pointer; color:var(--td-brass); font:900 20px/1 system-ui, sans-serif;
+  background:linear-gradient(180deg, #ffffff10, transparent 45%), var(--td-plateHi); box-shadow:inset 0 1px 0 #ffdca026, inset 0 -2px 0 #0007, 0 2px 0 #000; }
+.td-key:active { transform:translateY(1px); box-shadow:inset 0 2px 4px #000; }
+.td-key.cue { color:var(--td-ink); background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass) 50%, var(--td-brassLo)); box-shadow:inset 0 1px 0 #fff8, inset 0 -2px 0 #0005, 0 2px 0 #000, 0 0 12px #e8b24a99; animation:td-cue 1.2s ease-in-out infinite; }
+@keyframes td-cue { 50% { box-shadow:inset 0 1px 0 #fff8, inset 0 -2px 0 #0005, 0 2px 0 #000, 0 0 18px 2px #ffdb8ecc; } }
+.td-tier-read { flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:2px; line-height:1; }
+.td-tier-read strong { font-size:17px; font-weight:900; font-variant-numeric:tabular-nums; color:var(--td-text); text-shadow:0 2px 0 #000; }
+.td-hud .td-tier-read small { margin:0; font-size:9px; letter-spacing:.12em; color:var(--td-dim); }
+.td-next { grid-area:next; min-width:0; justify-self:end; }
 .td-next { color:var(--dim); font-size:15px; text-align:right; }
+.td-next > .td-radar { width:min(260px, 100%); margin-left:auto; text-align:left; }
+.td-next > span { display:block; }
 .td-hud .td-current.incoming { padding:8px 16px; }
-.td-current.incoming .td-brood b { font-size:28px; line-height:1; }
+.td-current.incoming .td-brood b { font-size:26px; line-height:1.05; }
 .td-count { display:block; color:var(--brood); font-size:28px; font-weight:900; font-variant-numeric:tabular-nums; line-height:1; }
 .td-event { display:flex; flex-direction:column; justify-content:center; gap:8px; text-align:center; text-shadow:0 2px 4px var(--bg); overflow:auto; }
 .td-event b { font-size:clamp(24px,3.4vw,38px); color:var(--neon); text-transform:uppercase; }
@@ -49,6 +75,66 @@ const CSS = `
 .td-objective-detail { color:var(--dim); }
 .td-objective .bar { height:6px; }
 .td-crew { border-top:1px solid var(--line); padding-top:12px; }
+/* Enemy radar: one fuzzy blip per spawn group, placed by when it comes into the turret's reach and sized by its HP; overlapping
+   blips add up. Horizontal: in reach on the left, +90 s on the right, roads as rows; vertical (the landscape card): in reach
+   at the bottom, roads as columns. Gliders share the road columns, marked with a chevron. */
+.td-radar { position:relative; display:flex; flex-direction:column; gap:3px; min-width:0; }
+.td-radar-head { display:flex; justify-content:space-between; gap:8px; }
+.td-hud .td-radar-head small { margin:0; font-size:10px; letter-spacing:.08em; }
+.td-radar-head b { font-size:11px; color:var(--td-text); text-transform:uppercase; letter-spacing:.06em; }
+.td-radar-well { position:relative; overflow:hidden; background:var(--td-well); border:1px solid #000; border-radius:3px; box-shadow:inset 0 2px 5px #000; }
+.td-radar.h { gap:2px; }
+.td-radar.h .td-radar-well { height:28px; }
+.td-radar.v .td-radar-well { flex:1; min-height:104px; }
+.td-scope { position:absolute; inset:4px; isolation:isolate; }
+.td-radar.h .td-scope { inset:2px 4px; }
+.td-rlane { position:absolute; background:#e8b24a0b; }
+.td-radar.v .td-rlane { top:0; bottom:0; left:calc(var(--x) * 100% - var(--w) * 50%); width:calc(var(--w) * 100%); }
+.td-radar.h .td-rlane { left:0; right:0; top:calc(var(--x) * 100% - var(--w) * 50%); height:calc(var(--w) * 100%); }
+.td-rtick { position:absolute; border:0 dashed #e8b24a30; }
+.td-radar.v .td-rtick { left:0; right:0; bottom:calc(var(--p) * 100%); border-top-width:1px; }
+.td-radar.h .td-rtick { top:0; bottom:0; left:calc(var(--p) * 100%); border-left-width:1px; }
+.td-radar.v .td-scope::after, .td-radar.h .td-scope::after { content:''; position:absolute; background:#e8b24a8c; }
+.td-radar.v .td-scope::after { left:0; right:0; bottom:0; height:2px; }
+.td-radar.h .td-scope::after { top:0; bottom:0; left:0; width:2px; }
+.td-blip { --c:#4aa8ff; position:absolute; width:calc(var(--k) * var(--bmax)); aspect-ratio:1; border-radius:50%; opacity:.85;
+  background:radial-gradient(circle, var(--c) 0 16%, color-mix(in srgb, var(--c) 50%, transparent) 34%, color-mix(in srgb, var(--c) 12%, transparent) 54%, transparent 70%); }
+.td-radar.v .td-blip { --bmax:36px; left:calc(var(--x) * 100%); bottom:calc(var(--p) * 100%); transform:translate(-50%, 50%); }
+.td-radar.h .td-blip { --bmax:20px; left:calc(var(--p) * 100%); top:calc(var(--x) * 100%); transform:translate(-50%, -50%); }
+/* the enemies' own body colours (sprites COL), not the lighter UI tints: purple has to read as violet, not pink */
+.td-blip.red { --c:#ff5a3c; } .td-blip.purple { --c:#a95cff; }
+/* Stalkers rotate through the three colours, like the aliens themselves */
+@property --c { syntax:'<color>'; inherits:false; initial-value:#4aa8ff; }
+.td-blip.prism { animation:td-prism 12s linear infinite; }
+@keyframes td-prism { 0%, 28% { --c:#4aa8ff; } 33%, 61% { --c:#ff5a3c; } 66%, 94% { --c:#a95cff; } 100% { --c:#4aa8ff; } }
+@media (prefers-reduced-motion: reduce) { .td-blip.prism { animation-duration:36s; } }
+.td-blip.air { opacity:.8; background:radial-gradient(circle, color-mix(in srgb, var(--c) 35%, transparent) 0, transparent 65%); }
+.td-blip.air::after { content:''; position:absolute; left:50%; top:50%; width:5px; height:5px; border:solid #cfeefc; border-width:1.5px 0 0 1.5px; }
+.td-radar.v .td-blip.air::after { transform:translate(-50%, -25%) rotate(225deg); }
+.td-radar.h .td-blip.air::after { transform:translate(-25%, -50%) rotate(-45deg); }
+.td-blip.boss { width:var(--bmax); border:2px dashed var(--td-gold, #ffd24a); mix-blend-mode:normal; box-shadow:0 0 8px #ffd24a66; opacity:.9;
+  background:radial-gradient(circle, #fff8e8 0 8%, var(--c) 26%, transparent 70%); }
+.td-radar.v .td-blip.boss { --bmax:30px; } .td-radar.h .td-blip.boss { --bmax:18px; }
+.td-radar-axis { display:flex; justify-content:space-between; }
+.td-radar-lanes { display:flex; padding:0 4px; }
+.td-radar-lanes small { flex:1 1 0; text-align:center; }
+.td-hud .td-radar-axis small, .td-hud .td-radar-lanes small { margin:0; font-size:9px; letter-spacing:.06em; }
+.td-objective .td-radar.v { flex:1 1 140px; }
+.td-bossbar { --bb:var(--td-blue); display:flex; flex-direction:column; justify-content:center; gap:3px; padding:4px 10px 5px; pointer-events:none;
+  background:linear-gradient(#0b0907e6, #0b0907b3); border:1px solid #000; border-bottom-color:color-mix(in srgb, var(--bb) 60%, #000); border-radius:4px; box-shadow:0 3px 10px #0009; }
+.td-bossbar.red { --bb:var(--td-red); } .td-bossbar.purple { --bb:var(--td-purple); }
+.td-bb-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; line-height:1; white-space:nowrap; overflow:hidden; }
+.td-bb-head b { font-size:15px; letter-spacing:.06em; text-transform:uppercase; color:var(--bb); text-shadow:0 1px 0 #000; }
+.td-hud .td-bb-head small { margin:0; font-size:11px; letter-spacing:.05em; color:var(--td-text); opacity:.85; overflow:hidden; text-overflow:ellipsis; }
+.td-bb-track { position:relative; height:12px; background:var(--td-well); border:1px solid #000; border-radius:2px; box-shadow:inset 0 1px 3px #000; overflow:hidden; }
+.td-bb-track > i { position:absolute; left:0; top:0; bottom:0; width:calc(var(--k) * 100%); background:linear-gradient(color-mix(in srgb, var(--bb) 70%, #fff), var(--bb) 45%, color-mix(in srgb, var(--bb) 60%, #000)); transition:width .25s; }
+.td-bb-track > u { position:absolute; left:0; top:0; height:4px; width:calc(var(--k) * 100%); background:#e6d0ffcc; }
+.td-bb-track > s { position:absolute; top:-1px; bottom:-1px; left:calc(var(--at) * 100%); width:2px; margin-left:-1px; background:#000; box-shadow:1px 0 0 #ffdca033; }
+.td-bossbar.telegraph .td-bb-track { box-shadow:inset 0 1px 3px #000, 0 0 0 1px #ffd24a99; }
+.td-bossbar.exposed { border-color:#ffd24a; animation:td-bb-flash .5s ease-in-out infinite alternate; }
+.td-bossbar.exposed .td-bb-track > i { background:linear-gradient(#fff6c8, #ffd24a 45%, #b8861a); }
+@keyframes td-bb-flash { from { box-shadow:0 0 6px #ffd24a66; } to { box-shadow:0 0 18px #ffd24acc; } }
+@media (prefers-reduced-motion: reduce) { .td-bossbar.exposed { animation:none; box-shadow:0 0 14px #ffd24aaa; } }
 .td-crew b { display:block; margin-bottom:5px; font-size:14px; }
 .td-crew p { color:var(--dim); font-size:13px; }
 .td-hud[data-objective-compact=true] .td-objective { gap:8px; }
@@ -135,19 +221,24 @@ const CSS = `
 .td-tile.next:not(.selected) { border-color:#ffd24a; }
 .td-tile.locked .td-map { opacity:.35; filter:grayscale(.8); }
 .td-tile.locked i { color:var(--dim); }
-.td-hud[data-narrow=true] .td-current { flex-direction:column; align-items:flex-start; justify-content:center; gap:6px; }
-.td-hud[data-narrow=true] .td-next { text-align:left; font-size:14px; }
 .td-hud[data-narrow=true] .td-stat small { display:block; margin:0; font-size:10px; letter-spacing:0; }
 .td-hud[data-narrow=true] .td-status { gap:12px; }
 .td-hud[data-narrow=true] .panel { padding:8px 12px; }
-.td-hud[data-narrow=true] .td-current.incoming { flex-direction:row; align-items:center; }
-.td-hud[data-narrow=true] .td-current.incoming .td-brood b { font-size:18px; }
-.td-hud[data-narrow=true] .td-current.incoming .td-next { text-align:right; }
+.td-hud[data-narrow=true] .td-current { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"brood next" "tier tier"; align-content:center; gap:5px 10px; }
+.td-hud[data-narrow=true] .td-current .td-brood b { font-size:18px; }
+.td-hud[data-narrow=true] .td-next { font-size:13px; }
+.td-hud[data-narrow=true] .td-count { font-size:22px; }
 .td-hud[data-column=true] .td-status { grid-template-columns:1fr; gap:8px; align-content:center; }
 .td-hud[data-column=true] .td-scrap { text-align:left; }
-.td-hud[data-column=true] .td-current, .td-hud[data-column=true] .td-current.incoming { flex-direction:column; align-items:flex-start; justify-content:center; gap:6px; }
-.td-hud[data-column=true] .td-next { text-align:left; font-size:14px; }
-.td-hud[data-column=true] .td-current b, .td-hud[data-column=true] .td-current.incoming .td-brood b { font-size:20px; line-height:1.15; }
+.td-hud[data-column=true] .td-current { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"brood next" "tier tier" "detail detail"; align-content:center; gap:8px 10px; }
+.td-hud[data-column=true] .td-next { display:contents; }
+.td-hud[data-column=true] .td-next > strong { grid-area:next; justify-self:end; }
+.td-hud[data-column=true] .td-next > small, .td-hud[data-column=true] .td-next > span { grid-area:detail; margin:0; text-align:left; font-size:13px; }
+.td-hud[data-column=true] .td-next > small { font-size:11px; }
+.td-hud[data-column=true] .td-current .td-brood b { font-size:21px; line-height:1.1; }
+.td-hud[data-column=true] .td-slots > * { height:18px; font-size:11px; } .td-hud[data-column=true] .td-slots > :nth-child(2) { height:20px; } .td-hud[data-column=true] .td-slots > :nth-child(3) { height:22px; }
+.td-hud[data-column=true] .td-slots > :nth-child(4) { height:24px; } .td-hud[data-column=true] .td-slots > :nth-child(5) { height:26px; } .td-hud[data-column=true] .td-slots > b { font-size:13px; }
+.td-hud[data-column=true] .td-key { width:38px; height:38px; }
 .td-hud[data-column=true] .td-stat b { font-size:22px; }
 .td-hud[data-compact=true] .td-status, .td-hud[data-compact=true] .td-current { overflow:auto; pointer-events:auto; overscroll-behavior:contain; padding:6px 10px; }
 .td-hud[data-compact=true] .td-status { grid-template-columns:1fr auto; gap:4px 8px; }
@@ -155,20 +246,114 @@ const CSS = `
 .td-hud[data-compact=true] .td-stat b { font-size:18px; }
 .td-hud[data-compact=true] .td-stat small, .td-hud[data-compact=true] .td-current small { font-size:10px; letter-spacing:0; }
 .td-hud[data-compact=true] .td-stat small { margin-left:4px; }
-.td-hud[data-compact=true] .td-current, .td-hud[data-compact=true] .td-current.incoming { gap:4px; }
-.td-hud[data-compact=true] .td-current b, .td-hud[data-compact=true] .td-current.incoming .td-brood b { font-size:16px; }
+.td-hud[data-compact=true] .td-current { gap:4px 8px; }
+.td-hud[data-compact=true] .td-tier-read { display:none; }
+.td-hud[data-compact=true] .td-current .td-brood b { font-size:16px; }
 .td-hud[data-compact=true] .td-current .td-count { font-size:24px; }
 `;
 
 const color = (e: Element) => `var(--td-${e})`;
+
+type ScopeSize = { w: number; h: number };
+/** The scope's inner size in CSS px when the HUD hasn't measured it yet (and in tests). */
+export const SCOPE_DEFAULT: Record<'h' | 'v', ScopeSize> = { v: { w: 220, h: 110 }, h: { w: 260, h: 24 } };
+const BLIP_MAX = { v: 36, h: 20 }, BOSS_SIZE = { v: 30, h: 18 };
+export interface PlacedBlip { blip: RadarBlip; p: number; x: number; k: number }
+/**
+ * Lays the radar's blips out: `p` (0 = in reach, 1 = the far edge) comes from the arrival time and never moves;
+ * across, each blip starts at a stable spot in its road's column and slides sideways, within the column, to the
+ * nearest place where it doesn't overlap a blip already placed (the boss first, then older groups). When a column
+ * is too crowded for that, it takes the spot with the most room.
+ */
+export function layoutRadar(r: RadarView, dir: 'h' | 'v', size: ScopeSize = SCOPE_DEFAULT[dir]): PlacedBlip[] {
+  const cols = Math.max(1, r.roads), along = dir === 'v' ? size.h : size.w, across = dir === 'v' ? size.w : size.h;
+  const colOf = (b: RadarBlip) => Math.min(b.lane < 0 ? b.key % cols : b.lane, cols - 1);
+  const placed: Array<{ a: number; c: number; rad: number }> = [], out: PlacedBlip[] = [];
+  const order = [...r.blips].sort((a, b) => Number(!!b.boss) - Number(!!a.boss) || a.key - b.key || a.lane - b.lane || a.etaS - b.etaS);
+  for (const b of order) {
+    const p = Math.min(1, Math.max(0, b.etaS / r.horizonS));
+    const k = b.boss ? 1 : 0.3 + 0.7 * Math.sqrt(Math.min(1, b.hp / Math.max(1, r.scale)));
+    const rad = (b.boss ? BOSS_SIZE[dir] * 0.5 : k * BLIP_MAX[dir] * 0.32), a = p * along;
+    const col = colOf(b), lo = (col / cols) * across + Math.min(rad, across / cols / 2), hi = ((col + 1) / cols) * across - Math.min(rad, across / cols / 2);
+    const jitter = b.boss ? 0 : (((b.key * 0.618034 + (b.lane + 1) * 0.37) % 1) - 0.5) * 0.6;
+    const want = Math.min(hi, Math.max(lo, ((col + 0.5 + jitter) / cols) * across));
+    const room = (c: number) => placed.reduce((m, q) => Math.min(m, Math.hypot(q.a - a, q.c - c) - q.rad - rad), Infinity);
+    let best = want, bestRoom = room(want);
+    if (bestRoom < 1) search: for (let d = 1; d <= hi - lo; d++) for (const c of [want - d, want + d]) {
+      if (c < lo || c > hi) continue;
+      const rm = room(c);
+      if (rm >= 1) { best = c; break search; }
+      if (rm > bestRoom) { best = c; bestRoom = rm; }
+    }
+    placed.push({ a, c: best, rad });
+    out.push({ blip: b, p, x: across > 0 ? best / across : 0.5, k });
+  }
+  return out;
+}
+
+/**
+ * The enemy radar (sim `radar`): one soft blip per spawn group, placed by when it comes into the turret's reach
+ * (the base line) and across by which road it takes (Gliders share the road columns, with a chevron), sized by its
+ * HP against the recent peak blip and laid out so blips don't overlap. A boss is a gold ringed blip; Stalkers cycle
+ * colour. Every blip enters at the far edge.
+ */
+export function radarHtml(s: TdSnapshot, dir: 'h' | 'v', size?: ScopeSize): string {
+  const r = s.radar;
+  if (!r) return '';
+  const horizon = r.horizonS, cols = Math.max(1, r.roads), cw = 1 / cols;
+  const f3 = (n: number) => n.toFixed(3);
+  const lanes = Array.from({ length: cols }, (_, i) => `<i class="td-rlane" style="--x:${f3((i + 0.5) * cw)};--w:${f3(cw * 0.8)}"></i>`).join('');
+  const ticks = [30, 60].filter((x) => x < horizon).map((x) => `<i class="td-rtick" style="--p:${f3(x / horizon)}"></i>`).join('');
+  const blips = layoutRadar(r, dir, size).sort((a, b) => b.p - a.p).map(({ blip: b, p, x, k }) => b.boss
+    ? `<b class="td-blip boss ${b.color}" style="--p:${f3(p)};--x:${f3(x)}" title="Boss"></b>`
+    : `<i class="td-blip ${b.color}${b.lane < 0 ? ' air' : ''}" style="--p:${f3(p)};--x:${f3(x)};--k:${f3(k)}"></i>`).join('');
+  const head = `<div class="td-radar-head"><small>${dir === 'h' ? `Incoming · ${horizon}s` : 'Incoming'}</small><b>${r.boss && r.boss.inS > 0 ? `Boss in ${Math.ceil(r.boss.inS)}s` : r.lead ? `${r.lead} leads` : 'Clear'}</b></div>`;
+  const axis = `<div class="td-radar-axis"><small>+${horizon}s</small><small>in reach</small></div>`;
+  const names = cols > 1 ? `<div class="td-radar-lanes">${Array.from({ length: cols }, (_, i) => `<small>Road ${i + 1}</small>`).join('')}</div>` : '';
+  return `<div class="td-radar ${dir}" role="img" aria-label="Enemy radar, next ${horizon} seconds, ${r.blips.length} groups incoming${r.lead ? `, ${r.lead} leads` : ''}">${head}`
+    + `${dir === 'v' ? axis : ''}<div class="td-radar-well"><div class="td-scope">${lanes}${ticks}${blips}</div></div>${dir === 'v' ? names : ''}</div>`;
+}
 // Snapshot strings are game-owned, but garage descriptions may contain a profile-derived value.
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+/**
+ * The gearbox: five stepped slots I–V (lit up to the current tier, copper-marked at the tier the flow calls for),
+ * an output strip (how much of the tier's rated power the rider is making: what fills the shots), the rated %FTP,
+ * and touch keys. The key toward the called tier glows.
+ */
+export function tierHtml(s: TdSnapshot): string {
+  const name = roman(s.tier), call = s.suggestedTier, out = Math.max(0, s.tierOutput ?? 1);
+  const slots = Array.from({ length: s.tierCount }, (_, i) => {
+    const t = i + 1, cls = `${t < s.tier ? 'lit' : ''}${t === call ? ' call' : ''}`.trim(), attr = cls ? ` class="${cls}"` : '';
+    return t === s.tier ? `<b${attr}>${roman(t)}</b>` : `<span${attr}>${roman(t)}</span>`;
+  }).join('');
+  const key = (step: -1 | 1) => `<button class="td-key${(step > 0 ? call > s.tier : call < s.tier) ? ' cue' : ''}" data-command="tier" data-step="${step}" aria-label="Tier ${step > 0 ? 'up' : 'down'}">${step > 0 ? '+' : '−'}</button>`;
+  return `<div class="td-tier" aria-label="Intensity tier ${name} of ${s.tierCount}${call !== s.tier ? `, ride calls for ${roman(call)}` : ''}">${key(-1)}`
+    + `<div class="td-gate"><div class="td-slots">${slots}</div><div class="td-load${out < 0.85 ? ' short' : ''}" title="Output"><i style="width:${(Math.min(1, out) * 100).toFixed(0)}%"></i></div></div>`
+    + `${key(1)}<div class="td-tier-read"><strong>${Math.round(s.tierFtp * 100)}%</strong><small>FTP</small></div></div>`;
+}
+
+const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+/**
+ * The boss health bar along the top of the field: its name and phase, HP in its colour with a notch at each phase
+ * gate, purple's plates as a thin band on top, a gold flash while it is Exposed, and how long until it breaks through.
+ */
+export function bossBarHtml(b: NonNullable<TdSnapshot['boss']>): string {
+  const notches = Array.from({ length: b.phaseCount - 1 }, (_, i) => `<s style="--at:${((i + 1) / b.phaseCount).toFixed(3)}"></s>`).join('');
+  const state = b.exposed ? `Exposed · ${Math.ceil(b.windowLeftS)}s · tier V` : b.telegraph ? `Opening in ${Math.ceil(b.windowLeftS)}s`
+    : b.pending ? `Phase ${b.phase + 1} in ${Math.ceil(b.countdownS)}s` : `Phase ${b.phase}/${b.phaseCount}`;
+  const escape = b.escapeS > 0 ? ` · breaks through in ${b.escapeS < 60 ? `${Math.ceil(b.escapeS)}s` : mmss(b.escapeS)}` : '';
+  return `<div class="td-bb-head"><b>${esc(b.name)}</b><small>${esc(state + escape)}</small></div>`
+    + `<div class="td-bb-track" role="progressbar" aria-label="${esc(b.name)} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(b.hp * 100)}">`
+    + `<i style="--k:${b.hp.toFixed(4)}"></i>${b.shield > 0 ? `<u style="--k:${b.shield.toFixed(3)}"></u>` : ''}${notches}</div>`;
+}
 
 export class TdHud {
   readonly root = document.createElement('div');
   private status = this.box('td-status panel');
   private current = this.box('td-current panel');
   private event = this.box('td-event');
+  private bossBar = this.box('td-bossbar');
   private objective = this.box('td-objective panel');
   private menu = this.box('td-menu panel');
   private loadingCard = this.box('td-loading');
@@ -197,6 +382,7 @@ export class TdHud {
       if (button.dataset.command === 'levelTile') this.send?.({ type: 'levelTile', index });
       if (button.dataset.command === 'levelStart') this.send?.({ type: 'levelStart' });
       if (button.dataset.command === 'levelBack') this.send?.({ type: 'levelBack' });
+      if (button.dataset.command === 'tier') this.send?.({ type: Number(button.dataset.step) > 0 ? 'tierUp' : 'tierDown' });
     });
   }
 
@@ -227,11 +413,17 @@ export class TdHud {
   private place(el: HTMLElement, b: Box) {
     Object.assign(el.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
   }
+  private scope: Partial<Record<'h' | 'v', ScopeSize>> = {};
   private html(el: HTMLElement, html: string) {
     if (this.markup.get(el) === html) return;
     const focused = el.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset : null;
     const scroll = el.scrollTop;
     el.innerHTML = html; this.markup.set(el, html);
+    // the radar lays blips out in real pixels: remember its scope's size for the next frame
+    for (const sc of el.querySelectorAll<HTMLElement>('.td-radar > .td-radar-well > .td-scope')) {
+      const dir = sc.closest('.td-radar')!.classList.contains('v') ? 'v' : 'h';
+      if (sc.clientWidth > 0 && sc.clientHeight > 0) this.scope[dir] = { w: sc.clientWidth, h: sc.clientHeight };
+    }
     if (focused?.command) el.querySelector<HTMLElement>(`[data-command="${focused.command}"]${focused.index === undefined ? '' : `[data-index="${focused.index}"]`}`)?.focus({ preventScroll: true });
     el.scrollTop = scroll;
   }
@@ -242,7 +434,7 @@ export class TdHud {
         this.root.dataset.column = String(L.column);
     this.root.dataset.compact = String(L.column && L.UH < 360);
     this.root.dataset.objectiveCompact = String(!!L.objective && L.objective.h < 280);
-    for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage], [this.loadingCard, L.garage]] as const) this.place(el, box);
+    for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.bossBar, L.bossBar], [this.menu, L.garage], [this.loadingCard, L.garage]] as const) this.place(el, box);
     if (L.objective) this.place(this.objective, L.objective);
   }
   render(s: TdSnapshot, L: TdLayout, W: number, loading: LoadingView | null = null) {
@@ -263,31 +455,36 @@ export class TdHud {
     const run = s.phase === 'run' && !loading, bd = s.brood;
     for (const el of [this.status, this.current]) el.hidden = !run;
     const pct = (n: number) => `${Math.max(0, Math.min(100, n * 100))}%`;
-    this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}${s.run ? `<small>/${s.run.waves}</small>` : ''}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
+    const f = s.flow, segK = f ? 1 - f.leftS / Math.max(1, f.leftS + s.waveElapsed) : 0;
+    this.html(this.status, `<div class="td-stat"><b>${f && f.stage !== 'warm-up' ? `SET ${f.set}${f.sets ? `<small>/${f.sets}</small>` : ''}` : 'WARM-UP'}</b><small>${s.lull > 0 ? `Starts in ${Math.ceil(s.lull)}s` : f ? `${f.stage === 'warm-up' ? '' : `${STAGE_NAME[f.stage]} · `}${Math.ceil(f.leftS)}s` : ''}</small><div class="bar"><i style="width:${pct(segK)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
     this.current.style.setProperty('--brood', color(bd.color));
     const incoming = bd.countdownS > 0;
     this.current.classList.toggle('incoming', incoming);
+    // The radar sits here (portrait, phones); the landscape column shows it upright in the objective card instead.
     const forecast = incoming
-      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.warmup ? 'Warm-up' : s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/${s.set.of}`} · ${s.set.role === 'easy' ? 'Recovery' : bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
-      : s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood';
-    this.html(this.current, `<div class="td-brood"><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div><div class="td-next">${forecast}</div>`);
-    const e = s.effort, boss = s.boss, bn = s.banner;
+      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>${esc(flowLabel(s))} · get ready</small>`
+      : L.objective ? `<span>${esc(flowLabel(s))}</span>` : radarHtml(s, 'h', this.scope.h);
+    const swapping = s.swapLeft > 0 ? ` · mounting ${Math.ceil(s.swapLeft)}s` : '';
+    this.html(this.current, `<div class="td-brood"><b>${WEAPON_NAME[s.weapon]}</b><small>${bd.color}${swapping}</small></div>${run ? tierHtml(s) : ''}<div class="td-next">${forecast}</div>`);
+    const boss = s.boss, bn = s.banner;
     let headline = '', sub = '';
     if (boss) {
       headline = boss.pending ? `Phase ${boss.phase + 1} in ${Math.ceil(boss.countdownS)}s` : boss.charge === 'warn' ? 'Ram charge incoming' : boss.charge === 'on' ? 'Ram charging' : boss.exposed ? `Exposed · ${Math.ceil(boss.windowLeftS)}s` : boss.telegraph ? `Sprint in ${Math.ceil(boss.windowLeftS)}s` : '';
-      sub = boss.pending ? `${BOSS_ESCALATION[boss.color]} · same weapon` : boss.charge ? 'Burn it down before it closes' : boss.weapon === 'rail' ? 'Hold ▲ for ERG sprint' : 'Sprint for ×1.5 damage';
-    } else if (e) {
-      headline = e.state === 'announced' ? `${e.kind} in ${Math.ceil(e.countdownS)}s` : e.state === 'active' ? `${e.kind} · ${Math.ceil(Math.max(0, e.needS - e.heldS))}s more · ${Math.ceil(e.leftS)}s left` : `${e.kind} ${e.state}`;
-      sub = e.kind === 'spin' ? `${e.minRpm}+ rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : `${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP`;
+      sub = boss.pending ? BOSS_ESCALATION[boss.color] : boss.charge ? 'Tier IV+ fire bogs the charge down' : 'Shift to V or sprint for ×1.5 damage';
     }
     const intro = s.fx.some((f) => f.kind === 'bossIntro' && s.t - f.t0 < f.life); // the canvas name card owns this moment
+    this.bossBar.hidden = !run || !boss || boss.id === 0 || !!s.workshop;
+    if (boss && boss.id) {
+      this.bossBar.className = `td-box td-bossbar ${boss.color}${boss.exposed ? ' exposed' : boss.telegraph ? ' telegraph' : ''}`;
+      this.html(this.bossBar, bossBarHtml(boss));
+    }
     if (!headline && bn && s.t - bn.t0 < 4 && !intro) { headline = bn.text; sub = bn.sub; }
     this.event.hidden = !!L.objective || !run || incoming || !!s.workshop || !headline;
     this.html(this.event, `<b>${esc(headline)}</b><span>${esc(sub)}</span>`);
     this.objective.hidden = !L.objective || !run || !!s.workshop;
     if (L.objective) {
       const o = rideObjective(s), crew = constructionStatus(s);
-      this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div><div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
+      this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div>${radarHtml(s, 'v', this.scope.v)}<div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
     }
     this.menu.hidden = !s.garage;
     if (s.garage) {

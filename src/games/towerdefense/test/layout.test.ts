@@ -34,6 +34,9 @@ describe('Dynamo Defense layout vs HUD inset', () => {
             expect(b.x + b.w).toBeLessThanOrEqual(W); expect(bottom(b)).toBeLessThanOrEqual(H - inset);
           }
           for (const b of [...r.options, r.close]) expect(b.h).toBeGreaterThanOrEqual(44);
+          if (count === 4) { // the four towers form a 2x2 grid: two rows, two columns
+            expect(new Set(r.options.map((o) => o.y)).size).toBe(2); expect(new Set(r.options.map((o) => o.x)).size).toBe(2);
+          }
         }
       }
       expect(L.brood.y + L.brood.h, 'announcement above HUD or fallback dock').toBeLessThanOrEqual(hudControls ? limit : L.dock.construct.y);

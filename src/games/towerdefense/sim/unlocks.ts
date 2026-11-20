@@ -2,20 +2,20 @@
 import { CAMPAIGN, LEVELS_PER_STYLE } from './campaign';
 import { GROUND_STYLES, type GroundStyle } from './generator';
 
-export type UnlockId = 'slow' | 'overcharge' | 'tier4' | 'hard' | 'tier5';
+export type UnlockId = 'mortar' | 'tier4' | 'hard' | 'tier5';
 export interface UnlockDef { id: UnlockId; stars: number; name: string; desc: string }
 /**
- * In star order. Every tower kind is open from the start: each answers one brood colour, so a locked kind would leave
- * a colour with no tower to counter it. Tower levels 1–3, the rail, Easy and Steady are open from the start too.
+ * In star order. The three colour towers are open from the start: each answers one brood colour, so a locked one
+ * would leave a colour with no tower to counter it. The neutral Mortar is the first thing stars earn (its concussion
+ * took over from the old Slow field). Tower levels 1–3, every weapon, Easy and Steady are open from the start too.
  */
 export const UNLOCKS: readonly UnlockDef[] = [
-  { id: 'slow', stars: 4, name: 'Slow field', desc: 'Slows the back of the road for a few seconds' },
-  { id: 'overcharge', stars: 8, name: 'Overcharge', desc: 'Towers fire faster for a few seconds' },
-  { id: 'tier4', stars: 12, name: 'Tower Lv 4', desc: 'Towers upgrade to level 4' },
+  { id: 'mortar', stars: 4, name: 'Mortar', desc: 'A neutral tower whose blasts concuss and slow the road' },
+  { id: 'tier4', stars: 8, name: 'Tower Lv 4', desc: 'Towers upgrade to level 4' },
   { id: 'hard', stars: 20, name: 'Hard intensity', desc: 'Harder work waves, tougher aliens' },
   { id: 'tier5', stars: 30, name: 'Tower Lv 5', desc: 'Towers upgrade to level 5' },
 ];
-/** Riders with Garage progress from before the rework start with the unlocks up to here (Lv 4). */
+/** Riders with Garage progress from before the rework start with the unlocks up to here (the Mortar and Lv 4). */
 export const VETERAN_STARS = 12;
 
 /** Stars earned across the campaign (best per level). */

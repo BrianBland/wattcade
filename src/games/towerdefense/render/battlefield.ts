@@ -3,7 +3,7 @@ import { LEVEL_0, levelGeometry, type TdGeometry } from '../sim/level';
 import type { TdSnapshot } from '../sim/types';
 import type { View } from './aliens/layer';
 import { boundedLights, type Point } from './battlefieldMath';
-import { COL, glowAt } from './sprites';
+import { COL, glowAt, TOWER_ICON_COLOR } from './sprites';
 import { loadImage } from './assets';
 import { GroundBaker, levelKey, type Baked } from './ground/bake';
 import type { TdLevel } from '../sim/level';
@@ -126,7 +126,7 @@ export class Battlefield {
   lighting(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, W: number, H: number) {
     const { pads: PADS, base: { x: BASE_X, y: BASE_Y } } = this.geo;
     const lights: Light[] = [{ x: BASE_X, y: BASE_Y, r: 16, color: '#71e8ff', strength: 0.22 }];
-    for (const tw of s.towers) { const p = PADS[tw.pad]; lights.push({ x: p.x, y: p.y, r: 8, color: COL[tw.kind === 'tesla' ? 'blue' : tw.kind === 'flamer' ? 'red' : 'purple'], strength: 0.14 }); }
+    for (const tw of s.towers) { const p = PADS[tw.pad]; lights.push({ x: p.x, y: p.y, r: 8, color: TOWER_ICON_COLOR[tw.kind], strength: 0.14 }); }
     const ambientCount = lights.length;
     for (const b of s.burns) lights.push({ x: b.x, y: b.y, r: b.r * 1.4, color: '#ff8a3a', strength: 0.12 * b.k });
     for (const f of s.fx) {

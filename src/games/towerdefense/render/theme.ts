@@ -6,8 +6,11 @@ export const TD = {
   edge: '#6e5130', edgeDim: '#43321f', brass: '#e8b24a', brassHi: '#ffdb8e', brassLo: '#9a6a28', copper: '#c8743c',
   text: '#f2e7d0', dim: '#b9a685', mute: '#7d6e58', ink: '#140f08',
   hp: '#9ccf45', hpHi: '#cdf27a', bad: '#ff5a3a',
-  blue: '#5cc8ff', red: '#ff6a3d', purple: '#cf7dff',
+  blue: '#5cc8ff', red: '#ff6a3d', purple: '#cf7dff', yellow: '#f6ea62',
 } as const;
+
+/** Each tower's colour in the workshop: its brood colour, and hazard yellow for the neutral Mortar. */
+export const TOWER_TINT = { tesla: TD.blue, flamer: TD.red, lens: TD.purple, mortar: TD.yellow } as const;
 
 /** Custom properties on `.td-hud`; the CSS below only refers to these. */
 export const THEME_VARS = Object.entries(TD).map(([k, v]) => `--td-${k}:${v};`).join('');
@@ -30,7 +33,7 @@ export const THEME_CSS = `
 .td-hud .td-stat b { color:var(--td-text); font-style:normal; letter-spacing:.02em; text-shadow:0 2px 0 #000; }
 .td-hud .td-scrap, .td-hud .td-scrap b { color:var(--td-brass); }
 .td-hud .td-current { box-shadow:inset 4px 0 0 var(--brood), inset 0 1px 0 #ffdca01f, inset 0 0 0 3px #0006, 0 10px 26px #000a; }
-.td-hud .td-current b, .td-hud .td-count { font-style:normal; letter-spacing:.03em; text-shadow:0 0 12px color-mix(in srgb, var(--brood) 45%, transparent), 0 2px 0 #000; }
+.td-hud .td-brood b, .td-hud .td-count { font-style:normal; letter-spacing:.03em; text-shadow:0 0 12px color-mix(in srgb, var(--brood) 45%, transparent), 0 2px 0 #000; }
 .td-hud .td-event b { color:var(--td-brass); font-style:normal; letter-spacing:.05em; text-shadow:0 2px 0 #000, 0 0 18px #e8b24a55; -webkit-text-stroke:1px #0008; }
 .td-hud .td-event span { color:var(--td-text); text-shadow:0 1px 3px #000; }
 .td-hud .td-objective h3 { color:var(--td-brass); font-style:normal; letter-spacing:.04em; text-shadow:0 2px 0 #000; }

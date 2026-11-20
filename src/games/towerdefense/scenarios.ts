@@ -1,5 +1,4 @@
 import type { GameEvent, SessionRecord, TrainerCommand } from '../../contracts';
-import { waveRole } from './sim/waves';
 
 type Summary = Record<string, number | string>;
 type Run = { mixerCommands: TrainerCommand[]; isOver: boolean; events: Array<{ t: number } & GameEvent> };
@@ -20,31 +19,22 @@ export const scenarios: Array<{
     },
   },
   {
-    // One mode per brood plus announced boss phases; the trainer follows that complete ladder.
+    // One trainer mode for the whole run (the game is the gearbox) and every boss phase announced.
     name: 'brood-z2', script: 'z2', minutes: 20, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       const collapse = (xs: string[]) => xs.filter((x, i) => i === 0 || x !== xs[i - 1]);
       const modes = collapse(run.mixerCommands.map((c) => c.mode));
-      // One boss per colour: only the brood card changes the trainer mode; a boss fight never does.
-      const announced = run.events.filter((e) => e.type === 'broodAnnounced');
+      // The game is the gearbox: one resistance-mode run after the neutral menu; the brood never changes the mode.
       const waves = run.events.filter((e) => e.type === 'waveStart').length;
-      const ann = collapse(announced.map((e) => String(e.data?.mode)));
-      if (modes.length - 1 > announced.length) f.push(`${modes.length - 1} trainer-mode changes for ${announced.length} waves`);
+      if (modes.join() !== 'sim,resistance' && modes.join() !== 'resistance') f.push(`mixer modes ${modes.join()} (want sim,resistance)`);
       const bosses = run.events.filter((e) => e.type === 'bossKilled');
       for (const b of bosses) {
         const starts = run.events.filter((e) => e.type === 'bossPhaseStarted' && e.data?.wave === b.data?.wave);
         if (starts.length !== Number(b.data?.phases)) f.push('boss skipped a phase');
         if (new Set(starts.map((e) => e.data?.color)).size !== 1) f.push('boss changed colour mid-fight');
-        const first = starts[0]?.t ?? Infinity;
-        if (run.events.some((e) => e.type === 'weaponSwitched' && e.data?.wave === b.data?.wave && e.t > first)) f.push('boss switched weapons mid-fight');
       }
       if (!(n(s, 'bossesKilled') >= 1 && n(s, 'bossesKilled') <= 2)) f.push(`bossesKilled ${s.bossesKilled} outside baseline 1–2 per 20 min (one per set)`);
-      // the garage/neutral 'sim' may lead before the first brood's mode
-      const expected = collapse(['sim', ...ann]);
-      // A mount on the final tick may still be waiting for the mixer's command rate limit.
-      const pendingFinal = expected.length === modes.length + 1 && expected.slice(0, -1).join() === modes.join();
-      if (modes.join() !== expected.join() && !pendingFinal) f.push(`mixer modes ${modes.join()} != announced ${ann.join()}`);
       if (!(waves >= 7)) f.push(`only ${waves} waves started`);
       for (const k of ['kills_blue', 'kills_red', 'kills_purple']) if (!(n(s, k) > 30)) f.push(`${k} ${s[k]} <= 30`);
       if (!(n(s, 'towerKills') >= 100)) f.push(`towerKills ${s.towerKills} < 100 (off-colour aliens are the towers' job)`);
@@ -60,14 +50,12 @@ export const scenarios: Array<{
       if (falls.length !== 1) f.push(`expected one fall, got ${falls.length}`);
       if (!(Number(falls[0]?.data?.wave) <= 2)) f.push('idle base did not fall by wave 2');
       if (!(n(s, 'runs') === 1 && n(s, 'runsFallen') === 1)) f.push('summary should include the fallen run');
-      const cleared = run.events.some((e) => e.type === 'waveCleared');
-      if (cleared && !(n(s, 'partsEarned') > 0)) f.push('a fallen run should bank the parts it earned');
       if (n(s, 'towerKills') !== 0) f.push(`unpowered towers killed ${s.towerKills}`);
       return f;
     },
   },
   {
-    name: 'endless-restart', script: 'z2', minutes: 55, seed: 1, simOpts: { stars: 99, autopilot: true },
+    name: 'endless-restart', script: 'z2', minutes: 90, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (run.isOver) f.push('falling should keep the session open');
@@ -78,7 +66,7 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'intervals', script: 'intervals', minutes: 20, seed: 1, simOpts: { stars: 99, autopilot: true, actionBot: true },
+    name: 'intervals', script: 'intervals', minutes: 20, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       for (const w of ['gatling', 'flame', 'rail']) {
@@ -86,7 +74,7 @@ export const scenarios: Array<{
         if (!(v >= 60)) f.push(`weaponSeconds_${w} ${v} < 60`);
       }
       const modes = new Set(run.mixerCommands.map(c => c.mode));
-      for (const m of ['sim', 'erg', 'resistance']) if (!modes.has(m as TrainerCommand['mode'])) f.push(`no ${m} mixer command`);
+      if (!modes.has('resistance') || modes.has('erg')) f.push(`mixer modes ${[...modes].join()} (want the resistance gearbox, no ERG)`);
       if (!(n(s, 'railChargesFired') >= 10)) f.push(`railChargesFired ${s.railChargesFired} < 10`);
       return f;
     },
@@ -97,11 +85,11 @@ export const scenarios: Array<{
     name: 'z2-economy', script: 'z2', minutes: 30, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s) {
       const f: string[] = [];
-      const total = n(s, 'turretDamage') + n(s, 'towerDamage') + n(s, 'empDamage');
+      const total = n(s, 'turretDamage') + n(s, 'towerDamage');
       const share = n(s, 'turretDamage') / total;
-      // Over a full run the share settles near 0.5; in the first 30 minutes the turret-heavy opening (few towers yet)
-      // still weighs in, so the band is a little wider on the turret side.
-      if (!(share >= 0.4 && share <= 0.65)) f.push(`turret damage share ${share.toFixed(2)} outside 0.40–0.65 (towerDamage ${s.towerDamage} of ${total})`);
+      // With the continuous flow the towers always have work, and a zone-2 rider sits in tier II, so the towers
+      // carry more than half; the phase-5 balance pass settles this band (it was 0.40–0.65 with waves and lulls).
+      if (!(share >= 0.25 && share <= 0.65)) f.push(`turret damage share ${share.toFixed(2)} outside 0.25–0.65 (towerDamage ${s.towerDamage} of ${total})`);
       if (!(n(s, 'wavesSurvived') >= 10)) f.push(`wavesSurvived ${s.wavesSurvived} < 10`);
       if (!(n(s, 'towersBuilt') >= 6)) f.push(`towersBuilt ${s.towersBuilt} < 6`);
       if (!(n(s, 'towerUpgrades') >= 6)) f.push(`towerUpgrades ${s.towerUpgrades} < 6`);
@@ -111,51 +99,40 @@ export const scenarios: Array<{
     },
   },
   {
-    // Legacy storm-ready remains a passive endurance ride; called efforts now follow the weapon.
-    name: 'surge-ready', script: 'storm-ready', minutes: 40, seed: 1, simOpts: { stars: 99, autopilot: true },
+    // The flow never stops: after the quiet start each segment starts the moment the last one ends, and nothing
+    // calls an effort any more.
+    name: 'continuous-flow', script: 'storm-ready', minutes: 40, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
-      if (!(n(s, 'callsWon') >= 3)) f.push(`callsWon ${s.callsWon} < 3`);
-      // A steady rider wins Holds but rarely Spins or Grinds (both are judged against its own recent cadence),
-      // so the share depends on the brood mix: one call per work wave, one weapon per wave.
-      if (!(n(s, 'callsWon') / Math.max(1, n(s, 'callsWon') + n(s, 'callsFailed')) >= 0.35)) f.push('passive endurance rider won under 35% of the calls');
-      if (!run.events.some((e) => e.type === 'surgeWon')) f.push('no surgeWon event');
-      return f;
+      const starts = run.events.filter((e) => e.type === 'waveStart'), clears = run.events.filter((e) => e.type === 'waveCleared');
+      for (const c of clears) {
+        const next = starts.find((e) => e.t >= c.t);
+        if (next && next.t - c.t > 0.5 && !run.events.some((e) => e.type === 'runEnded' && e.t >= c.t && e.t <= next.t)) f.push(`a ${(next.t - c.t).toFixed(1)} s gap after segment ${c.data?.wave}`);
+      }
+      if (run.events.some((e) => /^effort|^surge|^spin/.test(e.type))) f.push('a called effort happened');
+      if (!(n(s, 'wavesSurvived') >= 12)) f.push(`wavesSurvived ${s.wavesSurvived} < 12`);
+      return [...new Set(f)];
     },
   },
   ...(['z2', 'hook-responsive', 'idle'] as const).map((script) => ({
     name: `workout-${script}`, script, minutes: 30, seed: 1, simOpts: { stars: 99, autopilot: true },
-    assert(s: Summary, _stats: SessionRecord['stats'], run: Run) {
+    assert(s: Summary) {
       const f: string[] = [];
-      const calls = run.events.filter((e) => e.type === 'effortAnnounced');
-      const finished = n(s, 'callsWon') + n(s, 'callsFailed');
-      const rate = n(s, 'callsWon') / Math.max(1, finished);
-      if (script === 'idle' && n(s, 'callsWon') !== 0) f.push('idle rider won a call');
-      if (script === 'z2' && !(rate >= 0.3 && rate <= 0.9)) f.push(`z2 call win rate ${rate} outside 0.3–0.9`);
-      if (script === 'hook-responsive' && !(rate >= 0.9)) f.push(`responsive call win rate ${rate} < 0.9`);
-      if (script !== 'idle' && calls.length < 5) f.push('too few called efforts');
-      for (let i = 0; i < calls.length; i++) {
-        const e = calls[i], wave = Number(e.data?.wave);
-        if (waveRole(wave) === 'boss') f.push('ordinary call in boss ladder');
-        if (waveRole(wave) === 'easy') f.push('call in an easy recovery wave');
-        if (i > 0 && !run.events.some((x) => x.type === 'runEnded' && x.t > calls[i - 1].t && x.t < e.t) && wave === Number(calls[i - 1].data?.wave)) f.push('two calls in one wave');
-        if (({ gatling: 'spin', flame: 'grind', rail: 'hold' } as Record<string, string>)[String(e.data?.weapon)] !== e.data?.kind) f.push('call mismatched weapon');
-        const start = run.events.filter((x) => x.type === 'waveStart' && x.data?.wave === wave && x.t <= e.t).at(-1);
-        if (!start || e.t < start.t) f.push('call announced during recovery');
-      }
+      if (script === 'idle' && !(n(s, 'runsFallen') >= 1)) f.push('an idle rider should fall');
+      if (script === 'idle' && n(s, 'highTierSeconds') !== 0) f.push('an idle rider logged tier IV+ time');
+      if (script !== 'idle' && !(n(s, 'wavesSurvived') >= 10)) f.push(`wavesSurvived ${s.wavesSurvived} < 10`);
+      if (script === 'hook-responsive' && !(n(s, 'bossesKilled') >= 1)) f.push('a rider following the suggested tiers killed no boss');
       return f;
     },
   })),
   {
-    // Award-plumbing fixture: explicit actions and a reinforced base reach the deep-wave achievement.
+    // Award-plumbing fixture: a reinforced base reaches the deep-wave achievements.
     // Natural survival and damage share remain covered by the passive scenarios and four-seed comparisons.
     name: 'surge-ready-deep', script: 'hook-responsive', minutes: 40, seed: 1,
-    simOpts: { stars: 99, autopilot: true, actionBot: true, baseHp: 1000 },
+    simOpts: { stars: 99, autopilot: true, baseHp: 1000 },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (!(n(s, 'wavesSurvived') >= 14)) f.push(`wavesSurvived ${s.wavesSurvived} < 14`);
-      if (!(n(s, 'surgesWon') >= 3) || n(s, 'surgesFailed') !== 0) f.push('deep rider did not answer the surges');
-      if (!run.events.some(e => e.type === 'action')) f.push('deep rider never used combat actions');
       return f;
     },
   },

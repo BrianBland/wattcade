@@ -21,7 +21,16 @@ function session(input = new TimelineInput(), extra: Record<string, unknown> = {
 describe('build bot recommendation (headless only)', () => {
   it('follows live matchup overrides and excludes towers resisted by the off-colour push', () => {
     const matchup = { ...MATCHUP, gatling: { ...MATCHUP.gatling, red: 2 }, flame: { ...MATCHUP.flame, red: 0.5 } };
-    expect(suggestBuild(state({ matchup }))?.tower).toBe('tesla');
+    // 85 scrap affords the Flamethrower (now resisted by red) but not the neutral Mortar.
+    expect(suggestBuild(state({ matchup, scrap: 85 }))?.tower).toBe('tesla');
+    expect(suggestBuild(state({ matchup }))?.tower).not.toBe('flamer');
+  });
+  it('treats the neutral Mortar as filler: never preferred over a strong specialist', () => {
+    for (const brood of ['blue', 'red', 'purple'] as const) for (const push of ['blue', 'red', 'purple'] as const) {
+      if (push === brood) continue;
+      const order = suggestBuild(state({ brood, counts: { ...forecast(), [push]: 8 }, scrap: 100 }));
+      expect(order?.tower).not.toBe('mortar');
+    }
   });
   it('covers the off-colour heavies from the pad that sees the most road, without spending beyond scrap', () => {
     const s = state({ scrap: 80 }), a = suggestBuild(s)!;
@@ -90,7 +99,7 @@ describe('construction input and persistence', () => {
     expect(snap(s).towers).toHaveLength(2);
     expect(snap(s).lull).toBeGreaterThan(0);
   });
-  it('nothing builds itself for a rider; the headless build bot spends at the lull’s end', () => {
+  it('nothing builds itself for a rider; the headless build bot spends as the flow starts', () => {
     const rider = session(new NullInput()); rider.step(30 * 50); expect(snap(rider).towers).toHaveLength(0);
     const bot = session(new NullInput(), { botBuild: true }); bot.step(1);
     bot.step(30 * 14); expect(snap(bot).towers).toHaveLength(0); // the 15 s first lull

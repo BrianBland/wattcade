@@ -8,6 +8,7 @@
 - Normal steel / arcane purple / fire orange / frost cyan / venom green / storm yellow weapon and shot colors.
 - Rarity colors fittings; unique weapons get crest pixels; shrine upgrades add a rune.
 - Held weapon, drop and stance chip use the same item metadata and cached art.
+- `hold.ts`: the facing hand grips the handle and the weapon points out along the aim; up-aims draw behind the hero.
 - Dagger (fast, piercing) → Skirmisher; axe (slow, piercing) → Vanguard; spear (long, piercing) → Ranger.
 - Thrown alternatives share 20% of the corresponding pellet/arrow/star family roll; no extra RNG samples.
 - `effects.ts`: outlined projectiles, separated trail pixels, three-step bursts, lightning, broken shields and warning rings.

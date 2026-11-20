@@ -68,55 +68,32 @@ function toGatlingWave(s: ReturnType<typeof session>) {
 }
 
 describe('input map (#120)', () => {
-  it('all four shifters change gear on both hoods and trigger no game action', () => {
+  it('all four shifters step the intensity tier on both hoods and trigger no game action', () => {
     const pad = new Pad(), ref = session(new Pad()), s = session(pad);
     toGatlingWave(s); toGatlingWave(ref);
-    const g0 = s.mixer.gear;
+    const g0 = s.mixer.gear, t0 = snap(s).tier;
     for (const b of ['shiftUpL', 'shiftUpR', 'shiftUpR', 'shiftDnL'] as Button[]) { pad.press(b); s.step(1); ref.step(1); }
-    expect(s.mixer.gear).toBe(g0 + 2);
+    expect(snap(s).tier).toBe(t0 + 2);
+    expect(s.mixer.gear).toBe(g0); // the game is the gearbox: no trainer gear moves in a run
     const a = snap(s), b = snap(ref);
-    expect(a.lock).toBe(b.lock); expect(a.workshop).toBe(null); expect(a.railCharges).toBe(b.railCharges); expect(a.weapon).toBe(b.weapon);
+    expect(a.lock).toBe(b.lock); expect(a.workshop).toBe(null); expect(a.weapon).toBe(b.weapon);
     const hud = s.sim.hud!();
-    expect(hud.gears).toBe(true);
+    expect(hud.gears).toBe(false);
     const hints = new Map(hud.controls!.map((c) => [c.button, c.label]));
-    expect(hints.get('shiftersL')).toBe('Gear'); expect(hints.get('shiftersR')).toBe('Gear');
+    expect(hints.get('shiftersL')).toBe('Tier III'); expect(hints.get('shiftersR')).toBe('Tier III');
     expect(hints.get('paddles')).toBe('Step target');
-    expect(hints.get('a')).toBe('Construction');
-    expect(hints.get('b')).toBe('Overcharge'); expect(hints.get('y')).toBe('Slow field');
+    expect(hints.get('a')).toBe('Build menu at the selected pad'); expect(hints.get('dpad')).toBe('Select a pad');
+    expect(hints.get('y')).toBe('Mount the Gatling'); expect(hints.get('b')).toBe('Mount the Fireball'); expect(hints.get('z')).toBe('Mount the Railgun');
   });
-  it('A opens construction and B closes without firing a combat action', () => {
-    const pad = new Pad(), ref = session(new Pad()), s = session(pad);
-    s.step(30 * 50); ref.step(30 * 50); // past the 45 s lull, where A accepts the work order instead
-    pad.press('a'); s.step(1); ref.step(1); expect(snap(s).workshop).not.toBeNull();
-    pad.press('b'); s.step(1); ref.step(1);
-    s.step(30 * 20); ref.step(30 * 20);
-    const a = snap(s), b = snap(ref);
-    expect(a.workshop).toBe(null);
-    expect([a.scrap, a.railCharges, a.towers.length, a.targetId]).toEqual([b.scrap, b.railCharges, b.towers.length, b.targetId]);
-  });
-  it('in the workshop, left/right walk the pads in on-screen order for the reported orientation', () => {
-    const pad = new Pad(), s = session(pad);
-    s.step(30 * 50);
-    const walk = (order: number[]) => {
-      s.sim.receive!({ type: 'pad', pad: order[0], epoch: snap(s).inputEpoch }); s.step(1);
-      expect(snap(s).workshop?.pad).toBe(order[0]);
-      for (const want of [...order.slice(1), order[0]]) { pad.press('right'); s.step(1); expect(snap(s).workshop?.pad).toBe(want); }
-      pad.press('left'); s.step(1); expect(snap(s).workshop?.pad).toBe(order.at(-1));
-      pad.press('b'); s.step(1);
-    };
-    walk(padOrder(false));
-    s.sim.receive!({ type: 'padOrder', turned: true });
-    walk(padOrder(true));
-  });
-  it('D-pad left/right and the paddles step a target lock along the queue; it decays and up releases it', () => {
+  it('the paddles step a target lock along the queue; it decays, and a held paddle keeps it fresh', () => {
     const pad = new Pad(), s = session(pad, 'idle'); // a rider at rest: the turret doesn't fire, so locked aliens live on
     let n = 0; // wait for a few aliens on the field, with one in the turret's reach
     while (!(snap(s).enemies.length >= 3 && snap(s).targetId > 0) && n++ < 30 * 240) s.step(1);
-    pad.press('right'); s.step(1);
+    pad.paddleR = 1; s.step(1); pad.paddleR = 0; s.step(1);
     const first = snap(s).lock;
     expect(first?.id).toBeGreaterThan(0);
     expect(snap(s).targetId).toBe(first!.id);
-    pad.press('left'); s.step(1);
+    pad.paddleL = 1; s.step(1); pad.paddleL = 0; s.step(1);
     expect(snap(s).lock?.id).toBeGreaterThan(0);
     const k0 = snap(s).lock!.k;
     s.step(30 * 2);
@@ -130,7 +107,6 @@ describe('input map (#120)', () => {
     s.step(30 * 2);
     if (snap(s).enemies.some((e) => e.id === held!.id)) expect(snap(s).lock?.k).toBeCloseTo(1, 1); // a held paddle keeps it fresh
     pad.paddleR = 0; s.step(1);
-    if (snap(s).lock) { pad.press('up'); s.step(1); expect(snap(s).lock).toBe(null); }
   });
   it('with no input but pedalling, the turret engages every wave', () => {
     const s = session({ beginTick() {}, state: () => ({ held: new Set(), pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' }) });
@@ -141,7 +117,7 @@ describe('input map (#120)', () => {
       if (v.lull > 0 || !v.enemies.length) continue;
       engaged.set(v.wave, (engaged.get(v.wave) ?? false) || v.targetId > 0);
     }
-    expect(engaged.size).toBeGreaterThanOrEqual(7);
+    expect(engaged.size).toBeGreaterThanOrEqual(6); // a rider who never shifts stays in tier I
     expect([...engaged].filter(([, e]) => !e)).toEqual([]);
     expect(Number(s.sim.summary().turretKills)).toBeGreaterThan(100);
   });

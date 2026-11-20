@@ -72,9 +72,13 @@ export function fallbackSegment(index: number, every: number, firstBoss: number)
 /**
  * Commits one segment at a time: the current segment never shifts when the timeline is revised (streamed songs,
  * rolling analysis); the next one is planned from the latest timeline when the current one ends.
+ * Unless `endless`, the set's last segment is final: no next place is offered, and the ride stays there to the end
+ * (flying into a new biome just as the last song ends is pointless).
  */
-export function createSegmenter(tl: MediaTimeline | undefined, every: () => number, firstBoss: () => number) {
+export function createSegmenter(tl: MediaTimeline | undefined, every: () => number, firstBoss: () => number, opts: { endless?: boolean } = {}) {
   let current: Segment | null = null;
+  /** True when the current segment runs to the end of the set (with music, outside endless mode). */
+  const isFinal = (cur: Segment) => !opts.endless && !!tl && tl.durationS > 0 && cur.t1 >= tl.durationS - 1e-6;
   const pick = (p: number, index: number): Segment => {
     if (!tl || !tl.durationS) return fallbackSegment(Math.max(index, Math.floor(p / every())), every(), firstBoss());
     const plan = planSegments(tl);
@@ -84,7 +88,7 @@ export function createSegmenter(tl: MediaTimeline | undefined, every: () => numb
   return {
     at(p: number): { segment: Segment; changed: boolean } {
       if (!current) { current = pick(p, 0); return { segment: current, changed: true }; }
-      if (p < current.t1) return { segment: current, changed: false };
+      if (p < current.t1 || isFinal(current)) return { segment: current, changed: false };
       const prev: Segment = current, next = pick(Math.max(p, prev.t1), prev.index + 1);
       if (next.biome === prev.biome) next.biome = (next.biome + 1) % SEGMENT.biomes;
       // A revised timeline never moves the start backwards; a boss time already passed is dropped.
@@ -92,8 +96,8 @@ export function createSegmenter(tl: MediaTimeline | undefined, every: () => numb
       if (next.bossAt !== null && next.bossAt < next.t0 + 20) next.bossAt = null;
       current = next; return { segment: next, changed: true };
     },
-    /** Upcoming segment (for terrain transitions), planned from the current timeline; may still change. */
-    peek(): Segment | null { if (!current) return null; const n = pick(current.t1, current.index + 1); if (n.biome === current.biome) n.biome = (n.biome + 1) % SEGMENT.biomes; return n; },
+    /** Upcoming segment (for terrain transitions), planned from the current timeline; may still change. Null when the current one is final. */
+    peek(): Segment | null { if (!current || isFinal(current)) return null; const n = pick(current.t1, current.index + 1); if (n.biome === current.biome) n.biome = (n.biome + 1) % SEGMENT.biomes; return n; },
   };
 }
 export type Grade = 'S' | 'A' | 'B' | 'C' | 'D';

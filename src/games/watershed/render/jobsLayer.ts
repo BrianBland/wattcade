@@ -44,20 +44,10 @@ class Smoke {
   }
 }
 
-function cropTexture(): THREE.Texture | null {
-  if (typeof document === 'undefined') return null;
-  const c = document.createElement('canvas'); c.width = 64; c.height = 64;
-  const g = c.getContext('2d'); if (!g) return null;
-  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 64, 64);
-  g.fillStyle = '#b5b5b5'; for (let y = 0; y < 64; y += 8) g.fillRect(0, y, 64, 3);
-  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); return t;
-}
-
 export class JobsLayer {
   readonly group = new THREE.Group();
   private mills: THREE.Group[] = [];
   private houses: THREE.Group[] = [];
-  private fields: THREE.Mesh[] = [];
   private dam = new THREE.Group(); private sticks: THREE.InstancedMesh; private stickLay = damSticks(48, 5.6); private mud: THREE.Mesh; private beavers: THREE.Group[] = []; private carried: THREE.Mesh;
   private smoke: Smoke; private sm = new THREE.Matrix4(); private sq = new THREE.Quaternion(); private se = new THREE.Euler(); private sp = new THREE.Vector3(); private ss = new THREE.Vector3();
   private marker = new THREE.Group();
@@ -78,12 +68,7 @@ export class JobsLayer {
       g.position.set(wx(hy), heightAt(hx, hy), wz(hx)); g.rotation.y = a; g.scale.setScalar(1.5);
       this.houses.push(g); this.group.add(g);
     }
-    const tex = cropTexture();
-    for (const f of J.fields) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(f.r * 2, f.r * 2, 6, 6).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x8a6a3a, map: tex, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2 }));
-      m.position.set(wx(f.y), 0, wz(f.x)); m.receiveShadow = true;
-      this.fields.push(m); this.group.add(m);
-    }
+    // crop fields: drawn by fields.ts (CropFields)
     // the dam: crossed sticks piled in a wedge on a mud bank, built bottom-up as the beavers work
     this.sticks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.08, 0.1, 1, 6).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x8a6038, roughness: 0.9 }), this.stickLay.length);
     this.sticks.castShadow = true;
@@ -120,13 +105,6 @@ export class JobsLayer {
     this.houses.forEach((g, k) => {
       g.position.y = this.heightAt(v.x + Math.cos((k / 6) * Math.PI * 2) * (k === 0 ? 0 : 4.2), v.y + Math.sin((k / 6) * Math.PI * 2) * (k === 0 ? 0 : 4.2));
       g.rotation.z = flooded ? Math.sin(time * 9 + k) * 0.04 : 0;
-    });
-    J.fields.forEach((f, k) => {
-      const m = this.fields[k], mat = m.material as THREE.MeshStandardMaterial;
-      m.position.y = this.heightAt(f.x, f.y) + 0.06;
-      if (f.drowned) this.c.set(0x5a4a32);
-      else this.c.set(0x8a6a3a).lerp(this.c.clone().set(0x5fbf3a), Math.min(1, f.growth * 1.6)).lerp(new THREE.Color(0xe8c23a), Math.max(0, f.growth - 0.6) / 0.4);
-      mat.color.lerp(this.c, 1 - Math.exp(-dt * 3));
     });
     const d = J.dam;
     this.dam.visible = !!d && (!d.broken || d.health > 0.05) && river;

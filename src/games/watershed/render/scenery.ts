@@ -4,14 +4,17 @@ import { SEA, hash2, sample } from '../sim/terrain';
 import { boulderGeometry, broadleafGeometry, pineGeometry, swayMaterial, trunkGeometry } from './models';
 import type { WatershedSnapshot } from '../sim/sim';
 
+/** The sky palette (linear colours): deep zenith, pale hazy horizon; fog and the sea's reflection use the same. */
+export const SKY = { zenith: new THREE.Color(0x2f7fd0), horizon: new THREE.Color(0xcfe6f2), haze: new THREE.Color(0xc4dcea) };
+
 export function skyTexture(): THREE.Texture | THREE.Color {
-  if (typeof document === 'undefined') return new THREE.Color(0xbfe3f5);
-  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  if (typeof document === 'undefined') return SKY.haze.clone();
+  const c = document.createElement('canvas'); c.width = 4; c.height = 512;
   const g = c.getContext('2d');
-  if (!g) return new THREE.Color(0xbfe3f5);
-  const grad = g.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, '#4f9fdc'); grad.addColorStop(0.55, '#a9d6f2'); grad.addColorStop(1, '#eaf6fb');
-  g.fillStyle = grad; g.fillRect(0, 0, 4, 256);
+  if (!g) return SKY.haze.clone();
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, '#2c78c8'); grad.addColorStop(0.35, '#5ea3dd'); grad.addColorStop(0.7, '#a9d2ee'); grad.addColorStop(0.9, '#d6ebf5'); grad.addColorStop(1, '#eef6f2');
+  g.fillStyle = grad; g.fillRect(0, 0, 4, 512);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
@@ -56,7 +59,16 @@ export class Forest {
     ];
     this.trunks = new THREE.InstancedMesh(trunkGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), Math.max(1, counts[0] + counts[1]));
     const tint = new THREE.Color();
-    for (const t of this.trees) this.meshes[t.kind].setColorAt(t.slot, tint.setScalar(0.88 + hash2(t.slot, t.kind, 3) * 0.24));
+    // per-tree tint (multiplies the baked gradient): brightness plus a hue drift, so a forest isn't one green;
+    // a few broadleaf trees run yellow-green or turn early to gold
+    for (const t of this.trees) {
+      const a = hash2(t.slot, t.kind, 3), b = hash2(t.slot, t.kind, 4), v = 0.86 + a * 0.26;
+      if (t.kind === 1 && b > 0.93) tint.setRGB(1.35 * v, 1.0 * v, 0.45 * v);
+      else if (t.kind === 1) tint.setRGB(v * (0.92 + b * 0.22), v, v * (0.9 - b * 0.15));
+      else if (t.kind === 0) tint.setRGB(v * (0.9 + b * 0.12), v, v * (0.95 + (1 - b) * 0.12));
+      else tint.setScalar(v);
+      this.meshes[t.kind].setColorAt(t.slot, tint);
+    }
     this.meshes.forEach((m, k) => { m.count = counts[k]; });
     this.trunks.count = counts[0] + counts[1];
     for (const m of [...this.meshes, this.trunks]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; this.group.add(m); }
@@ -120,29 +132,5 @@ export class Clouds {
       g.position.x += dt * (1.2 + (k % 3) * 0.4);
       if (g.position.x > this.span / 2 + 20) g.position.x = -this.span / 2 - 20;
     }
-  }
-}
-
-/** The sea surface: a subdivided plane with gentle travelling swells, clipped to the coastal part of the diorama. */
-export class SeaSurface {
-  readonly mesh: THREE.Mesh;
-  private base: Float32Array;
-  constructor(width: number, depth: number, x: number, z: number, segs = 0) {
-    const g = new THREE.PlaneGeometry(width, depth, segs || Math.round(width / 2), segs || Math.round(depth / 2));
-    g.rotateX(-Math.PI / 2);
-    this.base = (g.getAttribute('position').array as Float32Array).slice();
-    this.mesh = new THREE.Mesh(g, new THREE.MeshPhongMaterial({ color: 0x2f86c4, transparent: true, opacity: 0.72, shininess: 140, specular: 0xe8f6ff, depthWrite: false }));
-    this.mesh.position.set(x, SEA + 0.02, z);
-    this.mesh.receiveShadow = true;
-    this.mesh.renderOrder = 2;
-  }
-  update(t: number): void {
-    const pos = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, P = pos.array as Float32Array, B = this.base;
-    for (let k = 0; k < P.length; k += 3) {
-      const x = B[k], z = B[k + 2];
-      P[k + 1] = 0.12 * Math.sin(x * 0.45 + t * 1.3) + 0.07 * Math.sin(z * 0.6 - t * 0.9 + x * 0.2);
-    }
-    pos.needsUpdate = true;
-    this.mesh.geometry.computeVertexNormals();
   }
 }

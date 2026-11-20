@@ -1,4 +1,4 @@
-// Shared, deterministic recommendation for the rider and Auto-crew.
+// Shared, deterministic build recommendation for the rider (workshop preselect) and the headless build bot.
 import {
   ELEMENTS, MATCHUP, towerMatch, LEVEL_DMG, TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, towerBuildCost, towerUpgradeCost, type Element, type Matchup, type TowerKind,
 } from './defs';
@@ -21,6 +21,8 @@ export interface ConstructionState {
   pad?: number;
   /** The level's geometry (default: level 0). */
   geo?: TdGeometry;
+  /** Tower kinds the rider can build (default: all). */
+  kinds?: readonly TowerKind[];
 }
 
 /** Road (and, for anti-air towers, flight path) within a tower kind's level-1 range of each pad, in units. */
@@ -59,7 +61,7 @@ export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
   for (const p of geo.pads) {
     if (s.pad != null && p.id !== s.pad) continue;
     const existing = s.towers.find(t => t.pad === p.id);
-    for (const kind of existing ? [existing.kind] : TOWER_KINDS) {
+    for (const kind of existing ? [existing.kind] : s.kinds ?? TOWER_KINDS) {
       if (existing && existing.level >= (s.maxLevel ?? TOWER_MAX_LEVEL)) continue;
       const el = TOWERS[kind].element;
       const matrix = s.matchup ?? MATCHUP, mult = towerMatch(kind, target, matrix);

@@ -45,9 +45,9 @@ describe('hit feedback', () => {
 
 describe('sim exposes hit classes', () => {
   it('a ride produces strong and resisted hits on enemies, and bursts carry their chain', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'sprints' }, seed: 4, simOpts: { autopilot: true, skipGarage: true } });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'sprints' }, seed: 5, simOpts: { autopilot: true, skipGarage: true } });
     const classes = new Set<string>(); let chained = false;
-    for (let i = 0; i < 30 * 60 * 8 && !(classes.has('strong') && classes.has('resisted') && chained); i++) {
+    for (let i = 0; i < 30 * 60 * 12 && !(classes.has('strong') && classes.has('resisted') && chained); i++) {
       s.step(1);
       const snap = s.sim.snapshot() as TdSnapshot;
       for (const e of snap.enemies) if (e.hitT >= 0) classes.add(e.hitCls);

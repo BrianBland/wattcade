@@ -1,14 +1,10 @@
 // Snapshot view-model shared by the sim, renderer and tests. Plain data only.
 import type { Element, Kind, Matchup, TowerKind, Weapon } from './defs';
-import type { EffortKind, EffortView } from './efforts';
 import type { BuildSuggestion } from './construction';
 import type { WaveRole } from './waves';
 import type { TdLevel } from './level';
 import type { LevelSpec } from './campaign';
 
-export type ActionId = 'rail' | 'overcharge' | 'slow';
-/** `locked`: not yet unlocked with campaign stars (shown, never usable). */
-export interface ActionView { id: ActionId; fill: number; ready: boolean; usable: boolean; activeS: number; locked?: boolean }
 
 /** How a hit landed under the matchup matrix. */
 export type HitClass = 'strong' | 'neutral' | 'resisted';
@@ -29,7 +25,7 @@ export interface EnemyView {
 }
 export type Fx =
   | { id: number; t0: number; life: number; kind: 'tracer'; x0: number; y0: number; x1: number; y1: number; hit: boolean }
-  | { id: number; t0: number; life: number; kind: 'beam'; angle: number; spread: boolean }
+  | { id: number; t0: number; life: number; kind: 'beam'; angle: number; spread: boolean; width?: number }
   | { id: number; t0: number; life: number; kind: 'zap'; pts: Array<{ x: number; y: number }>; /** firing tower's pad: the renderer starts the arc at its art's muzzle */ pad?: number }
   | { id: number; t0: number; life: number; kind: 'lens'; x0: number; y0: number; x1: number; y1: number; /** firing tower's pad: the renderer starts the beam at its crystal */ pad?: number }
   | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number }
@@ -38,12 +34,9 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'hitStop'; seconds: number }
   /** the boss arrives: the renderer plays its name card (the HUD banner stays quiet meanwhile) */
   | { id: number; t0: number; life: number; kind: 'bossIntro'; wave: number; color: Element }
-  /** a called effort resolved: won = set-piece payoff, lost = a quiet 'missed' note */
-  | { id: number; t0: number; life: number; kind: 'payoff'; effort: EffortKind; won: boolean }
   /** `eid`/`ekind`: the alien that died (renderer leaves its corpse); `fire`: its last hit was fire (red brood bursts). */
-  | { id: number; t0: number; life: number; kind: 'death'; x: number; y: number; color: Element | 'gold'; big: boolean; eid: number; ekind: Kind; fire: boolean }
+  | { id: number; t0: number; life: number; kind: 'death'; x: number; y: number; color: Element | 'gold'; big: boolean; eid: number; ekind: Kind; fire: boolean; /** body radius (a boss's is scaled) */ r?: number }
   | { id: number; t0: number; life: number; kind: 'text'; x: number; y: number; text: string; color: string }
-  | { id: number; t0: number; life: number; kind: 'emp' }
   | { id: number; t0: number; life: number; kind: 'baseHit'; dmg: number };
 /** A turret fireball in flight (`k` 0 → 1) toward a road point; it bursts with radius `r`. */
 /** `tower`: a Mortar round lobbed from the pad at (x0, y0); otherwise the turret's fireball. */
@@ -51,7 +44,8 @@ export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: 
 /** Burning road left by a fireball; `k` = share of its burn time left. */
 export interface BurnView { x: number; y: number; r: number; k: number }
 export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }
-export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean }
+/** `locked`: a tower kind not yet earned with campaign stars (shown, never buildable). */
+export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean; locked?: boolean }
 export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }
 /** A ride-select row. `unlocks` shows the star count and the next unlock (A does nothing). */
 export interface GarageRow { kind: 'start' | 'campaign' | 'quick' | 'intensity' | 'unlocks' | 'next' | 'finish'; name: string; desc: string }
@@ -73,8 +67,6 @@ export interface GarageView {
   /** On a level's result page: the map Next level (or Retry) starts, so the renderer can ready it. */
   nextMap?: Pick<LevelSpec, 'seed' | 'roadStyle' | 'ground' | 'pads'>;
 }
-export interface SurgeView { state: 'active' | 'won' | 'failed'; progress: number; needS: number; leftS: number; zone: number; t0: number }
-export interface SpinView { state: 'active' | 'won' | 'failed'; held: number; needS: number; leftS: number; rpm: number; t0: number }
 export interface Banner { text: string; sub: string; color: string; t0: number; big: boolean }
 export type TrainerMode = 'sim' | 'resistance' | 'erg';
 /** A wave's brood: its main colour, the turret weapon it calls for, and that weapon's trainer mode. */
@@ -94,8 +86,29 @@ export interface BossView {
   pending: boolean; countdownS: number; telegraph: boolean; exposed: boolean; windowLeftS: number;
   /** red: a charge is announced ('warn') or under way ('on'); purple: shield plates left (0..1) */
   charge: 'warn' | 'on' | null; shield: number;
+  /** HP left (0..1; 1 before it spawns) and seconds until it breaks through the base if still alive (the peak's cap) */
+  hp: number; escapeS: number;
   /** Optional hold-Up / touch ERG push, preserving the phase's trainer mode; A stays construction. */
   sprintBoost: boolean;
+}
+
+/** Where the flow is in its set's curve. */
+export type FlowStage = 'warm-up' | 'build' | 'peak' | 'boss' | 'trough';
+/**
+ * The enemy radar: the next `horizonS` seconds as blips by when they come into the turret's reach, across the level's `roads`
+ * (plus the air when it has Glider routes); the colour leading the window, and a boss on the field (inS 0) or due.
+ */
+/** One radar blip: a spawn group (one road or the air, one colour, spawning within a few seconds of each other). */
+export interface RadarBlip {
+  /** seconds until it comes into the turret's reach (0 = in reach now); total HP; `prism` = Stalkers (the HUD cycles them through the colours) */
+  etaS: number; hp: number; color: Element | 'prism';
+  /** the road it walks (0-based), -1 = the air (Gliders); `n` aliens in it; `key` = its spawn window (stable jitter) */
+  lane: number; n: number; key: number; boss?: boolean;
+}
+export interface RadarView {
+  horizonS: number; roads: number; air: boolean; blips: RadarBlip[];
+  /** a slowly decaying high-water mark of a blip's HP (blips size against it) */ scale: number;
+  lead: Element | null; boss: { inS: number; color: Element } | null;
 }
 
 export interface TdSnapshot {
@@ -107,30 +120,34 @@ export interface TdSnapshot {
   /** The map being played (same object for the whole session; the renderer derives its geometry from it). */
   level: TdLevel;
   wave: number; waveElapsed: number; waveMaxS: number; wavesSurvived: number; lull: number;
+  /** The flow's stage, set (`sets` = the level's set count, 0 in Endless) and seconds until the next segment. */
+  flow: { stage: FlowStage; set: number; sets: number; leftS: number } | null;
+  radar: RadarView | null;
   forecast: { wave: number; boss: boolean; role: WaveRole; counts: WaveForecast };
   /** where the current wave sits in its set: three work waves, a boss, then an easy recovery wave */
   set: { set: number; pos: number; of: number; role: WaveRole; warmup: boolean };
   /** The level being played (null = Endless): its wave count and estimated minutes. */
   run: { id: string; name: string; kind: 'campaign' | 'quick'; minutes: number; waves: number; estMinutes: number } | null;
   intensity: 'easy' | 'steady' | 'hard';
-  brood: BroodView; nextBrood: BroodInfo | null;
+  brood: BroodView;
   boss: BossView | null; matchup: Matchup;
-  effort: EffortView | null;
   baseHp: number; baseMaxHp: number; baseHurt: number;
   /** read-only: follows `brood.weapon` */
   weapon: Weapon; swapLeft: number; swapS: number;
   /** the turret always aims itself; `lock` = the rider's decaying target lock (k 1 → 0), null when none */
   aimAngle: number; targetId: number; lock: { id: number; k: number } | null;
+  /** Intensity tier I–V picked by the shifters, how many there are, the tier the flow calls for, and the current tier's rated ftpFraction. */
+  tier: number; tierCount: number; suggestedTier: number; tierFtp: number;
+  /** How much of the current tier's rated output the rider is making (0 … the effort cap): what scales the shots. */
+  tierOutput: number;
+  /** Railgun pulse: 1 when banked, progress toward the next pulse (railMaxCharges is 1). */
   railCharges: number; railMaxCharges: number; railProgress: number; railCharging: boolean; zHold: number; railDumpHoldS: number;
   /** Flamer lobbing fireballs; `flameRange` = how far it can lob */
   flaming: boolean; flameRange: number; flamePower: number; /** enemy the rail's targeting laser is burning (0 = none) */ laserId: number;
   grid: number; overdrive: boolean; /** dynamo stalled (rider stopped): shields down, leaks hit harder */ stalled: boolean;
-  surge: SurgeView | null;
-  /** cadence drill; `overclock` = seconds of double Gatling fire left */
-  spin: SpinView | null; overclock: number;
   scrap: number;
-  /** `slowFrom`: road distance where an active slow field starts (it runs to the turret), -1 when off */
-  actions: ActionView[]; refill: number; slowFrom: number;
+  /** The pad the D-pad has selected (A opens the build menu there; the base is `basePad`); -1 in a menu or out of a run. */
+  padCursor: number;
   /** Changes when a menu opens/closes; stale touch captures must not dispatch into a new context. */
   inputEpoch: number;
   towers: TowerView[]; shells: ShellView[]; burns: BurnView[]; workshop: WorkshopView | null;

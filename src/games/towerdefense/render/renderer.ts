@@ -8,6 +8,7 @@ import { toScreen, toWorld } from './fieldView';
 import type { EnemyView, Fx, TdSnapshot, TowerView } from '../sim/types';
 import { layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt, TOWER_ICON_COLOR } from './sprites';
+import { TD } from './theme';
 import { NARROW_W, TdHud, type Hit } from './panels';
 import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
@@ -16,7 +17,7 @@ import { decks, onDeck, underDeck } from './ground/deck';
 import { Machinery } from './machinery';
 import { along, cableRoutes, culvertPlates, strokeCrossings } from './cables';
 import { DynamoSound } from './dynamoSound';
-import { PAYOFF_STYLE, cableHeat, shimmerBands, stepBlend } from './overdrive';
+import { cableHeat, shimmerBands, stepBlend } from './overdrive';
 import { HitFeedback, type Callout, type HitEvent } from './hitFeedback';
 import { ALARM_EVERY_S, FALL_S, HEAD_DELAY_S, damageState, dropDone, pipFlash } from './structureFx';
 import { prefetchLevel } from './levelPool';
@@ -479,14 +480,6 @@ export class TdRenderer implements GameRenderer {
           }
           this.ring(x, y, COL.gold, 3 * k, 40 * k, 0.8);
         }
-      } else if (f.kind === 'payoff') {
-        if (!allowHitStop) continue;
-        const st = PAYOFF_STYLE[f.effort], { x, y } = this.P(this.geo.base.x, this.geo.base.y);
-        if (f.won) {
-          this.ring(x, y, st.color, 4 * k, 110 * k, 0.9); this.ring(x, y, '#ffffff', 3 * k, 80 * k, 0.6);
-          this.flash = { color: st.color, a: Math.max(this.flash.a, 0.22) }; this.shake = Math.max(this.shake, 0.6);
-          this.aliens?.flinch(s.t); play('payoffSting');
-        } else this.particles.push({ x, y: y - 12 * k, vx: 0, vy: -6 * k, age: 0, life: 1.4, size: Math.max(11, 2.4 * k), color: 'rgba(200,205,215,0.8)', kind: 'text', text: `${st.label} missed` });
       } else if (f.kind === 'bossIntro') {
         if (!allowHitStop) continue;
         this.intro = { at: this.wall, wave: f.wave, color: f.color }; this.shake = Math.max(this.shake, 0.55); play('rumble', { vol: 1.2 }); play('roar', { vol: 0.6, pitch: 0.7 });
@@ -502,10 +495,6 @@ export class TdRenderer implements GameRenderer {
         // The impact throws up a little soot that climbs away, so it doesn't park a grey disc over the burning road.
         for (let i = 0; i < 2; i++) this.particles.push({ x: x + (Math.random() - 0.5) * 3 * k, y: y - k, vx: (Math.random() - 0.5) * 4 * k, vy: -(6 + Math.random() * 4) * k, age: 0, life: 0.9, size: 1.3 * k, color: 'soot', kind: 'smoke' });
         this.shake = Math.max(this.shake, 0.25);
-      } else if (f.kind === 'emp') {
-        const { x, y } = this.P(this.geo.base.x, this.geo.base.y);
-        this.ring(x, y, '#7df9ff', 5 * k, 140 * k, 1.1); this.ring(x, y, '#ffffff', 3 * k, 120 * k, 0.9);
-        this.flash = { color: '#7df9ff', a: 0.5 }; this.shake = Math.max(this.shake, 1);
       } else if (f.kind === 'baseHit') {
         this.shake = Math.max(this.shake, Math.min(1, 0.2 + f.dmg / 15));
         if (f.dmg >= 5) this.flash = { color: '#ff3020', a: Math.min(0.45, 0.12 + f.dmg / 60) };
@@ -590,7 +579,6 @@ export class TdRenderer implements GameRenderer {
     if (s.phase === 'run') {
       this.drawCables(g, s, bike);
       this.drawCulverts(g);
-      this.drawRoadFx(g, s, t);
       this.drawBurns(g, s, dt);
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
       this.aliens?.drawGround(g, this.view, t);
@@ -680,7 +668,7 @@ export class TdRenderer implements GameRenderer {
         g.strokeText(title, 0, 0); const gr = g.createLinearGradient(0, -size, 0, 0); gr.addColorStop(0, '#fff2b0'); gr.addColorStop(1, COL[this.intro.color]);
         g.fillStyle = gr; g.fillText(title, 0, 0);
         g.font = `700 ${Math.round(size * 0.32)}px system-ui, sans-serif`; g.fillStyle = 'rgba(255,236,190,0.9)'; g.lineWidth = 3;
-        const sub = `Wave ${this.intro.wave} boss · ${BOSS_TRICK[this.intro.color]} · sprint when Exposed`;
+        const sub = `${BOSS_TRICK[this.intro.color]} · shift to V when Exposed`;
         g.strokeText(sub, 0, size * 0.62); g.fillText(sub, 0, size * 0.62); g.restore();
       }
     }
@@ -745,7 +733,6 @@ export class TdRenderer implements GameRenderer {
       g.restore();
     }
   }
-  /** The slow field over the back stretch of the road. */
   /**
    * Bridge decks over the walkers below them: those show through as an x-ray outline in their brood colour, and
    * whatever is on the deck (walkers on the upper pass, gliders) is drawn again on top of it.
@@ -766,16 +753,7 @@ export class TdRenderer implements GameRenderer {
     if (puppets) puppets.drawLive(g, top, this.view, t, (e, h) => { const q = this.P(e.x, e.y); drawEnemy(g, e, q.x, q.y, k, h + rot, t); });
     else for (const e of top) { const q = this.P(e.x, e.y), h = this.heading.get(e.id)?.h ?? 0; drawEnemy(g, e, q.x, q.y, k, h, t); }
   }
-  private drawRoadFx(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
-    if (s.slowFrom < 0) return;
-    const k = this.k;
-    g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.3 + 0.1 * Math.sin(t * 4); g.lineWidth = this.geo.level.roadHalfWidth * 2 * k;
-    g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([3 * k, 2 * k]); g.beginPath();
-    const from = s.slowFrom / this.geo.roadLength; // the same share of every road
-    for (const lane of this.geo.lanes)
-      for (let d = from * lane.length, i = 0; d <= lane.length; d += 2, i++) { const p = lane.at(d), q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }
-    g.stroke(); g.restore();
-  }
+
   /** Burning road left by the fireballs: a charred scorch with glowing coals (layered flames draw over the actors). */
   private drawBurns(g: CanvasRenderingContext2D, s: TdSnapshot, dt: number) {
     this.patches = trackPatches(this.patches, s.burns, s.t);
@@ -844,6 +822,29 @@ export class TdRenderer implements GameRenderer {
       }
     }
     if (ws?.pad === this.geo.basePad) { const b = this.P(this.geo.base.x, this.geo.base.y); g.strokeStyle = '#ffd24a'; g.lineWidth = Math.max(2, k * 0.5); g.beginPath(); g.arc(b.x, b.y, (this.geo.level.turretR + 1) * k, 0, TAU); g.stroke(); }
+    if (s.padCursor >= 0 && !s.over) this.drawCursor(g, s, t);
+  }
+  /** The D-pad's pad cursor: brass corner brackets around the pad (or the base) and a tag for what A does there. */
+  private drawCursor(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
+    const k = this.k, base = s.padCursor === this.geo.basePad, pad = base ? null : this.geo.pads[s.padCursor];
+    if (!base && !pad) return;
+    const c = base ? this.P(this.geo.base.x, this.geo.base.y) : this.P(pad!.x, pad!.y);
+    const r = (base ? this.geo.level.turretR + 1.5 : 5.6) * k * (1 + 0.04 * Math.sin(t * 5)), arm = r * 0.42;
+    g.save(); g.lineCap = 'square';
+    for (const [w, col] of [[Math.max(4, k * 0.9), '#000a'], [Math.max(2, k * 0.45), TD.brass]] as const) {
+      g.strokeStyle = col; g.lineWidth = w;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        g.beginPath(); g.moveTo(c.x + sx * r, c.y + sy * (r - arm)); g.lineTo(c.x + sx * r, c.y + sy * r); g.lineTo(c.x + sx * (r - arm), c.y + sy * r); g.stroke();
+      }
+    }
+    const built = !base && s.towers.some((q) => q.pad === s.padCursor);
+    const label = `A · ${base ? 'Repair' : built ? 'Upgrade' : 'Build'}`, font = getComputedStyle(g.canvas).fontFamily;
+    g.font = `800 ${Math.round(Math.max(11, Math.min(14, k * 2.2)))}px ${font}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const tw = g.measureText(label).width + 12, th = Math.max(18, Math.min(22, k * 3.4)), ty = c.y - r - th / 2 - 4;
+    g.fillStyle = '#120f0ce6'; g.strokeStyle = TD.edge; g.lineWidth = 1;
+    g.beginPath(); g.rect(c.x - tw / 2, ty - th / 2, tw, th); g.fill(); g.stroke();
+    g.fillStyle = TD.brass; g.fillText(label, c.x, ty + 0.5);
+    g.restore();
   }
 
   /** The turret's target gets a white reticle; a rider's lock gets a gold one that holds still. */
@@ -934,7 +935,8 @@ export class TdRenderer implements GameRenderer {
         g.globalAlpha = 1;
       } else if (f.kind === 'beam') {
         const a = f.angle + rot, ex = muzzle.x + Math.sin(a) * 160 * k, ey = muzzle.y - Math.cos(a) * 160 * k;
-        g.strokeStyle = COL.purple; g.globalAlpha = life * 0.6; g.lineWidth = (f.spread ? 3.5 : 4.5) * k * life;
+        // the pulse is as wide as the tier's beam (field units), a quick snap half that
+        g.strokeStyle = COL.purple; g.globalAlpha = life * 0.6; g.lineWidth = Math.max(2.5, (f.width ?? 1.5) * k) * life;
         g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(ex, ey); g.stroke();
         g.strokeStyle = '#ffffff'; g.globalAlpha = life; g.lineWidth = 1.2 * k * life;
         g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(ex, ey); g.stroke(); g.globalAlpha = 1;

@@ -36,7 +36,17 @@ describe('rebalanceProfile', () => {
     const r = rebalanceProfile(p);
     expect(r.achievements).toEqual(['first_ride', 'td_boss', 'keeper_20']); // keeper_20 changed in v2, already re-graded
     expect(r.xp).toBe(2000 - 40 - 150 - 150);
-    expect((r.gameData._progression as { rules: number }).rules).toBe(3);
+    expect((r.gameData._progression as { rules: number }).rules).toBe(RULES_VERSION);
+  });
+  it('v3 to v4 revokes the Dynamo Defense called-effort achievements with their bonus XP', () => {
+    const p = old({
+      xp: 3000, level: levelForXp(3000), gameData: { _progression: { rules: 3 } },
+      achievements: ['first_ride', 'td_surges', 'td_spin', 'td_on_call', 'td_iron_lungs', 'td_boss'],
+    });
+    const r = rebalanceProfile(p);
+    expect(r.achievements).toEqual(['first_ride', 'td_boss']);
+    expect(r.xp).toBe(3000 - 80 - 40 - 40 - 120);
+    expect((r.gameData._progression as { rules: number }).rules).toBe(4);
   });
   it('a v1 profile takes both steps: retired ids lose their old bonus too', () => {
     const r = rebalanceProfile(old({ xp: 1000, achievements: ['td_spotless', 'keeper_20'], counters: {} }));

@@ -43,5 +43,8 @@ export const SCRIPTS: Record<string, Script> = {
       usesHooks: true,
       cadence: (t, e) => Number((e?.hooks as { cadence?: number } | undefined)?.cadence ?? 90) + 2 * Math.sin(t / 5),
     }),
+  /** A rider who rides whatever power the game asks for (`hooks.powerFtp`), 0.65 FTP when it asks for nothing. */
+  'follow-power': mk('follow-power', 'rides hooks.powerFtp (default 0.65 FTP) at 90 rpm',
+    (_t, e) => { const f = Number((e.hooks as { powerFtp?: number } | undefined)?.powerFtp); return Number.isFinite(f) && f > 0 ? f : 0.65; }, { usesHooks: true }),
   mash: mk('mash', 'random 0.4..1.6 FTP, changes every 2 s', (t, e) => 0.4 + 1.2 * hash01(Math.floor(t / 2) + e.seed * 7919)),
 };

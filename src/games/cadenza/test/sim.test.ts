@@ -136,9 +136,9 @@ describe('Cadenza controls', () => {
       expect(color < 0 ? summary.greysHit : summary.collected).toBe(Math.abs(position) < 0.5 ? 1 : 0);
     }
   });
-  it('elite (5 lanes): half a pull is one lane over, a full pull is the edge; holding a button repeats', () => {
+  it('the Lancer (5 lanes): half a pull is one lane over, a full pull is the edge; holding a button repeats', () => {
     const elite = (tl: Parameters<typeof ride>[0], secs: number) => {
-      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(tl), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'elite' } });
+      const s = createGameSession({ game: module, profile: testProfile({ achievements: ['cz_sets'], gameData: { cadenza: { ship: 'lancer' } } }), input: new TimelineInput(tl), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'pro' } });
       s.step(Math.round(secs * 30)); return (s.sim.snapshot() as CadenzaSnapshot).x;
     };
     expect(elite([{ t: 1, paddleR: 0.5 }], 2)).toBeCloseTo(1, 3);

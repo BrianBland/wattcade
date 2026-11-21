@@ -32,7 +32,7 @@ describe('Cadenza track', () => {
   it('blocks follow the hits, respect spacing and lanes; harder means denser', () => {
     const counts: number[] = [];
     for (const diff of ['casual', 'pro', 'elite'] as Difficulty[]) {
-      const tr = buildTrack(tl, { difficulty: diff, mode: 'mono', seed: 1 }), d = DIFF[diff], h = (d.lanes - 1) / 2;
+      const tr = buildTrack(tl, { difficulty: diff, mode: 'mono', seed: 1 }), d = DIFF[diff], h = (tr.lanes - 1) / 2;
       for (let i = 1; i < tr.blocks.length; i++) expect(tr.blocks[i].t - tr.blocks[i - 1].t).toBeGreaterThanOrEqual(d.minGap - 1e-9);
       for (const b of tr.blocks) { expect(Math.abs(b.lane)).toBeLessThanOrEqual(h); expect(b.color).toBeGreaterThanOrEqual(-1); expect(b.color).toBeLessThan(5); }
       counts.push(tr.blocks.length);

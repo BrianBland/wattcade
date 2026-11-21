@@ -13,14 +13,14 @@ describe('steering presentation', () => {
     const s = session(), view = new SteeringInterpolation();
     view.sample(s.sim.snapshot() as CadenzaSnapshot, 0);
     const positions: number[] = [];
-    for (let frame = 0; frame < fps / 10; frame++) {
+    // Two ticks: a full pull at steerRate 14 reaches the lane edge on the third, which would flatten the ramp.
+    for (let frame = 0; frame < (fps / 30) * 2; frame++) {
       if (frame % (fps / 30) === 0) s.step(1);
       const snapshot = s.sim.snapshot() as CadenzaSnapshot;
       positions.push(view.sample(snapshot, frame / fps));
       expect(snapshot.x).toBeGreaterThanOrEqual(positions.at(-1)!);
     }
-    // Before interpolation this alternated between a hold and a jump of 0.3 lanes.
-    for (let i = 1; i < positions.length; i++) expect(positions[i] - positions[i - 1]).toBeCloseTo(9 / fps, 6);
+    for (let i = 1; i < positions.length; i++) expect(positions[i] - positions[i - 1]).toBeCloseTo(14 / fps, 6);
   });
   it('settles exactly at partial positions and reverses without overshooting or changing the simulation', () => {
     const view = new SteeringInterpolation();

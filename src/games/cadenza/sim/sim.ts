@@ -4,7 +4,7 @@ import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZO
 import { rideIndexAt } from './ride';
 import { advanceCoaching, freshCoaching, type Direction } from './coaching';
 import { Announcements } from './announcements';
-import { SHIPS, selectedShip, unlockedShips, type ShipId } from '../ships';
+import { SHIPS, selectedShip, shipHandling, unlockedShips, type ShipId } from '../ships';
 
 export type TrainerStyle = 'grade' | 'erg';
 export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
@@ -55,8 +55,9 @@ export interface CadenzaSnapshot {
   hooks: { powerFtp: number };
 }
 
-const MENU_ROWS = 6;
-export const MENU = { mode: 0, difficulty: 1, trainer: 2, flash: 3, ship: 4, start: 5 } as const;
+/** Mode is Mono until Classic ships, so the menu does not offer a row that cannot change. */
+const MENU_ROWS = 5;
+export const MENU = { difficulty: 0, trainer: 1, flash: 2, ship: 3, start: 4 } as const;
 const MENU_AUTO_S = 25;
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 const FIXED = 1 / 30;
@@ -74,7 +75,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     recharge: t.num('shieldRecharge', 8, 1, 30, 1, 'Shield % per second while on target'),
     greyHit: t.num('greyHit', 20, 5, 60, 1, 'Shield lost per gray block'),
     rebootS: t.num('rebootS', 5, 1, 15, 0.5, 'Seconds on target to reboot after a dropout'),
-    steer: t.num('steerRate', 9, 2, 30, 0.5, 'Lanes per second the craft can slide'),
+    steer: t.num('steerRate', 14, 2, 30, 0.5, 'Lanes per second the craft can slide'),
     paddleMode: t.choice('paddleMode', 'continuous', ['stepped', 'continuous'] as const, 'Continuous position or stepped lanes'),
     paddleCurve: t.choice('paddleCurve', 'linear', ['linear', 'quadratic'] as const, 'Linear responds evenly; quadratic softens light pulls'),
     paddleDeadzone: t.num('paddleDeadzone', ctx.profile.settings.paddleDeadzone, 0, 60, 1, 'Raw paddle movement ignored near rest (%)'),
@@ -94,7 +95,8 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let trainer: TrainerStyle = opts.trainer ?? save.trainer ?? 'grade';
   let menu = opts.menu !== false && !opts.autopilot && !opts.difficulty;
   let menuRow: number = MENU.start, menuT = 0;
-  let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+  const trackOpts = () => ({ difficulty, mode, seed, lanes: shipHandling(ship).lanes, maxGrade: tun.maxGrade() });
+  let track = buildTrack(timeline, trackOpts());
   let blockState = new Uint8Array(track.blocks.length);
   let revision = timeline.revision ?? 0;
   const announcements = new Announcements(ctx.media);
@@ -137,7 +139,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
 
   const startRide = () => {
     menu = false;
-    track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+    track = buildTrack(timeline, trackOpts());
     announcements.setTrack(track, position());
     blockState = new Uint8Array(track.blocks.length);
     save.lastDifficulty = difficulty; save.lastMode = mode; save.reducedFlash = reducedFlash; save.trainer = trainer; save.ship = ship; ctx.save(save);
@@ -214,7 +216,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       menuT = 0;
     };
     if (dir) { change(menuRow, dir); cue('menuMove', undefined, false); }
-    if (inp.pressed.has('a')) { if (menuRow === MENU.start || menuRow === MENU.mode) go = true; else change(menuRow, 1); }
+    if (inp.pressed.has('a')) { if (menuRow === MENU.start) go = true; else change(menuRow, 1); }
     for (const a of actions.splice(0)) {
       if (a.type === 'difficulty' && DIFFICULTIES.includes(a.value as Difficulty)) difficulty = a.value as Difficulty;
       if (a.type === 'trainer') trainer = trainer === 'grade' ? 'erg' : 'grade';
@@ -237,7 +239,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     receive(a: unknown) { if (a && typeof a === 'object' && 'type' in a) actions.push(a as { type: string; value?: unknown }); },
     update(dt) {
       if ((timeline.revision ?? 0) !== revision) {
-        const next = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+        const next = buildTrack(timeline, trackOpts());
         // Ahead-only commits: the engine holds the clock before the analyzed horizon is exhausted.
         const from = Math.max(announcements.untilS, timeline.frozenUntilS ?? 0,
           started ? timeline.updateFromS ?? (timeline.frozenUntilS === undefined ? position() + 35 : 0) : 0,
@@ -335,7 +337,10 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       // blocks reaching the craft
       while (nextBlock < track.blocks.length && track.blocks[nextBlock].t <= p) {
         const b = track.blocks[nextBlock];
-        const caught = b.lane === Math.round(x);
+        const handling = shipHandling(ship);
+        const dist = Math.abs(b.lane - x);
+        // Coloured blocks: the lane you are in, plus a ship's scoop. Mines: only as close as the hull allows.
+        const caught = b.color >= 0 ? dist <= 0.5 + handling.catch : dist < handling.mine;
         if (b.zone === zoneIdx) zoneBlocks++;
         if (b.color >= 0) {
           if (caught) {

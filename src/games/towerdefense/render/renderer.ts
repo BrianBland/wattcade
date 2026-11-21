@@ -629,7 +629,7 @@ export class TdRenderer implements GameRenderer {
       this.drawDecks(g, s, t, puppets);
       this.drawFx(g, s, muzzle, t);
       this.drawParticles(g);
-      this.blasts.draw(g, k, this.dpr);
+      this.blasts.draw(g, k);
       this.contactShadow(g, bx, by, k * 2.4);
       if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, {
         x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: s.grid, color: this.color, hpFrac: s.baseHp / s.baseMaxHp, hurt: s.baseHurt,
@@ -804,14 +804,14 @@ export class TdRenderer implements GameRenderer {
       const fl = 0.85 + 0.15 * Math.sin(t * 13 + tw.pad) * Math.sin(t * 7.3 + tw.pad * 2);
       g.save(); g.globalCompositeOperation = 'lighter';
       glowAt(g, L >= 5 ? '#ffd27a' : '#ff8a3a', m.x, m.y, (1.6 + 0.45 * L + (firing ? 2 : 0)) * k, (0.12 + 0.07 * L + (firing ? 0.2 : 0)) * fl * Math.min(1, s.grid));
-      if (firing) { // a faint light under the spray; the flames themselves are pixel sprites (blastFx)
+      if (firing) { // a faint light under the spray; the flames themselves are painted puffs (blastFx)
         const gr = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, range);
         gr.addColorStop(0, 'rgba(255,150,60,0.14)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
         g.fillStyle = gr; g.beginPath(); g.moveTo(m.x, m.y); g.arc(m.x, m.y, range, a - Math.PI / 2 - half, a - Math.PI / 2 + half); g.closePath(); g.fill();
       }
       g.restore();
       // The duckbill mouth is about 80 px of the 224 px rig, drawn at 8.4k per 136 px.
-      this.blasts.burner(m.x, m.y, a, 80 * 8.4 * k / 136, L, k, this.dpr, dt > 0 ? Math.min(dt, 0.05) : 0, firing ? { range, half } : undefined);
+      this.blasts.burner(m.x, m.y, a, 80 * 8.4 * k / 136, L, k, dt > 0 ? Math.min(dt, 0.05) : 0, firing ? { range, half } : undefined);
     }
   }
 
@@ -915,13 +915,13 @@ export class TdRenderer implements GameRenderer {
       if (sh.tower) {
         const a = this.P(sh.x0, sh.y0), end = this.P(sh.x1, sh.y1), x = a.x + (end.x - a.x) * sh.k, y0 = a.y + (end.y - a.y) * sh.k;
         const lift = Math.sin(Math.PI * sh.k) * 20 * k, sc = 1 + 0.5 * Math.sin(Math.PI * sh.k);
-        this.blasts.drawShell(g, x, y0, lift, sc, k, this.dpr, dt);
+        this.blasts.drawShell(g, x, y0, lift, sc, k, dt);
         continue;
       }
       const end = this.P(sh.x1, sh.y1), x = muzzle.x + (end.x - muzzle.x) * sh.k, y0 = muzzle.y + (end.y - muzzle.y) * sh.k;
       const lift = Math.sin(Math.PI * sh.k) * 12 * k, dLift = Math.cos(Math.PI * sh.k) * 12 * k * Math.PI; // d(lift)/dk
       g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, '#ff8a3a', x, y0 - lift, 2.6 * k, 0.45); g.restore(); // its light, under the pixels
-      this.blasts.drawFireball(g, x, y0, lift, end.x - muzzle.x, end.y - muzzle.y - dLift, k, this.dpr, s.t, dt);
+      this.blasts.drawFireball(g, x, y0, lift, end.x - muzzle.x, end.y - muzzle.y - dLift, k, s.t, dt);
     }
   }
 
@@ -969,7 +969,7 @@ export class TdRenderer implements GameRenderer {
         g.strokeStyle = '#fff'; g.globalAlpha = life; g.lineWidth = 0.6 * k;
         g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.globalAlpha = 1;
         glowAt(g, COL.purple, b.x, b.y, 3 * k, life);
-      } else if (f.kind === 'boom' || f.kind === 'burst') { // the blast lights the ground around it (the shapes are pixel sprites)
+      } else if (f.kind === 'boom' || f.kind === 'burst') { // the blast lights the ground around it (the shapes are painted sprites)
         const q = this.P(f.x, f.y), mortar = f.kind === 'boom' && f.mortar, hot = Math.max(0, 1 - age / (mortar ? 0.18 : 0.35));
         if (hot > 0) glowAt(g, mortar ? '#f4e65c' : '#ff7a2a', q.x, q.y, f.r * k * (mortar ? 0.9 : 1.1), hot * (mortar ? 0.35 : 0.4));
       }

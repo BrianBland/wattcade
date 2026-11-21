@@ -1,29 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { BALL_FRAMES, BURST_FRAMES, ballFrame, burstFrame, chunkSprite, craterSprite, dither, dustSprite, flashFrame, shellSprite, steps } from '../render/blastTex';
-import { fitTexel, snap, stepChunk, texelPx, type Chunk } from '../render/blastFx';
+import { BALL_FRAMES, BALL_S, BURST_FRAMES, BURST_S, PUFF_HEATS, ballFrame, burstFrame, chunkSprite, craterSprite, dustSprite, flashFrame, puffSprite, shellSprite } from '../render/blastTex';
+import { CHUNK_UNIT, puffIndex, stepChunk, type Chunk } from '../render/blastFx';
 
 const alphas = (d: Uint8ClampedArray) => { const s = new Set<number>(); for (let i = 3; i < d.length; i += 4) s.add(d[i]); return s; };
 const opaque = (d: Uint8ClampedArray) => { let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; };
 const colours = (d: Uint8ClampedArray) => { const s = new Set<string>(); for (let i = 0; i < d.length; i += 4) if (d[i + 3]) s.add(`${d[i]},${d[i + 1]},${d[i + 2]}`); return s; };
 
-describe('pixel blast sprites', () => {
-  it('are hard-edged pixel art: every pixel fully on or off, from a small posterised palette', () => {
-    const all = [ballFrame(0.3), burstFrame(2), flashFrame(1), shellSprite(), dustSprite(3), chunkSprite(4, 'gravel'), chunkSprite(5, 'shrapnel'), craterSprite(2)];
-    for (const s of all) {
-      expect([...alphas(s.data)].every((a) => a === 0 || a === 255)).toBe(true);
-      expect(opaque(s.data)).toBeGreaterThan(0);
-    }
-    expect(colours(ballFrame(0.5).data).size).toBeLessThanOrEqual(8); // the fire ramp in seven hard steps
-    expect(steps(0.49, 4)).toBe(0.5);
-    expect(dither(0, 0)).toBeGreaterThan(0); expect(dither(3, 3)).toBeLessThan(1);
+describe('painted blast sprites', () => {
+  it('are painted at sprite resolution: smooth shading and anti-aliased edges, not a few posterised blocks', () => {
+    const all = [ballFrame(0.3), burstFrame(2), flashFrame(1), shellSprite(), dustSprite(3), chunkSprite(4, 'gravel'), chunkSprite(5, 'shrapnel'), craterSprite(2), puffSprite(0.8)];
+    for (const s of all) expect(opaque(s.data)).toBeGreaterThan(0);
+    expect(colours(ballFrame(0.5).data).size).toBeGreaterThan(200); // continuous heat, not a handful of steps
+    expect([...alphas(ballFrame(0.5).data)].some((a) => a > 0 && a < 255)).toBe(true); // soft rim
+    expect(BALL_S).toBeGreaterThanOrEqual(32); expect(BURST_S).toBeGreaterThanOrEqual(96);
   });
   it('rolls the Fireball seamlessly and grows then hollows out its burst', () => {
     expect(Array.from(ballFrame(0).data)).toEqual(Array.from(ballFrame(1).data)); // phase 1 wraps to 0
     expect(Array.from(ballFrame(0).data)).not.toEqual(Array.from(ballFrame(1 / BALL_FRAMES).data));
     const size = Array.from({ length: BURST_FRAMES }, (_, i) => opaque(burstFrame(i).data));
     expect(size[2]).toBeGreaterThan(size[0]);
-    const centre = (i: number) => { const s = burstFrame(i), c = (15 * s.w + 15) * 4; return [s.data[c], s.data[c + 1], s.data[c + 3]]; };
-    expect(centre(0)[1]).toBeGreaterThan(centre(BURST_FRAMES - 1)[1]); // white-hot heart cools to soot
+    const centre = (i: number) => { const s = burstFrame(i), c = ((s.h >> 1) * s.w + (s.w >> 1)) * 4; return s.data[c + 1]; };
+    expect(centre(0)).toBeGreaterThan(centre(BURST_FRAMES - 1)); // white-hot heart cools to soot
+  });
+  it('picks a hotter puff for a hotter flame', () => {
+    expect(puffIndex(0)).toBe(0); expect(puffIndex(1)).toBe(PUFF_HEATS - 1); expect(puffIndex(0.6)).toBeGreaterThan(puffIndex(0.3));
   });
 });
 
@@ -38,10 +38,7 @@ describe('thrown debris', () => {
     expect(c.hot).toBe(0); // shrapnel cools from hot orange
     const x = c.x; stepChunk(c, 1 / 60, 90); expect(c.x).toBe(x);
   });
-  it('sits every blast on one device-aligned texel grid', () => {
-    expect(texelPx(5, 2)).toBe(1.5); expect(texelPx(1, 1)).toBe(1);
-    expect(fitTexel(10, 22, 1.5)).toBe(1.5); // never below one texel
-    expect(fitTexel(70, 22, 1.5) / 1.5).toBe(2); // whole multiples only
-    expect(snap(4.4, 1.5)).toBe(4.5);
+  it('sizes debris in field units: a stone is about half to one unit across', () => {
+    for (let i = 1; i < 30; i++) { const c = chunkSprite(i, 'gravel'); expect(c.w * CHUNK_UNIT).toBeGreaterThan(0.4); expect(c.w * CHUNK_UNIT).toBeLessThan(1.2); }
   });
 });

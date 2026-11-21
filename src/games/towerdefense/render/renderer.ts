@@ -25,6 +25,7 @@ import { BAKED_LEVELS, specKey } from '../sim/baked';
 import { knownLevel } from '../sim/levelCache';
 import { LevelArt, type ArtWish } from './levelArt';
 import { levelKey } from './ground/bake';
+import { Blasts, prepareBlastSprites } from './blastFx';
 import { SQUASH, drawBurnFlames, drawBurnGround, fireShares, flameHeat, prepareBurnSprites, trackPatches, type Patch } from './burnFx';
 
 const TAU = Math.PI * 2;
@@ -66,6 +67,8 @@ export class TdRenderer implements GameRenderer {
   /** Burning-road patches being drawn, including cooling scars. */
   private patches: Patch[] = [];
   private particles: Particle[] = [];
+  /** Pixel-art shells and blasts: the Fireball's molten ball and burst, Mortar gravel/shrapnel, dust and craters. */
+  private blasts = new Blasts();
   private lastCue = -1; private lastFx = 0;
   private heading = new Map<number, { x: number; y: number; h: number }>();
   private shake = 0; private flash = { color: '#fff', a: 0 }; private lastT = -1; private wall = 0;
@@ -140,7 +143,7 @@ export class TdRenderer implements GameRenderer {
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
   async ready() {
-    await Promise.all([this.battlefield.loaded, this.machinery.loaded, this.aliens!.loaded, prepareBurnSprites(() => !this.mounted)]);
+    await Promise.all([this.battlefield.loaded, this.machinery.loaded, this.aliens!.loaded, prepareBurnSprites(() => !this.mounted), Promise.resolve().then(prepareBlastSprites)]);
     if (!this.mounted) return;
     let scale: number;
     do {
@@ -485,8 +488,13 @@ export class TdRenderer implements GameRenderer {
         this.intro = { at: this.wall, wave: f.wave, color: f.color }; this.shake = Math.max(this.shake, 0.55); play('rumble', { vol: 1.2 }); play('roar', { vol: 0.6, pitch: 0.7 });
       } else if (f.kind === 'hitStop') {
         if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
+      } else if (f.kind === 'boom' && f.mortar) { // a Mortar shell throws gravel and hot shrapnel, not fire
+        const { x, y } = this.P(f.x, f.y);
+        this.blasts.mortar(x, y, f.x, f.y, f.r, k, s.t);
+        this.shake = Math.max(this.shake, 0.3);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
         const { x, y } = this.P(f.x, f.y);
+        this.blasts.fireball(x, y, f.r, k);
         // A fireball splashes burning embers outward; the ground fire (burnFx) and a hot flash (drawFx) do the rest.
         for (let i = 0; i < 10 && this.particles.length < 600; i++) {
           const a = Math.random() * TAU, v = (8 + Math.random() * 16) * k;
@@ -580,6 +588,7 @@ export class TdRenderer implements GameRenderer {
       this.drawCables(g, s, bike);
       this.drawCulverts(g);
       this.drawBurns(g, s, dt);
+      this.blasts.drawGround(g, this.view.P, k, s.t);
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
       this.aliens?.drawGround(g, this.view, t);
       this.odBlend = stepBlend(this.odBlend, s.overdrive && !s.over, realDt);
@@ -620,6 +629,7 @@ export class TdRenderer implements GameRenderer {
       this.drawDecks(g, s, t, puppets);
       this.drawFx(g, s, muzzle, t);
       this.drawParticles(g);
+      this.blasts.draw(g, k);
       this.contactShadow(g, bx, by, k * 2.4);
       if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, {
         x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: s.grid, color: this.color, hpFrac: s.baseHp / s.baseMaxHp, hurt: s.baseHurt,
@@ -642,6 +652,7 @@ export class TdRenderer implements GameRenderer {
       if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, { x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: 0.5, color: this.color, hpFrac: 1, hurt: 99, weapon: 'gatling', aim: Math.sin(t * 0.5) * 0.6 + rot, swapK: 1, muzzle: 0, overdrive: false, railCharge: 0, flaming: false });
     }
     this.stepParticles(realDt);
+    this.blasts.step(realDt, k);
     g.restore();
     if (s.phase === 'run') for (const b of shimmerBands(this.wall, this.W, L.UH, this.odBlend)) { // heat haze at the edges
       const gr = b.x === 0 ? g.createLinearGradient(0, 0, b.w, 0) : b.y === 0 ? g.createLinearGradient(0, 0, 0, b.h) : g.createLinearGradient(b.x + b.w, 0, b.x, 0);
@@ -787,19 +798,21 @@ export class TdRenderer implements GameRenderer {
   private drawTowerFlames(g: CanvasRenderingContext2D, s: TdSnapshot, t: number, dt: number) {
     const k = this.k;
     for (const tw of s.towers) {
-      if (tw.kind !== 'flamer' || t - tw.firedAt > 0.3 || s.grid <= 0) continue;
-      const m = this.machinery.towerMuzzle(tw as TowerView, this.view, t), a = tw.angle + this.view.rot;
-      const range = TOWERS.flamer.range * LEVEL_RANGE[tw.level - 1] * k, half = TOWERS.flamer.cone ?? 0.5;
+      if (tw.kind !== 'flamer' || s.grid <= 0) continue;
+      const m = this.machinery.towerMuzzle(tw as TowerView, this.view, t), a = tw.angle + this.view.rot, L = tw.level;
+      const firing = t - tw.firedAt <= 0.3, range = TOWERS.flamer.range * LEVEL_RANGE[L - 1] * k, half = TOWERS.flamer.cone ?? 0.5;
+      // The mouth's heat lights the pad and road around it: wider and hotter every level, flaring while it fires.
+      const fl = 0.85 + 0.15 * Math.sin(t * 13 + tw.pad) * Math.sin(t * 7.3 + tw.pad * 2);
       g.save(); g.globalCompositeOperation = 'lighter';
-      const gr = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, range);
-      gr.addColorStop(0, 'rgba(255,170,80,0.32)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
-      g.fillStyle = gr; g.beginPath(); g.moveTo(m.x, m.y); g.arc(m.x, m.y, range, a - Math.PI / 2 - half, a - Math.PI / 2 + half); g.closePath(); g.fill();
-      g.restore();
-      const n = Math.round(2 * Math.max(1, dt * 60));
-      for (let i = 0; i < n && this.particles.length < 600; i++) {
-        const sa = a + (Math.random() - 0.5) * 2 * half * 0.8, v = range * (2 + Math.random() * 2);
-        this.particles.push({ x: m.x, y: m.y, vx: Math.sin(sa) * v, vy: -Math.cos(sa) * v, age: 0, life: 0.3 + Math.random() * 0.1, size: 0.9 * k, color: '', kind: 'flame' });
+      glowAt(g, L >= 5 ? '#ffd27a' : '#ff8a3a', m.x, m.y, (1.6 + 0.45 * L + (firing ? 2 : 0)) * k, (0.12 + 0.07 * L + (firing ? 0.2 : 0)) * fl * Math.min(1, s.grid));
+      if (firing) { // a faint light under the jet; the flame itself is painted (blastFx)
+        const gr = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, range);
+        gr.addColorStop(0, 'rgba(255,150,60,0.14)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
+        g.fillStyle = gr; g.beginPath(); g.moveTo(m.x, m.y); g.arc(m.x, m.y, range, a - Math.PI / 2 - half, a - Math.PI / 2 + half); g.closePath(); g.fill();
       }
+      g.restore();
+      // The duckbill mouth is about 80 px of the 224 px rig, drawn at 8.4k per 136 px.
+      this.blasts.burner(m.x, m.y, a, 80 * 8.4 * k / 136, L, k, dt > 0 ? Math.min(dt, 0.05) : 0, firing ? { range, half } : undefined, tw.pad);
     }
   }
 
@@ -916,24 +929,18 @@ export class TdRenderer implements GameRenderer {
 
   /** Fireballs climb from the launcher's mouth and drop onto their road point; Mortar rounds arc high from their pad. */
   private drawShells(g: CanvasRenderingContext2D, s: TdSnapshot, muzzle: { x: number; y: number }) {
-    const k = this.k;
+    const k = this.k, dt = 1 / 60;
     for (const sh of s.shells) {
       if (sh.tower) {
         const a = this.P(sh.x0, sh.y0), end = this.P(sh.x1, sh.y1), x = a.x + (end.x - a.x) * sh.k, y0 = a.y + (end.y - a.y) * sh.k;
         const lift = Math.sin(Math.PI * sh.k) * 20 * k, sc = 1 + 0.5 * Math.sin(Math.PI * sh.k);
-        g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.ellipse(x, y0, 1.1 * k, 0.55 * k, 0, 0, TAU); g.fill();
-        g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, TOWER_ICON_COLOR.mortar, x, y0 - lift, 1.8 * k * sc, 0.35); g.restore();
-        g.fillStyle = '#2b2e2a'; g.beginPath(); g.arc(x, y0 - lift, 0.75 * k * sc, 0, TAU); g.fill();
-        g.fillStyle = '#9aa08c'; g.beginPath(); g.arc(x - 0.25 * k * sc, y0 - lift - 0.25 * k * sc, 0.25 * k * sc, 0, TAU); g.fill();
-        if (this.particles.length < 600 && Math.random() < 0.35) this.particles.push({ x, y: y0 - lift, vx: (Math.random() - 0.5) * k, vy: -k, age: 0, life: 0.45, size: 0.8 * k, color: '', kind: 'smoke' });
+        this.blasts.drawShell(g, x, y0, lift, sc, k, dt);
         continue;
       }
       const end = this.P(sh.x1, sh.y1), x = muzzle.x + (end.x - muzzle.x) * sh.k, y0 = muzzle.y + (end.y - muzzle.y) * sh.k;
-      const lift = Math.sin(Math.PI * sh.k) * 12 * k;
-      g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(x, y0, 1.2 * k, 0.6 * k, 0, 0, TAU); g.fill();
-      g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, '#ff8a3a', x, y0 - lift, 2.8 * k, 0.9); g.restore();
-      g.fillStyle = '#ffe2b0'; g.beginPath(); g.arc(x, y0 - lift, 0.9 * k, 0, TAU); g.fill();
-      if (this.particles.length < 600 && Math.random() < 0.6) this.particles.push({ x, y: y0 - lift, vx: (Math.random() - 0.5) * 3 * k, vy: (Math.random() - 0.5) * 3 * k, age: 0, life: 0.3, size: 0.9 * k, color: '', kind: 'flame' });
+      const lift = Math.sin(Math.PI * sh.k) * 12 * k, dLift = Math.cos(Math.PI * sh.k) * 12 * k * Math.PI; // d(lift)/dk
+      g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, '#ff8a3a', x, y0 - lift, 2.6 * k, 0.45); g.restore(); // its light, under the pixels
+      this.blasts.drawFireball(g, x, y0, lift, end.x - muzzle.x, end.y - muzzle.y - dLift, k, s.t, dt);
     }
   }
 
@@ -981,8 +988,9 @@ export class TdRenderer implements GameRenderer {
         g.strokeStyle = '#fff'; g.globalAlpha = life; g.lineWidth = 0.6 * k;
         g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.globalAlpha = 1;
         glowAt(g, COL.purple, b.x, b.y, 3 * k, life);
-      } else if (f.kind === 'boom' || f.kind === 'burst') {
-        const q = this.P(f.x, f.y); glowAt(g, '#ff7a2a', q.x, q.y, f.r * k * (0.45 + 0.35 * (1 - life)), life * 0.45);
+      } else if (f.kind === 'boom' || f.kind === 'burst') { // the blast lights the ground around it (the shapes are painted sprites)
+        const q = this.P(f.x, f.y), mortar = f.kind === 'boom' && f.mortar, hot = Math.max(0, 1 - age / (mortar ? 0.18 : 0.35));
+        if (hot > 0) glowAt(g, mortar ? '#f4e65c' : '#ff7a2a', q.x, q.y, f.r * k * (mortar ? 0.9 : 1.1), hot * (mortar ? 0.35 : 0.4));
       }
     }
     // rail targeting laser

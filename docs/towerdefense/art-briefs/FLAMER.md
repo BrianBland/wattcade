@@ -1,5 +1,9 @@
 # Dynamo Defense: approved weapon artwork
 
+**2026-11-20:** the owner replaced Flamethrower A with the Round 1 duckbill burner ("that's definitely better"), asking
+for more distinct levels via glow. Live rig: `flamer-rounds/duckbill-production-2/build.py` (sources are the Round 1
+concept heads). A's sources and exporter remain below for history; running A's build.py would overwrite the live rig.
+
 Owner approved the Fireball launcher ("Fireball turret lgtm") and selected compact-burner Flamethrower A ("I like A").
 The Flamethrower keeps a spare exposed L1, L3 shielding/supplies and L5 reinforced reservoirs/gauges.
 Approved pixels are retained under `flamer-rounds/{flamer,fireball}-production-1/source/`.

@@ -8,13 +8,19 @@ import { glowAt, WEAPON_COLOR } from './sprites';
 import { loadImage, loadManifest } from './assets';
 import { levelPosition, partPose, posedPoint } from './puppetPose';
 import { dropPose, dropsFor } from './structureFx';
-interface Part { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; parent: string | null; z: number; minLevel?: number; weapon?: string; minCharge?: number; emissiveOnly?: boolean; damageStage?: number; aims?: boolean; recoil?: { distancePx: number }; axialSpin?: { frames: string[]; frameGlows: string[] } }
+interface Part { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; parent: string | null; z: number; minLevel?: number; /** Hidden above this level (a tier replaced by the next one's art). */ maxLevel?: number; weapon?: string; minCharge?: number; emissiveOnly?: boolean; damageStage?: number; aims?: boolean; recoil?: { distancePx: number }; axialSpin?: { frames: string[]; frameGlows: string[] } }
 export interface Animation { durationMs: number; frameDurationMs: number; glowGain?: number[][]; glowStrength?: number[][]; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[]; offsetsByLevel?: Record<string, number[]>; parent?: string } }
 interface Anchor { parent: string; position: number[]; positionsByLevel?: Record<string, number[]> }
-interface Manifest { parts: Part[]; size: number[]; padDiameterPx?: number; deckDiameterPx?: number; aim?: { enabled?: boolean }; animations?: { passive: Animation; attack: Animation }; anchors?: Record<string, Anchor> }
+interface Manifest { /** Glow multiplier from each listed level up (e.g. a hotter burner every level). */ glowByLevel?: Record<string, number>; parts: Part[]; size: number[]; padDiameterPx?: number; deckDiameterPx?: number; aim?: { enabled?: boolean }; animations?: { passive: Animation; attack: Animation }; anchors?: Record<string, Anchor> }
 function curve(keys: number[][], ms: number) {
   for (let i = 1; i < keys.length; i++) if (ms <= keys[i][0]) { const a = keys[i - 1], b = keys[i]; return a[1] + (b[1] - a[1]) * (ms - a[0]) / (b[0] - a[0]); }
   return keys[keys.length - 1][1];
+}
+/** The manifest's glow multiplier at `level`: the entry for the highest listed level at or below it, else 1. */
+export function levelGain(byLevel: Record<string, number> | undefined, level: number): number {
+  let best = 0, v = 1;
+  for (const [k, g] of Object.entries(byLevel ?? {})) { const n = Number(k); if (n <= level && n >= best) { best = n; v = g; } }
+  return v;
 }
 /** When an attack strip flashes brightest (its peak effect opacity), in ms from the strip's start. */
 export function attackPeakMs(a: Pick<Animation, 'effectOpacity'>) {
@@ -65,7 +71,7 @@ class Puppet {
     const ms = animation ? (attack ? attackMs : opts.t * 1000 % animation.durationMs) : 0;
     let riderDrawn = false;
     for (const p of m.parts) {
-      if ((p.minLevel ?? 1) > opts.level || p.weapon && p.weapon !== opts.weapon || (p.minCharge ?? 0) > (opts.charge ?? 0) || (p.damageStage ?? 0) > (opts.damage ?? 0)) continue;
+      if ((p.minLevel ?? 1) > opts.level || (p.maxLevel ?? 99) < opts.level || p.weapon && p.weapon !== opts.weapon || (p.minCharge ?? 0) > (opts.charge ?? 0) || (p.damageStage ?? 0) > (opts.damage ?? 0)) continue;
       if (p.z >= 44 && opts.rider && !riderDrawn) { opts.rider(); riderDrawn = true; }
       g.save();
       if (opts.drop) { // falls in from above, then squashes on landing (about the part's pivot)
@@ -87,7 +93,8 @@ class Puppet {
         g.globalCompositeOperation = 'lighter';
         const gain = animation?.glowGain ? curve(animation.glowGain, ms) : 1;
         const strength = animation?.glowStrength ? curve(animation.glowStrength, ms) : 1;
-        g.globalAlpha *= Math.min(0.6, (0.15 + opts.grid * 0.25) * gain * strength);
+        const hot = levelGain(m.glowByLevel, opts.level);
+        g.globalAlpha *= Math.min(0.6 * Math.max(1, hot), (0.15 + opts.grid * 0.25) * gain * strength * hot);
         g.drawImage(this.images.get(glow)!, p.offset[0], p.offset[1]);
       }
       g.restore();

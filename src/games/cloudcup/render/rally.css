@@ -1,0 +1,241 @@
+.scrapjet-world {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #55323d url('/scrapjet/magnet-mile.webp') center/cover;
+}
+.scrapjet-stage {
+  position: absolute;
+  overflow: hidden;
+  background: #b17968 url('/scrapjet/magnet-mile.webp') center/auto 110% no-repeat;
+  background-size: max(135%, 196vh) auto;
+}
+.scrapjet-stage > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.scrapjet-dash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #fff1d1;
+  font:
+    italic 800 clamp(12px, 1.7vw, 20px) / 1 system-ui,
+    sans-serif;
+  text-shadow: 0 2px 6px #211327;
+}
+.sj-rank,
+.sj-speed,
+.sj-combat,
+.sj-cue,
+.sj-grid {
+  position: absolute;
+}
+.sj-rank {
+  left: 2.6%;
+  top: 3.5%;
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  background: linear-gradient(105deg, #1c1a26eb, #27202ad9 91%, transparent 91%);
+  padding: 0.35em 1.45em 0.4em 0.65em;
+  border-left: 0.22em solid #efad43;
+}
+.sj-rank b,
+.sj-speed b {
+  font-size: 2.15em;
+  line-height: 1;
+  letter-spacing: -0.075em;
+}
+.sj-rank span,
+.sj-combat,
+.sj-speed small {
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  color: #f2ce8e;
+}
+.sj-speed {
+  bottom: 5%;
+  right: 3%;
+  text-align: right;
+}
+.sj-speed b {
+  font-size: 2.8em;
+}
+.sj-combat {
+  left: 3%;
+  bottom: 5.5%;
+  padding: 0.6em 0.9em;
+  background: #251d2bc9;
+  color: #baf5e5;
+  border-bottom: 2px solid #87d6c6;
+}
+.sj-map {
+  position: absolute;
+  right: 1%;
+  top: 1%;
+  width: clamp(85px, 15%, 170px);
+  height: auto;
+}
+.sj-cue {
+  top: 15%;
+  left: 50%;
+  transform: translateX(-50%) skewX(-7deg);
+  background: #211c29e6;
+  color: #c5ffed;
+  padding: 0.6em 1em;
+  white-space: nowrap;
+  border-bottom: 2px solid currentColor;
+}
+.sj-cue.danger {
+  color: #ffd05b;
+}
+.sj-cue:empty {
+  display: none;
+}
+.sj-grid {
+  left: 4%;
+  top: 7%;
+  background: linear-gradient(100deg, #171721ed, #27202aaa);
+  padding: 1em 2.5em 1em 1.2em;
+  border-left: 5px solid #ecac54;
+  display: none;
+}
+.sj-grid strong {
+  display: block;
+  line-height: 0.8;
+  font-size: clamp(2em, 7.5vh, 5em);
+  letter-spacing: -0.08em;
+  margin: 0.17em 0 0.22em;
+}
+.sj-grid small,
+.sj-grid span {
+  display: block;
+}
+.sj-grid span {
+  color: #aff2dc;
+  margin: 0.65em 0;
+}
+.sj-grid small {
+  font-size: 0.7em;
+  letter-spacing: 0.06em;
+}
+.on-grid .sj-grid {
+  display: block;
+}
+.on-grid > .sj-rank,
+.on-grid > .sj-speed,
+.on-grid > .sj-map,
+.on-grid > .sj-combat,
+.on-grid > .sj-cue {
+  display: none;
+}
+
+.sj-speed {
+  --dial-color: #f2bc6c;
+  width: clamp(7em, 12vw, 10em);
+  padding: 0.45em 0.65em 0.52em 1.15em;
+  background: linear-gradient(105deg, transparent 7%, #211f29ea 8%, #171922ef 91%, #4d4342e8);
+  border-right: 0.17em solid #ac9680;
+  font-variant-numeric: tabular-nums;
+}
+.sj-speed b {
+  display: inline-block;
+  margin-right: 0.12em;
+}
+.sj-speed small {
+  font-size: 0.55em;
+}
+.sj-speed.over {
+  --dial-color: #99f1d9;
+}
+.sj-dial {
+  position: relative;
+  height: 0.28em;
+  margin-top: 0.2em;
+  background: #5e5759;
+  transform: skewX(-14deg);
+}
+.sj-dial i {
+  display: block;
+  width: var(--speed);
+  height: 100%;
+  background: var(--dial-color);
+}
+.sj-dial em {
+  position: absolute;
+  left: var(--launch);
+  top: -0.14em;
+  bottom: -0.14em;
+  width: 2px;
+  background: white;
+  display: none;
+}
+.approach .sj-dial em {
+  display: block;
+}
+.sj-speed span:not(:empty) {
+  display: block;
+  margin-top: 0.55em;
+  font:
+    800 0.55em/1.1 system-ui,
+    sans-serif;
+  letter-spacing: 0.09em;
+  color: var(--dial-color);
+}
+.sj-map {
+  top: 3.5%;
+  right: 2.5%;
+  width: clamp(72px, 11%, 125px);
+  background: linear-gradient(110deg, transparent 7%, #201d26c2 8%, #201d2699 100%);
+}
+
+.scrapjet-stage.kiln-dusk, .scrapjet-world.kiln-night {
+  background-image: url('/scrapjet/kiln-night.webp');
+  background-color: #253947;
+}
+.sj-speed.pressure { --dial-color: #aa8061; }
+.sj-speed.charging { --dial-color: #ffbe75; }
+.sj-speed.pressure .sj-dial { background: #775e4c; }
+
+.sj-grid {
+  inset: auto auto 7% 3.5%;
+  box-sizing: border-box;
+  max-width: min(27em, 89%);
+  padding: .9em 1.3em 1em;
+  background: linear-gradient(100deg, #111e26f5 62%, #17222ce8);
+  border-left: .22em solid #f7ba71;
+  box-shadow: 0 .3em 1.5em #111b252e;
+}
+.sj-grid strong { font: 850 clamp(1.8em, 5.6vh, 3.6em)/.97 system-ui,sans-serif; letter-spacing: -.065em; }
+.sj-grid p { font: 500 .86em/1.35 system-ui,sans-serif; margin: .6em 0; color: #d7dfd9; }
+.sj-grid small { font-style: normal; }
+.sj-grid small:first-child { letter-spacing: .2em; color: #e9bd83; }
+.sj-grid span { font: 750 .9em/1.35 system-ui,sans-serif; padding: .4em 0; border-top: 1px solid #b8cfcd44; }
+
+.sj-threat {
+  position: absolute;
+  top: 48%; right: 3%;
+  padding: .5em .7em .62em;
+  font: 800 clamp(10px,1.5vw,17px)/1 system-ui,sans-serif;
+  letter-spacing: .06em;
+  color: #ffe3aa; background: #33251de8;
+  border-right: .24em solid #ffbc6a;
+}
+.sj-threat.left { left: 3%; right: auto; border-right: 0; border-left: .24em solid #ffbc6a; }
+.sj-threat::after {
+  content:''; position:absolute; inset: auto 0 0 auto; height:.17em;
+  width:var(--wind); background: #ffbd6c;
+}
+.sj-threat.left::after { left:0; right:auto; }
+
+.scrapjet-stage.storm-shelf, .scrapjet-world.storm-night {
+  background-color: #363a59;
+  background-image: url('/scrapjet/stormglass.webp');
+}
+
+.scrapjet-stage.cinder-sky, .scrapjet-world.cinder-sky { background-image:url('/scrapjet/bowl-sky.webp'); background-color:#c89768; }
+.scrapjet-stage.cable-sky, .scrapjet-world.cable-sky { background-image:url('/scrapjet/pass-sky.webp'); background-color:#acbcca; }
+.scrapjet-stage.cinder-sky, .scrapjet-stage.cable-sky { background-size: cover; }

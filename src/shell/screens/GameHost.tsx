@@ -226,7 +226,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
             T.ending += dt;
             if (endingStep(T.ending, T.hold, p.has('a')).leave) { disposed = true; leave(cb.current.onQuit); return; }
           }
-          renderer!.render(session.sim.snapshot(), session.ctx.bike(), input.state());
+          renderer!.render(session.sim.snapshot(), session.ctx.bike(), input.state(), session.loop?.frameFraction);
           raf = requestAnimationFrame(loop);
         };
         raf = requestAnimationFrame(loop);

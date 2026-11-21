@@ -30,6 +30,16 @@ function hardhat(g: G, x: number, y: number, r: number, tilt: number) {
   g.restore();
 }
 
+/** The strike placard from `hamster()`, held on a post above the back. */
+function picket(g: G, px: number, s: number, text: string, time: number) {
+  g.strokeStyle = '#8a6440'; g.lineWidth = Math.max(1.5, s * 0.035); g.beginPath(); g.moveTo(px, -s * 0.28); g.lineTo(px, -s * 1.15); g.stroke();
+  g.save(); g.translate(px, -s * 1.33); g.rotate(Math.sin(time * 4) * 0.08);
+  g.fillStyle = '#fbf6e6'; rr(g, -s * 0.55, -s * 0.2, s * 1.1, s * 0.4, s * 0.04); g.fill();
+  g.strokeStyle = '#c8b890'; g.lineWidth = 1; g.stroke();
+  g.fillStyle = '#c0161a'; g.font = `900 ${Math.max(6, s * 0.14)}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, 0, 0); g.restore(); g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+}
+
 // ---------- gerbil ----------
 export const GERBIL = { light: '#f7e9cc', mid: '#d2a467', dark: '#9b6d3c', line: '#5c3e20', tip: '#4a3220' };
 /** Slim agouti body, long tufted tail, big hind feet, upright ears. */
@@ -85,6 +95,7 @@ export function gerbil(g: G, x: number, y: number, s: number, p: number, look: L
   whiskers(g, hx + s * 0.2, hy + s * 0.09, s * 0.17, s);
   if (look.hardhat) hardhat(g, hx - s * 0.01, hy - s * 0.1, s * 0.11, 0.25);
   foot(-s * 0.2, 0, true, true); foot(s * 0.18, Math.PI, true, false);
+  if (look.sign) picket(g, s * 0.05, s, look.sign, time);
   if (still) zzz(g, hx + s * 0.2, hy - s * 0.2, s, time);
   g.restore();
 }
@@ -133,6 +144,7 @@ export function guineaPig(g: G, x: number, y: number, s: number, p: number, look
   g.strokeStyle = c.line; g.lineWidth = lw(s, 0.01); g.beginPath(); g.moveTo(s * 0.53, -s * 0.25); g.lineTo(s * 0.52, -s * 0.2); g.lineTo(s * 0.48, -s * 0.18); g.stroke();
   whiskers(g, s * 0.5, -s * 0.24, s * 0.16, s, 'rgba(255,255,255,0.8)');
   foot(-s * 0.26, 0, true); foot(s * 0.24, Math.PI, true);
+  if (look.sign) picket(g, -s * 0.05, s, look.sign, time);
   if (still) zzz(g, s * 0.45, -s * 0.55, s, time);
   g.restore();
 }

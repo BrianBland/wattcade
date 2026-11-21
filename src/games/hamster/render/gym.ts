@@ -1,6 +1,6 @@
 // Hamster Gym stations: barbells that are held, racked or resting on the floor, never floating.
 // Lifters stand up and face the camera, so the bar reads end to end like a real gym poster.
-import { FONT, FURS, TAU, hamster, rr, shadow, type Fur } from './draw';
+import { FONT, FURS, TAU, rr, shadow, type Fur } from './draw';
 type G = CanvasRenderingContext2D;
 type P = { x: number; y: number };
 
@@ -154,15 +154,6 @@ export function gymStation(g: G, x: number, y: number, s: number, kind: GymKind,
     }
   }
   g.restore();
-}
-
-/** The current art, kept for before/after comparison. */
-export function gymBefore(g: G, gx: number, gy: number, k: number, t: number, stopped: boolean) {
-  const lift = stopped ? 0 : Math.abs(Math.sin(t * 3 + k)) * 14;
-  shadow(g, gx, gy, 24, 5);
-  hamster(g, gx, gy, 30, 0, { swole: 0.8, sleep: stopped, noShadow: true, fur: k % 2 ? FURS.gerald : FURS.grey }, t);
-  g.strokeStyle = '#ccd'; g.lineWidth = 3; g.beginPath(); g.moveTo(gx - 10, gy - 34 - lift); g.lineTo(gx + 24, gy - 34 - lift); g.stroke();
-  g.fillStyle = '#222'; rr(g, gx - 16, gy - 42 - lift, 7, 16, 2); g.fill(); rr(g, gx + 21, gy - 42 - lift, 7, 16, 2); g.fill();
 }
 
 /** A wall mirror; `scene` draws a faint reflection inside it. */

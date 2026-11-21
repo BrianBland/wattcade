@@ -66,6 +66,13 @@ export function signMessage(s: FullSendSnapshot, m: number | null): SignSpec | n
   return null;
 }
 
+/** Where the distant LED sign sits relative to the mid-ground scene buffer.
+ *  Legs fade into the hills, so they stay behind the buffer; the board (title, time, biome) is drawn after it
+ *  so trees, barns and hills cannot cover the text. */
+export function distantSignLayer(part: 'legs' | 'board'): 'behind' | 'over' {
+  return part === 'legs' ? 'behind' : 'over';
+}
+
 /** The distant sign stands on a far parallax layer, so it crosses the screen slowly. A new message (a new phase, a fork
  *  opening) puts up a fresh sign just inside the right edge; when one drifts off the left, the next comes in on the right.
  *  `u` = CSS px the far layer has scrolled since the message changed. Returns its box (CSS px) or null between signs. */

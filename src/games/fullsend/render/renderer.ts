@@ -17,7 +17,7 @@ import { MEDAL_NAMES } from '../sim/physics';
 import { CHASER_REACH, PIECE_VERB } from '../sim/tour';
 import { AIR_CELL, airItemAt, bumpH, DIVE, diveDip, MEGA, megaLift } from '../sim/track';
 import { FullSendSound } from './sound';
-import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
+import { countdown, distantSignLayer, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
 import { drawCloudDeck, drawFireball, drawTrail, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
@@ -45,7 +45,7 @@ export class FullSendRenderer implements GameRenderer {
   private units: UnitSystem = 'imperial';
   private canvas!: HTMLCanvasElement; private g!: G;
   private buf!: HTMLCanvasElement; private b!: G;
-  /** Sky + far backdrop, split off so the distant sign can stand between it and the rest of the scene. */
+  /** Sky + far backdrop. The sign's legs stand between this and the mid-ground; the board is drawn over the scene. */
   private far!: HTMLCanvasElement; private fg!: G;
   private scratch!: HTMLCanvasElement; private sg!: G;
   private dpr = 1; private px = 3; private LW = 300; private LH = 200; private cssW = 800; private cssH = 600;
@@ -219,7 +219,7 @@ export class FullSendRenderer implements GameRenderer {
     // far landmarks are never cut: across a seam the old biome's sink behind the hills while the new one's rise
     if (blend) this.layer(blend, (l, gg) => l.backdrop(gg, W, backY, s.camX * PPM * BACK_PARALLAX, t));
     else for (const [id, d] of horizonSwap(skySp, W)) LOOKS[id].backdrop(g, W, Math.round(backY + d * UH * 0.45), s.camX * PPM * BACK_PARALLAX, t);
-    // everything so far is the far layer; the rest (hills, trees, road, you) is drawn over the distant sign
+    // everything so far is the far layer; the sign's legs stand on it, and hills, trees and the road cover those posts
     this.fg.clearRect(0, 0, W, H); this.fg.drawImage(this.buf, 0, 0); g.clearRect(0, 0, W, H);
     const solid = 1 - wsum((l) => (l.openSky ? 1 : 0));
     const midBase = Math.round(UH * 0.62 + vAlt * 0.45), mu = s.camX * PPM * MID_PARALLAX;
@@ -521,13 +521,21 @@ export class FullSendRenderer implements GameRenderer {
     this.cam = { x: Math.round(r.x + dx), y: Math.round(r.y + dy), s: r.w / W };
     this.farOff = s.camX * (PPM / k) * DISTANT.parallax;
     m.drawImage(this.far, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
-    if (hand < 0.35 && !s.menu) { // the distant sign stands behind the hills and trees
-      m.globalAlpha = 1 - hand / 0.35;
-      const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
-      this.drawDistant(s, signMessage(s, c?.m ?? null));
+    const showSign = hand < 0.35 && !s.menu;
+    const signAlpha = 1 - hand / 0.35;
+    const c0 = showSign ? countdown(s) : null, c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
+    const distant = showSign ? signMessage(s, c?.m ?? null) : null;
+    if (showSign && distantSignLayer('legs') === 'behind') { // posts fade into the hills, so they stay behind the scene
+      m.globalAlpha = signAlpha;
+      this.drawDistant(s, distant, 'legs');
       m.globalAlpha = 1;
     }
     m.drawImage(this.buf, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
+    if (showSign && distantSignLayer('board') === 'over') { // the board (title, time, biome) sits over trees, barns and hills
+      m.globalAlpha = signAlpha;
+      this.drawDistant(s, distant, 'board');
+      m.globalAlpha = 1;
+    }
     this.lastSnap = s;
     this.sound.update(s, dt > 0);
     if (hand < 0.35) { m.globalAlpha = 1 - hand / 0.35; this.overlay(s); m.globalAlpha = 1; } // HUD + signs fade with the hand-off
@@ -755,21 +763,26 @@ export class FullSendRenderer implements GameRenderer {
   }
 
   /** The one big sign everything is on: it stands far off (slow parallax) so it stays put long enough to read, and it is
-   *  an LED board, so its numbers count live. Fades if the rider flies in front of it. */
-  private drawDistant(s: FullSendSnapshot, msg: SignSpec | null) {
+   *  an LED board, so its numbers count live. Legs fade into the hills (drawn before the scene); the board is drawn
+   *  after it so trees cannot cover the text. Fades if the rider flies in front of it. */
+  private drawDistant(s: FullSendSnapshot, msg: SignSpec | null, part: 'legs' | 'board') {
     if (!msg) { this.signKey = ''; return; }
     const key = `${s.phase}:${s.setIndex}:${msg.kind}`;
     if (key !== this.signKey) { this.signKey = key; this.signBase = this.farOff; }
     const r = distantSignRect(this.cssW, this.L.UH, this.farOff - this.signBase);
     if (!r) return;
-    const m = this.g, d = this.dpr, sc = r.w / DISTANT.w;
+    const m = this.g, d = this.dpr;
+    if (part === 'legs') {
+      // the legs run down behind the hills (they fade out low, for open-sky layers with no hills to hide them)
+      const legTop = r.y + r.h, legBot = Math.max(legTop + 10, this.L.UH * 0.8);
+      const lg = m.createLinearGradient(0, legTop * d, 0, legBot * d); lg.addColorStop(0, '#3a3f4c'); lg.addColorStop(1, 'rgba(58,63,76,0)');
+      m.fillStyle = lg; m.fillRect((r.x + r.w * 0.2) * d, legTop * d, 5 * d, (legBot - legTop) * d); m.fillRect((r.x + r.w * 0.8 - 5) * d, legTop * d, 5 * d, (legBot - legTop) * d);
+      return;
+    }
+    const sc = r.w / DISTANT.w;
     const f = (w: number, size: number, it = false) => fsFont(w, size * sc * d, it);
     const TONE: Record<string, [string, string, string]> = { green: ['#0e6b3c', '#ffffff', '#ffd23b'], yellow: ['#ffd23b', '#1a1a1a', '#b3202c'], red: ['#b3202c', '#ffffff', '#ffd23b'], blue: ['#1d4fa8', '#ffffff', '#ffd23b'] };
     const [bg, fg, hi] = TONE[msg.tone];
-    // the legs run down behind the hills (they fade out low, for open-sky layers with no hills to hide them)
-    const legTop = r.y + r.h, legBot = Math.max(legTop + 10, this.L.UH * 0.8);
-    const lg = m.createLinearGradient(0, legTop * d, 0, legBot * d); lg.addColorStop(0, '#3a3f4c'); lg.addColorStop(1, 'rgba(58,63,76,0)');
-    m.fillStyle = lg; m.fillRect((r.x + r.w * 0.2) * d, legTop * d, 5 * d, (legBot - legTop) * d); m.fillRect((r.x + r.w * 0.8 - 5) * d, legTop * d, 5 * d, (legBot - legTop) * d);
     m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((r.x + 5) * d, (r.y + 5) * d, r.w * d, r.h * d);
     m.fillStyle = bg; m.fillRect(r.x * d, r.y * d, r.w * d, r.h * d);
     m.lineWidth = 3 * d; m.strokeStyle = fg; m.strokeRect((r.x + 6) * d, (r.y + 6) * d, (r.w - 12) * d, (r.h - 12) * d);

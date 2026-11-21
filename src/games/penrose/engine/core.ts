@@ -30,7 +30,14 @@ void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
   #endif
   vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
-const FS = `uniform vec3 ct; uniform vec3 cl; uniform vec3 cr; uniform float grad; uniform float opacity; varying vec3 vW;
+// HAZE: atmospheric depth shared by every three-tone and surface material. Below the lowest road, faces fade toward the
+// sky's own colour (Monument Valley's gradient-to-sky undersides, Manifold Garden's fog), so the playable storeys stand
+// forward and the island's underside dissolves into the air instead of ending in a dark slab. Set per level (setHaze).
+const HAZE = { hz: { value: new T.Color(1, 1, 1) }, hzLo: { value: -10 }, hzHi: { value: -9 }, hzK: { value: 0 } };
+const HAZE_GLSL = `uniform vec3 hz; uniform float hzLo; uniform float hzHi; uniform float hzK;
+vec3 haze(vec3 c, float y) { float f = clamp((hzHi - y) / max(hzHi - hzLo, 1e-3), 0.0, 1.0); return mix(c, hz, hzK * f * f * (3.0 - 2.0 * f)); }`;
+const FS = HAZE_GLSL + `
+uniform vec3 ct; uniform vec3 cl; uniform vec3 cr; uniform float grad; uniform float opacity; varying vec3 vW;
 void main() {
   vec3 n = normalize(cross(dFdx(vW), dFdy(vW)));
   // shade in the camera's frame: undo the view's yaw so a turned camera lights faces the same way the front view does
@@ -40,12 +47,12 @@ void main() {
   vec3 w = pow(max(n, vec3(0.0)), vec3(1.6)); float s = w.x + w.y + w.z + 1e-4;
   vec3 c = (cr * w.x + ct * w.y + cl * w.z) / s;
   c *= 1.0 + grad * clamp(vW.y * 0.09, -1.0, 1.0);
-  gl_FragColor = vec4(c, opacity); }`;
+  gl_FragColor = vec4(haze(c, vW.y), opacity); }`;
 const triCache = new Map();
 function tri(p, opt = {}) {
   const key = opt.fresh ? null : [p.t, p.l, p.r, opt.grad ?? .07, opt.side ?? 0, opt.opacity ?? 1].join();
   if (key && triCache.has(key)) return triCache.get(key);
-  const m = new T.ShaderMaterial({ uniforms: { ct: { value: new T.Color(p.t) }, cl: { value: new T.Color(p.l) }, cr: { value: new T.Color(p.r) }, grad: { value: opt.grad ?? .07 }, opacity: { value: opt.opacity ?? 1 } },
+  const m = new T.ShaderMaterial({ uniforms: { ...HAZE, ct: { value: new T.Color(p.t) }, cl: { value: new T.Color(p.l) }, cr: { value: new T.Color(p.r) }, grad: { value: opt.grad ?? .07 }, opacity: { value: opt.opacity ?? 1 } },
     vertexShader: VS, fragmentShader: FS, extensions: { derivatives: true }, side: opt.side ? T.DoubleSide : T.FrontSide, transparent: (opt.opacity ?? 1) < 1, depthWrite: (opt.opacity ?? 1) >= 1 });
   if (key) triCache.set(key, m);
   return m;
@@ -88,7 +95,8 @@ const TEX = {};
 TEX.glow = canvasTex(64, 64, (g) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(.35, 'rgba(255,255,255,.45)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); });
 TEX.dot = canvasTex(32, 32, (g) => { g.fillStyle = '#fff'; g.beginPath(); g.arc(16, 16, 14, 0, TAU); g.fill(); });
 TEX.puff = canvasTex(64, 64, (g) => { g.fillStyle = '#fff'; for (const [x, y, r] of [[32, 36, 20], [20, 38, 13], [44, 38, 13], [32, 24, 14]]) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); } });
-TEX.cloud = canvasTex(256, 96, (g) => { g.fillStyle = '#fff'; for (const [x, y, r] of [[60, 64, 30], [100, 50, 42], [150, 56, 36], [190, 66, 26], [128, 72, 30]]) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); } g.fillRect(40, 70, 170, 26); g.clearRect(0, 92, 256, 4); });
+// a cloud: flat-bottomed puffs, lit from above with a cooler underside, the way Monument Valley paints its sky
+TEX.cloud = canvasTex(256, 96, (g) => { const v = g.createLinearGradient(0, 8, 0, 96); v.addColorStop(0, '#FFFFFF'); v.addColorStop(.6, '#FBFCFE'); v.addColorStop(1, '#E4E9F2'); g.fillStyle = v; for (const [x, y, r] of [[60, 64, 30], [100, 50, 42], [150, 56, 36], [190, 66, 26], [128, 72, 30]]) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); } g.fillRect(40, 70, 170, 26); g.clearRect(0, 92, 256, 4); });
 TEX.bird = canvasTex(64, 32, (g) => { g.strokeStyle = '#fff'; g.lineWidth = 4; g.lineCap = 'round'; g.beginPath(); g.moveTo(6, 10); g.quadraticCurveTo(20, 4, 32, 20); g.quadraticCurveTo(44, 4, 58, 10); g.stroke(); });
 TEX.petal = canvasTex(32, 32, (g) => { g.fillStyle = '#fff'; g.beginPath(); g.ellipse(16, 16, 13, 7, .5, 0, TAU); g.fill(); });
 TEX.diamond = canvasTex(32, 32, (g) => { g.fillStyle = '#fff'; g.beginPath(); g.moveTo(16, 1); g.lineTo(24, 16); g.lineTo(16, 31); g.lineTo(8, 16); g.fill(); });
@@ -141,7 +149,7 @@ class View {
       this.scene.overrideMaterial = DEPTH_ONLY; this.camera.layers.set(2); R3.render(this.scene, this.camera); this.scene.overrideMaterial = null;
       this.camera.layers.set(1); R3.render(this.scene, this.camera); this.camera.layers.set(0); this.scene.background = bg; R3.autoClear = ac; }
   }
-  clear() { this.scene.clear(); this.updaters = []; this.yawFrames = null; this.yawK = undefined; this.overlay = false; }
+  clear() { this.scene.clear(); this.updaters = []; this.trackFade = null; this.yawFrames = null; this.yawK = undefined; this.overlay = false; }
 }
 
 /* ---------- the wheel ---------- */
@@ -174,6 +182,38 @@ function makeWheel(th) {
 }
 // place a wheel on a path point with its travel direction (2D sketch coords)
 function placeWheel(w, x, y, z, dx, dy, roll) { w.position.copy(V(x, y, z)); w.rotation.y = Math.atan2(-dy, dx); w.userData.spin.rotation.z = -roll; }
+
+/* ---------- the goal ---------- */
+// A goal has to read from any camera angle and against any road colour (the old additive ring vanished on a pale deck):
+// a solid pad in the goal colour with a pale rim at the road's end, a pennant on a pole standing just past the end, and a
+// soft shaft of light rising well above, so the goal still shows when the end of the road is behind something
+// (Monument Valley marks its goals with a standing silhouette, not a glow). Local +y is the road's normal, +x its heading.
+TEX.shaft = canvasTex(4, 128, (g) => { const v = g.createLinearGradient(0, 0, 0, 128); v.addColorStop(0, 'rgba(255,255,255,0)'); v.addColorStop(.55, 'rgba(255,255,255,.55)'); v.addColorStop(1, 'rgba(255,255,255,.95)'); g.fillStyle = v; g.fillRect(0, 0, 4, 128); });
+function makeGoal(th, view) {
+  const G = new T.Group(), body = new T.Group(); G.add(body); const goalP = tone(th.goal), ink = th.ink || '#2A2640';
+  const rim = new T.Mesh(new T.CylinderGeometry(.5, .5, .05, 36), tri(tone(mix(th.goal, '#FFFFFF', .78)))); rim.position.y = .03; body.add(rim);
+  const pad = new T.Mesh(new T.CylinderGeometry(.38, .38, .07, 36), tri(goalP)); pad.position.y = .05; body.add(pad);
+  const dot = new T.Mesh(new T.CylinderGeometry(.14, .14, .08, 24), tri(tone(mix(th.goal, '#FFFFFF', .78)))); dot.position.y = .06; body.add(dot);
+  // the pennant, on a pole just beyond the end of the road
+  const pole = new T.Mesh(new T.CylinderGeometry(.035, .035, 1.7, 8), tri(tone(ink))); pole.position.set(.55, .85, 0); body.add(pole);
+  const knob = new T.Mesh(new T.SphereGeometry(.08, 12, 8), tri(tone('#FFD15C'))); knob.position.set(.55, 1.74, 0); body.add(knob);
+  const fgeo = new T.PlaneGeometry(.72, .42, 10, 1); fgeo.translate(.36, 0, 0); const base = fgeo.attributes.position.array.slice();
+  const flag = new T.Mesh(fgeo, basic(th.goal, { side: true })); flag.position.set(.55, 1.45, 0); body.add(flag);
+  const edge = new T.Mesh(fgeo, basic(ink, { side: true })); edge.scale.set(1.06, 1.16, 1); edge.position.set(-.02, 0, -.006); flag.add(edge);   // a dark outline behind it, so it reads on a pale sky
+  // the shaft: an open cylinder, bright at the road and fading out above it
+  const shaft = new T.Mesh(new T.CylinderGeometry(.34, .34, 5, 24, 1, true), new T.MeshBasicMaterial({ color: th.goal, map: TEX.shaft, transparent: true, opacity: .32, depthWrite: false, side: T.DoubleSide })); shaft.position.y = 2.5; body.add(shaft);
+  const glow = sprite(TEX.glow, 1.6, 1.6, th.goal, { opacity: .45, add: true }); glow.position.y = .3; body.add(glow);
+  const X = new T.Vector3(), Y = new T.Vector3(), Z = new T.Vector3(), Mx = new T.Matrix4();
+  G.userData.place = (p, n, d, t) => {
+    Y.copy(n).normalize(); X.copy(d).addScaledVector(Y, -d.dot(Y)).normalize(); Z.crossVectors(X, Y);
+    G.position.copy(p); G.quaternion.setFromRotationMatrix(Mx.makeBasis(X, Y, Z));
+    // the pennant turns to face the camera's side, so it never shows edge-on
+    const cam = view.camera.getWorldDirection(new T.Vector3()).negate(); flag.rotation.y = Math.atan2(cam.dot(X), cam.dot(Z));
+    const q = fgeo.attributes.position; for (let i = 0; i < q.count; i++) { const x0 = base[i * 3]; q.setZ(i, Math.sin(x0 * 7 - t * 6) * .06 * x0 / .72); q.setY(i, base[i * 3 + 1] - .05 * x0 * x0); } q.needsUpdate = true;
+    const k = 1 + .06 * Math.sin(t * 3); pad.scale.set(k, 1, k); glow.material.opacity = .35 + .15 * Math.sin(t * 3); shaft.material.opacity = .26 + .08 * Math.sin(t * 2);
+  };
+  return G;
+}
 
 /* ---------- a fluttering flag ---------- */
 function makeFlag(g, x, y, z, color, ink, upd) {
@@ -333,6 +373,31 @@ function machine(view, theme, plane, size) {
   return st;
 }
 
+/* ---------- sky and air: a theme's sky colour at any height, a soft light behind the island, and the haze below it ---------- */
+const skyStops = (css) => [...(css || '').matchAll(/#([0-9a-fA-F]{6})\s+(\d+(?:\.\d+)?)%/g)].map(m => ({ c: '#' + m[1], f: +m[2] / 100 }));
+/** The colour of a CSS linear sky gradient at fraction f from its top. */
+function skyAt(css, f) { const S = skyStops(css); if (!S.length) return '#DDE6F0';
+  for (let i = 1; i < S.length; i++) if (f <= S[i].f) { const a = S[i - 1], b = S[i]; return mix(a.c, b.c, clamp((f - a.f) / Math.max(1e-3, b.f - a.f), 0, 1)); }
+  return S[S.length - 1].c; }
+const lum = (h) => { const [r, g, b] = hexRgb(h); return (.2126 * r + .7152 * g + .0722 * b) / 255; };
+/** The sky behind a level: the theme's gradient with a soft pool of light behind the island (Monument Valley and Lumino City
+ *  backlight the structure so its silhouette reads against the sky) and a faint darkening at the corners (a diorama's lens). */
+function skyCss(th) {
+  const dark = lum(skyAt(th.sky, .5)) < .35, glow = dark ? (th.glow || th.goal || '#FFD27A') : '#FFFFFF', [r, g, b] = hexRgb(glow), ink = hexRgb(th.ink || '#1E2235');
+  return `radial-gradient(ellipse 58% 46% at 50% 46%, rgba(${r},${g},${b},${dark ? .2 : .42}) 0%, rgba(${r},${g},${b},0) 100%),`
+    + ` radial-gradient(ellipse 120% 100% at 50% 45%, rgba(0,0,0,0) 62%, rgba(${ink.join(',')},${dark ? .3 : .1}) 100%), ${th.sky}`;
+}
+/** Haze for a level: faces below its lowest road fade toward the lower sky, over the drop to the bottom of the island. */
+function setHaze(L) {
+  const box = new T.Box3(); let lowRoad = Infinity; L.g.updateMatrixWorld(true);
+  L.g.traverse(o => { if (o.isMesh && o.geometry && o.visible) { o.geometry.boundingBox || o.geometry.computeBoundingBox(); box.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld)); } });
+  for (const r of L.roads) for (const q of r.S || []) lowRoad = Math.min(lowRoad, r.g ? q.p.clone().applyMatrix4(r.g.matrixWorld).y : q.p.y);
+  if (!isFinite(lowRoad) || box.isEmpty()) { HAZE.hzK.value = 0; return; }
+  const hi = lowRoad - .7, lo = Math.min(box.min.y, hi - 1.5), th = L.th, c = hexRgb(skyAt(th.sky, .82));
+  HAZE.hz.value.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, T.LinearSRGBColorSpace);   // raw sky values: the shaders write them out unconverted
+  HAZE.hzLo.value = lo; HAZE.hzHi.value = hi; HAZE.hzK.value = th.hazeK ?? .5;
+}
+
 /* ================= themes ================= */
 const THEMES = [
   { id: 'dusk', name: 'Dusk Monument', bloom: 'iris', blurb: 'Lilac stone, domes and arched slits under a peach dusk. The machines are coral clockwork irises: a bundle of arms that fans out, telescopes and raises its handles.', chips: ['chapter 1', 'iris crank', 'petals and birds'],
@@ -354,7 +419,18 @@ const THEMES = [
     sky: 'linear-gradient(180deg,#1E140B 0%,#3E2914 50%,#7A5222 100%)', stone: { t: '#CFA45A', l: '#9C7034', r: '#734F22' }, idle: { t: '#A8916A', l: '#86714E', r: '#655539' }, mech: { t: '#FFE28E', l: '#F7BE3E', r: '#CF9216' }, mechLight: { t: '#FFF0BE', l: '#FFD86E', r: '#E4AE3A' }, mechDark: { t: '#C99A4A', l: '#A37630', r: '#7C5820' },
     ink: '#2A1A08', lane: '#6B4A1E', goal: '#FFE28E', spark: '#FFF0BE', pipe: { t: '#D9925A', l: '#B4703C', r: '#8A5228' } },
 ];
-const sp = (th, k) => th.ramp ? th.ramp[k % th.ramp.length] : th.stone;
+// sp(th, 1) is the road deck (and the loop slabs and posts that carry it). A theme's `deck` keeps the track the lightest,
+// cleanest surface in the scene, a step above the ground it crosses: Monument Valley's walkways and Echochrome's lines
+// read first because nothing else on screen shares their value.
+// A machine at rest (`idle`) is a muted version of the deck, so a turntable arm or lift deck carrying the road reads as the
+// same road until it is engaged; the garden's green moves off the road and onto the land (lawn base, see ./terrain.ts).
+const DECKS = {
+  garden: { deck: { t: '#FBF3E2', l: '#E5CFA0', r: '#C2A574' }, idle: { t: '#EDE4CC', l: '#CDBE98', r: '#AD9D77' } },
+  night: { deck: { t: '#8D94D6', l: '#4F5594', r: '#383D74' }, idle: { t: '#7479B2', l: '#4C5186', r: '#383C69' } },
+  brass: { deck: { t: '#F1D594', l: '#BD914B', r: '#8E6630' }, idle: { t: '#D9C493', l: '#A88E5F', r: '#7F6B45' } },
+};
+for (const th of THEMES) if (DECKS[th.id]) Object.assign(th, DECKS[th.id]);
+const sp = (th, k) => th.ramp ? th.ramp[k % th.ramp.length] : (k % 3 === 1 && th.deck) || th.stone;
 
 /* ---------- theme decoration ---------- */
 function windowsOn(g, th, face, plane, u0, u1, z0, z1, opt = {}) {
@@ -367,6 +443,8 @@ function windowsOn(g, th, face, plane, u0, u1, z0, z1, opt = {}) {
   return out;
 }
 function cloudLayer(view, th, color, n, opacity, y0, y1, speed = .25) {
+  // plain white clouds take the sky's tone: a whisper of the zenith colour by day, dim sky-coloured shapes at night
+  if (color === '#FFFFFF') { const dark = lum(skyAt(th.sky, .5)) < .35; color = dark ? mix(skyAt(th.sky, .1), '#FFFFFF', .2) : mix('#FFFFFF', skyAt(th.sky, .05), .06); if (dark) opacity *= .5; }
   const [l, r, b, t] = view.screenBox(), W = r - l;
   for (let i = 0; i < n; i++) { const s = sprite(TEX.cloud, 3 + rnd() * 2.5, 1.2 + rnd() * .6, color, { opacity }); const base = { x: l + (i + .15 + .7 * rnd()) / n * W, y: lerp(b + (t - b) * y0, b + (t - b) * y1, (i % 2 + rnd()) / 2), v: speed };   // spread out and moving together, so clouds never pile up
     view.scene.add(s); view.updaters.push(tt => { const x = l + ((base.x - l + tt * base.v) % (W + 6)) - 3; s.position.copy(view.sp(x, base.y, -60)); }); }
@@ -380,7 +458,7 @@ function drift(view, tex, color, n, size, opt = {}) {
   const [l, r, b, t] = view.screenBox(), W = r - l, H = t - b;
   for (let i = 0; i < n; i++) { const s = sprite(tex, size, size, color, { opacity: opt.opacity ?? .9, depthTest: false, order: 4, add: opt.add }); const o = { x: rnd() * W, y: rnd() * H, vx: (opt.vx ?? .25) * (.5 + rnd()), vy: (opt.vy ?? -.15) * (.5 + rnd()), f: rnd() * TAU };
     view.scene.add(s); view.updaters.push(tt => { const x = l + (((o.x + tt * o.vx) % W) + W) % W, y = b + (((o.y + tt * o.vy + Math.sin(tt + o.f) * .3) % H) + H) % H; s.position.copy(view.sp(x + Math.sin(tt * 1.3 + o.f) * .25, y, 30));
-      s.material.rotation = tt * (opt.spin ?? 1) + o.f; if (opt.twinkle) s.material.opacity = (opt.opacity ?? .9) * (.35 + .65 * Math.abs(Math.sin(tt * opt.twinkle + o.f))); }); }
+      s.material.rotation = tt * (opt.spin ?? 1) + o.f; s.material.opacity = (opt.opacity ?? .9) * (opt.twinkle ? .35 + .65 * Math.abs(Math.sin(tt * opt.twinkle + o.f)) : 1) * (view.trackFade ? view.trackFade(s.position) : 1); }); }
 }
 function backdrop(view, tex, w, h, sx, sy, depth = -90, color = '#fff', opacity = 1) { const s = sprite(tex, w, h, color, { opacity }); s.position.copy(view.sp(sx, sy, depth)); view.scene.add(s); return s; }
 
@@ -751,12 +829,13 @@ const fade = { a: 0, to: 0, title: '', eyebrow: '', hold: 0 };
 function makeLevel(def, idx) {
   const view = lvView; view.clear(); view.yaw = 0; view.roll = 0;
   const th = def.th(), g = new T.Group(); view.scene.add(g); view.scene.add(view.camera);
-  dom.sky.style.background = th.sky; seedState = 5 + idx * 13;
+  dom.sky.style.background = skyCss(th); HAZE.hzK.value = 0; seedState = 5 + idx * 13;
   const v2 = p => { const q = p.clone().applyMatrix4(view.camera.matrixWorldInverse); return new T.Vector2(q.x, q.y); }, dir2 = (p, d) => v2(p.clone().add(d)).sub(v2(p));
   const L = { def, idx, th, g, view, roads: [], machines: [], props: {}, wins: 0, sayText: '', v2 };
   const lane = tri(tone(th.lane), { side: true, fresh: true }); L.lane = lane;
+  // a theme with its own deck lays every road in it: goal, pier and far roads ask for stone, which used to be the same colour
   L.road = (samples, o = {}) => { const r = new Road(samples, o); L.roads.push(r); const host = o.g || g;
-    r.vo = { host, w: o.w || 1, th: o.th ?? .5, mat: o.mat || tri(o.pal || sp(th, 1), { side: true }), laneMat: o.laneMat || lane }; r.vis = [];
+    r.vo = { host, w: o.w || 1, th: o.th ?? .5, mat: o.mat || tri((o.pal === th.stone && th.deck) || o.pal || sp(th, 1), { side: true }), laneMat: o.laneMat || lane }; r.vis = [];
     if (!o.noDeck) { const m = ribbon(r, r.vo.w, r.vo.th, r.vo.mat); host.add(m); r.vis.push(m); r.deck = m; }
     if (!o.noLane) { const m = ribbon(r, .07, 0, r.vo.laneMat, { lift: .012, dash: [.38, .2] }); host.add(m); r.vis.push(m); }
     return r; };
@@ -779,7 +858,7 @@ function makeLevel(def, idx) {
   const dust = new T.Mesh(new T.RingGeometry(.3, .38, 32), basic('#FFFFFF', { opacity: 0, side: true })); dust.rotation.x = -Math.PI / 2; portal.add(dust);
   const fx = Array.from({ length: 16 }, () => { const s = sprite(TEX.diamond, .18, .18, th.goal, { opacity: 0, depthTest: false, order: 6 }); g.add(s); return s; });
   let fxAt = null, fxT = 9;
-  const goalRing = sprite(TEX.ring, 1.1, 1.1, th.goal, { opacity: .9, add: true }), goalGlow = sprite(TEX.glow, 2.2, 2.2, th.goal, { opacity: .55, add: true }); g.add(goalRing); g.add(goalGlow);
+  const goal = makeGoal(th, view); g.add(goal);
   def.build(L);
   // generated levels may stand on plateaus (./terrain.ts); a level that does gets no floating scenery around it
   if (def.terrain && $scope.autoTerrain) L.terrain = $scope.autoTerrain(L, def.terrain === true ? {} : def.terrain);
@@ -824,6 +903,9 @@ function makeLevel(def, idx) {
       return { a, b }; });
     view.frame(fr.center, frames[0].b, pad); view.yawFrames = frames.length > 1 ? frames : null; view.yawK = undefined; }
   if (def.decor) def.decor(L);
+  setHaze(L);
+  // ambient life per theme (./ambient.ts): slow motion at the edges of the scene, never on or beside the track
+  if (def.ambient !== false && $scope.ambient) L.ambient = $scope.ambient(L);
   const W = { mode: 'spawn', t: 0, road: null, s: 0, dir: 1, spin: 0, pos: new T.Vector2(), vel: new T.Vector2(), vz: 0, from: null };
   L.W = W;
   const attach = (r, s, dir) => { W.mode = 'road'; W.road = r; W.s = s; W.dir = dir; };
@@ -917,9 +999,11 @@ function makeLevel(def, idx) {
     if (W.mode === 'spawn' && W.t > 1.1 && L.state === 'play') W.mode = 'road';
     if (W.mode === 'spawn') W.t += dt;
     pose(dt);
-    if (goalRoad) { const e = goalRoad.end(1); goalRing.position.copy(e.p).add(new T.Vector3(0, .5, 0)); goalGlow.position.copy(goalRing.position); goalRing.material.rotation = t * .8; goalRing.scale.setScalar(1 + .08 * Math.sin(t * 3)); }
-    // badges follow their machines
-    L.machines.forEach((m, i) => { const p = new T.Vector3(); m.bloom.holder.getWorldPosition(p); const [x, y] = view.project(p); m.bd.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`; });
+    if (goalRoad) { const f = goalRoad.at(goalRoad.L), M = goalRoad.g ? goalRoad.g.matrixWorld : null, p = f.p.clone(), n = f.n.clone(), d = f.d.clone();
+      if (M) { p.applyMatrix4(M); n.transformDirection(M); d.transformDirection(M); } goal.userData.place(p, n, d, t); }
+    goal.visible = !!goalRoad;
+    // badges follow their machines, anchored on the cap's outer face so on a wall the letter sits on the cap, not inside the wall
+    L.machines.forEach((m, i) => { const p = m.bloom.holder.localToWorld(new T.Vector3(0, .07, 0)); const [x, y] = view.project(p); m.bd.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`; });
     if (W.mode === 'win' && W.t > .5 && L.state === 'play') { L.state = 'won'; L.wonT = 0; hooks.onWon(L.idx); }
     if (W.mode === 'dead' && W.t > .4 && L.state === 'play') {
       // a level with checkpoints (a long one) puts the wheel back on the loop it last reached, not at the start
@@ -963,5 +1047,5 @@ function setAutopilot(on) { autopilot = on; hooks.onAutopilot(on); }
 // live engine state (these are reassigned, so other modules read them through state())
 const state = () => ({ LVL, lvIndex, autopilot });
 
-Object.assign($scope, { LEVELS, state, TAU, reduce, FACE, clamp, lerp, ease, hexRgb, mix, mixPal, shade, tone, seedState, rnd, VS, FS, triCache, tri, setTri, DEPTH_ONLY, basic, UNIT, B, CY, V, at, archGeo, rectGeo, onFace, gearGeo, petalGeo, canvasTex, TEX, sprite, SR, SU, SD, toScreen, views, R3, View, WHEELS, makeWheel, placeWheel, makeFlag, dashes, ringDashes, bloomIris, bloomFlower, bloomHelm, bloomCrystal, bloomLantern, bloomClock, BLOOMS, machine, THEMES, sp, windowsOn, cloudLayer, birds, drift, backdrop, TEXS, buildLevel, decorate, bloomGyro, SKY, Track, L3, ARC, filletPath, ribbon, hull2, inHull, segHit, SPEED, GRAV, TOL, corners, boundsOf, UP, LV, gearRatio, powerOf, easeIO, bounce, FACEKEYS, badgeIcon, Road, turtle, lollipop, lollipopLen, lvHost, lvBadges, lvFade, lvView, rider, ui, LVL, lvIndex, autopilot, fade, makeLevel, flowTick, fadeTo, loadLevel, setAutopilot });
+Object.assign($scope, { HAZE, HAZE_GLSL, skyAt, skyCss, setHaze, LEVELS, state, TAU, reduce, FACE, clamp, lerp, ease, hexRgb, mix, mixPal, shade, tone, seedState, rnd, VS, FS, triCache, tri, setTri, DEPTH_ONLY, basic, UNIT, B, CY, V, at, archGeo, rectGeo, onFace, gearGeo, petalGeo, canvasTex, TEX, sprite, SR, SU, SD, toScreen, views, R3, View, WHEELS, makeWheel, placeWheel, makeGoal, makeFlag, dashes, ringDashes, bloomIris, bloomFlower, bloomHelm, bloomCrystal, bloomLantern, bloomClock, BLOOMS, machine, THEMES, sp, windowsOn, cloudLayer, birds, drift, backdrop, TEXS, buildLevel, decorate, bloomGyro, SKY, Track, L3, ARC, filletPath, ribbon, hull2, inHull, segHit, SPEED, GRAV, TOL, corners, boundsOf, UP, LV, gearRatio, powerOf, easeIO, bounce, FACEKEYS, badgeIcon, Road, turtle, lollipop, lollipopLen, lvHost, lvBadges, lvFade, lvView, rider, ui, LVL, lvIndex, autopilot, fade, makeLevel, flowTick, fadeTo, loadLevel, setAutopilot });
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALL_FRAMES, BALL_S, BURST_FRAMES, BURST_S, JET_FRAMES, JET_H, JET_W, PUFF_HEATS, ballFrame, burstFrame, chunkSprite, craterSprite, jetFrame, dustSprite, flashFrame, puffSprite, shellSprite } from '../render/blastTex';
-import { CHUNK_UNIT, puffIndex, stepChunk, type Chunk } from '../render/blastFx';
+import { CHUNK_UNIT, FLAME_FADE_S, FLAME_REACH_S, flameSpan, puffIndex, stepChunk, type Chunk } from '../render/blastFx';
 
 const alphas = (d: Uint8ClampedArray) => { const s = new Set<number>(); for (let i = 3; i < d.length; i += 4) s.add(d[i]); return s; };
 const opaque = (d: Uint8ClampedArray) => { let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; };
@@ -36,6 +36,18 @@ describe('painted blast sprites', () => {
 
   it('picks a hotter puff for a hotter flame', () => {
     expect(puffIndex(0)).toBe(0); expect(puffIndex(1)).toBe(PUFF_HEATS - 1); expect(puffIndex(0.6)).toBeGreaterThan(puffIndex(0.3));
+  });
+});
+
+describe('Flamethrower bursts', () => {
+  it('travel out from the mouth, hold while firing, then let go of the mouth and drift off', () => {
+    expect(flameSpan(0, 1.4)!.head).toBe(0);
+    expect(flameSpan(FLAME_REACH_S / 2, 1.4)!.head).toBeCloseTo(0.5);
+    expect(flameSpan(1, 1.4)).toEqual({ tail: 0, head: 1, drift: 0, alpha: 1 });
+    const late = flameSpan(1.4 + 0.2, 1.4)!;
+    expect(late.tail).toBeGreaterThan(0); expect(late.drift).toBeGreaterThan(0); expect(late.alpha).toBeLessThan(1);
+    expect(flameSpan(1.4 + FLAME_FADE_S + 0.01, 1.4)).toBeNull();
+    expect(flameSpan(-0.1, 1.4)).toBeNull();
   });
 });
 

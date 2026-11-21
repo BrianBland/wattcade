@@ -25,7 +25,7 @@ import { BAKED_LEVELS, specKey } from '../sim/baked';
 import { knownLevel } from '../sim/levelCache';
 import { LevelArt, type ArtWish } from './levelArt';
 import { levelKey } from './ground/bake';
-import { Blasts, prepareBlastSprites } from './blastFx';
+import { Blasts, FLAME_REACH_S, prepareBlastSprites } from './blastFx';
 import { SQUASH, drawBurnFlames, drawBurnGround, fireShares, flameHeat, prepareBurnSprites, trackPatches, type Patch } from './burnFx';
 
 const TAU = Math.PI * 2;
@@ -799,19 +799,21 @@ export class TdRenderer implements GameRenderer {
     for (const tw of s.towers) {
       if (tw.kind !== 'flamer' || s.grid <= 0) continue;
       const m = this.machinery.towerMuzzle(tw as TowerView, this.view, t), a = tw.angle + this.view.rot, L = tw.level;
-      const firing = t - tw.firedAt <= 0.3, range = TOWERS.flamer.range * LEVEL_RANGE[L - 1] * k, half = TOWERS.flamer.cone ?? 0.5;
+      // Bursts: aim locked while it fires (sim), then a short cool-off; the fire travels out and lets go (blastFx).
+      const age = tw.burstAt != null ? s.t - tw.burstAt : -1, dur = tw.burstS ?? 0;
+      const firing = age >= 0 && age <= dur, range = TOWERS.flamer.range * LEVEL_RANGE[L - 1] * k, half = TOWERS.flamer.cone ?? 0.5;
       // The mouth's heat lights the pad and road around it: wider and hotter every level, flaring while it fires.
       const fl = 0.85 + 0.15 * Math.sin(t * 13 + tw.pad) * Math.sin(t * 7.3 + tw.pad * 2);
       g.save(); g.globalCompositeOperation = 'lighter';
       glowAt(g, L >= 5 ? '#ffd27a' : '#ff8a3a', m.x, m.y, (1.6 + 0.45 * L + (firing ? 2 : 0)) * k, (0.12 + 0.07 * L + (firing ? 0.2 : 0)) * fl * Math.min(1, s.grid));
       if (firing) { // a faint light under the jet; the flame itself is painted (blastFx)
-        const gr = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, range);
+        const lit = range * Math.min(1, age / FLAME_REACH_S), gr = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, lit);
         gr.addColorStop(0, 'rgba(255,150,60,0.14)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
-        g.fillStyle = gr; g.beginPath(); g.moveTo(m.x, m.y); g.arc(m.x, m.y, range, a - Math.PI / 2 - half, a - Math.PI / 2 + half); g.closePath(); g.fill();
+        g.fillStyle = gr; g.beginPath(); g.moveTo(m.x, m.y); g.arc(m.x, m.y, lit, a - Math.PI / 2 - half, a - Math.PI / 2 + half); g.closePath(); g.fill();
       }
       g.restore();
       // The duckbill mouth is about 80 px of the 224 px rig, drawn at 8.4k per 136 px.
-      this.blasts.burner(m.x, m.y, a, 80 * 8.4 * k / 136, L, k, dt > 0 ? Math.min(dt, 0.05) : 0, firing ? { range, half } : undefined, tw.pad);
+      this.blasts.burner(m.x, m.y, a, 80 * 8.4 * k / 136, L, k, dt > 0 ? Math.min(dt, 0.05) : 0, age >= 0 ? { age, dur, range } : undefined, tw.pad);
     }
   }
 

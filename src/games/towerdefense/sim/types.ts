@@ -43,7 +43,8 @@ export type Fx =
 export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: number; r: number; tower?: true }
 /** Burning road left by a fireball; `k` = share of its burn time left. */
 export interface BurnView { x: number; y: number; r: number; k: number }
-export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }
+/** `burstAt`/`burstS`: a Flamethrower's last burst started then and lasts that long (its aim is locked meanwhile). */
+export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number; burstAt?: number; burstS?: number }
 /** `locked`: a tower kind not yet earned with campaign stars (shown, never buildable). */
 export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean; locked?: boolean }
 export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }

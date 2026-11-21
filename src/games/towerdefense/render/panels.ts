@@ -37,7 +37,6 @@ const CSS = `
 .td-brood { grid-area:brood; min-width:0; }
 .td-brood b { display:block; color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .td-current small { display:block; margin-top:3px; }
-  background:linear-gradient(180deg, #ffffff08, transparent 60%), var(--td-plateLo); box-shadow:inset 0 1px 0 #ffdca00f; transition:background .2s, height .2s; }
 .td-key { flex:none; width:34px; height:34px; display:grid; place-items:center; padding:0 0 2px; border:1px solid #000; border-radius:4px; cursor:pointer; color:var(--td-brass); font:900 20px/1 system-ui, sans-serif;
   background:linear-gradient(180deg, #ffffff10, transparent 45%), var(--td-plateHi); box-shadow:inset 0 1px 0 #ffdca026, inset 0 -2px 0 #0007, 0 2px 0 #000; }
 .td-key:active { transform:translateY(1px); box-shadow:inset 0 2px 4px #000; }
@@ -48,16 +47,21 @@ const CSS = `
 .td-tier.under { --v:#ff9a6c; } .td-tier.on { --v:#9be27a; } .td-tier.over { --v:var(--td-brassHi); } .td-tier.mount { --v:var(--td-dim); }
 .td-hud:not([data-narrow=true]):not([data-column=true]) .td-tier { width:min(320px, 42vw); }
 .td-tier-head { display:flex; align-items:center; gap:8px; min-width:0; }
+.td-tier-foot { display:flex; align-items:baseline; justify-content:space-between; gap:8px; min-width:0; }
+.td-tier-foot > span { flex:none; font-size:14px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--v); }
 .td-tier-head > .td-key { width:36px; height:30px; font-size:20px; }
 .td-hud[data-column=true] .td-ladder { height:30px; }
-.td-tier-name { flex:none; font-size:15px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--td-brassHi); }
-.td-hud .td-verdict { flex:1 1 auto; min-width:0; text-align:right; font-size:16px; font-weight:900; color:var(--v); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px #000; }
+.td-hud:not([data-column=true]) .td-tier { gap:4px; }
+.td-hud:not([data-column=true]) .td-tier-head > .td-key { width:32px; height:24px; font-size:17px; }
+.td-hud:not([data-column=true]) .td-ladder { height:20px; }
+.td-hud:not([data-column=true]) .td-tier-foot { line-height:1.1; } .td-hud:not([data-column=true]) .td-verdict { font-size:13px; } .td-hud:not([data-column=true]) .td-tier-foot > span { font-size:12px; }
+.td-tier-name { flex:1 1 auto; text-align:center; font-size:15px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--td-brassHi); }
+.td-hud .td-verdict { flex:1 1 auto; min-width:0; text-align:left; font-size:15px; font-weight:900; color:var(--v); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px #000; }
 .td-ladder { position:relative; height:24px; border-radius:2px; background:#0b0806; box-shadow:inset 0 1px 3px #000; margin-bottom:2px; }
 .td-ladder > span { position:absolute; top:3px; bottom:3px; display:grid; place-items:center; box-sizing:border-box; border-left:2px solid #0b0806; font-size:11px; font-weight:800; color:#a8916a; background:linear-gradient(180deg, #2e2418, #1d160f); }
 .td-ladder > span.on { color:var(--td-ink); background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass) 55%, var(--td-brassLo)); box-shadow:0 0 10px #e8b24a66; z-index:1; }
 .td-ladder > span.call:not(.on) { outline:2px solid var(--td-copper); outline-offset:-2px; color:#e59a62; }
 .td-ladder > .td-needle { position:absolute; top:-4px; bottom:-4px; width:3px; margin-left:-1.5px; z-index:2; background:var(--v); box-shadow:0 0 0 1px #000, 0 0 8px var(--v); border-radius:1px; }
-.td-needle > small { position:absolute; bottom:100%; left:50%; transform:translateX(-50%); margin:0 0 1px; font-size:9px; font-weight:800; color:var(--v); text-shadow:0 1px 2px #000; white-space:nowrap; }
 .td-guide { grid-area:guide; min-width:0; display:flex; flex-direction:column; gap:4px; }
 .td-hud .td-gain b { color:var(--td-text); font-weight:700; }
 .td-hud .td-gain { margin:0; font-size:12px; color:var(--td-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -341,7 +345,7 @@ export function powerVerdict(s: TdSnapshot): { word: string; cls: 'under' | 'on'
  */
 export function tierHtml(s: TdSnapshot): string {
   const r = s.power.rated, cap = s.power.cap, call = s.suggestedTier, v = powerVerdict(s);
-  const lo = r[0] * 0.75, hi = r[r.length - 1] * cap, span = hi - lo;
+  const lo = r[0], hi = r[r.length - 1] * cap, span = hi - lo;
   const pct = (ftp: number) => `${(Math.min(1, Math.max(0, (ftp - lo) / span)) * 100).toFixed(1)}%`;
   const blocks = r.map((rated, i) => {
     const t = i + 1, end = i + 1 < r.length ? r[i + 1] : hi;
@@ -350,9 +354,10 @@ export function tierHtml(s: TdSnapshot): string {
   }).join('');
   const key = (step: -1 | 1) => `<button class="td-key${(step > 0 ? call > s.tier : call < s.tier) ? ' cue' : ''}" data-command="tier" data-step="${step}" aria-label="Tier ${step > 0 ? 'up' : 'down'}">${step > 0 ? '+' : '−'}</button>`;
   return `<div class="td-tier ${v.cls}" aria-label="Tier ${roman(s.tier)} of ${s.tierCount}: ${v.word}${call !== s.tier ? `, the wave calls for ${roman(call)}` : ''}">`
-    + `<div class="td-tier-head">${key(-1)}<b class="td-tier-name">Tier ${roman(s.tier)}</b><strong class="td-verdict">${esc(v.word)}</strong>${key(1)}</div>`
+    + `<div class="td-tier-head">${key(-1)}<b class="td-tier-name">Tier ${roman(s.tier)}</b>${key(1)}</div>`
     + `<div class="td-ladder" role="meter" aria-label="Your watts on the tier ladder" aria-valuemin="${watts(s, lo)}" aria-valuemax="${watts(s, hi)}" aria-valuenow="${watts(s, s.power.nowFtp)}">${blocks}`
-    + `<b class="td-needle" style="left:${pct(s.power.nowFtp)}"><small>${watts(s, s.power.nowFtp)}</small></b></div></div>`;
+    + `<b class="td-needle" style="left:${pct(s.power.nowFtp)}"></b></div>`
+    + `<div class="td-tier-foot"><strong class="td-verdict">${esc(v.word)}</strong><span>${watts(s, s.power.nowFtp)} W</span></div></div>`;
 }
 
 /**

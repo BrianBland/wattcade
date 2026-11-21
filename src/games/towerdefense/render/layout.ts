@@ -54,7 +54,7 @@ export function layout(W: number, H: number, inset: number | Insets, hudControls
     area = { x: 2 * pad + colW, y: pad, w: Math.max(0, W - 3 * pad - colW), h: Math.max(0, bottom - 2 * pad) };
   } else {
     const statusH = Math.min(short ? 48 : 64, UH * 0.19);
-    const currentH = Math.min(W < 560 ? 150 : 100, UH * 0.26);
+    const currentH = Math.min(W < 560 ? 168 : 100, UH * 0.28);
     status = { x: pad, y: pad, w: W - 2 * pad, h: statusH };
     current = { x: pad, y: status.y + status.h + pad, w: W - 2 * pad, h: currentH };
     const top = current.y + current.h + pad;

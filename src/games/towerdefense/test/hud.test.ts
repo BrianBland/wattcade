@@ -162,7 +162,7 @@ it('the power ladder lights the selected tier, outlines the called one, places t
   expect(el.querySelector('[data-step="-1"]')!.classList.contains('cue')).toBe(false);
   expect(el.querySelector('.td-tier')!.classList.contains('under')).toBe(true);
   expect(el.querySelector('.td-verdict')?.textContent).toBe('Push +20 W');
-  expect(el.querySelector('.td-needle')?.textContent).toBe('100');
+  expect(el.querySelector('.td-tier-foot > span')?.textContent).toBe('100 W');
   // the needle sits inside the lit block when the rider makes the tier's watts
   el.innerHTML = tierHtml({ ...snapshot, tier: 4, suggestedTier: 4, tierFtp: 0.9, swapLeft: 0, power: { ...power, nowFtp: 0.95 } });
   const left = (q: string) => parseFloat((el.querySelector<HTMLElement>(q)!.style.left));

@@ -37,3 +37,25 @@ it('keeps controller cancellation available from the editor', async () => {
   await act(() => render(<ProfileEditor profile={defaultProfile('')} onSave={() => {}} onCancel={onCancel} />, host));
   await press('b'); expect(onCancel).toHaveBeenCalledOnce();
 });
+it('hints that the field list continues only while more rows sit below the fold', async () => {
+  host = document.createElement('div');
+  const box = () => host.querySelector<HTMLElement>('.editor-fields')!;
+  const hint = () => host.querySelector('.editor-more');
+  const metrics = { scrollHeight: 400, clientHeight: 400, scrollTop: 0 };
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('editor-fields') ? metrics.scrollHeight : 0; });
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('editor-fields') ? metrics.clientHeight : 0; });
+  vi.spyOn(HTMLElement.prototype, 'scrollTop', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('editor-fields') ? metrics.scrollTop : 0; });
+  await act(() => render(<ProfileEditor profile={defaultProfile('')} onSave={() => {}} onCancel={() => {}} />, host));
+  expect(hint()).toBeNull();
+  expect(box().className).not.toContain('more');
+  metrics.scrollHeight = 900;
+  box().dispatchEvent(new Event('scroll'));
+  await act(() => {});
+  expect(hint()?.textContent).toBe('More settings below');
+  expect(box().className).toContain('more');
+  metrics.scrollTop = 500;
+  box().dispatchEvent(new Event('scroll'));
+  await act(() => {});
+  expect(hint()).toBeNull();
+  expect(box().className).not.toContain('more');
+});

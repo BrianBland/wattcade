@@ -204,7 +204,11 @@
 .rider-editor .chrome-head { width:min(860px,100%); flex:none; flex-wrap:nowrap; justify-content:space-between; gap:20px; }
 .rider-editor .chrome-head>.rider-av.big { width:150px; height:130px; flex:none; }
 .rider-editor .editor { display:flex; flex-direction:column; flex:1; min-height:0; width:min(860px,100%); overflow:visible; }
-.rider-editor .editor-fields { flex:1; min-height:0; overflow-y:auto; gap:0; padding:4px; scroll-padding:4px; }
+.rider-editor .editor-fields { position:relative; flex:1; min-height:0; overflow-y:auto; gap:0; padding:4px; scroll-padding:4px; scrollbar-width:thin; scrollbar-color:color-mix(in srgb,var(--ui-color-muted) 55%,transparent) transparent; }
+.rider-editor .editor-fields::-webkit-scrollbar { width:8px; }
+.rider-editor .editor-fields::-webkit-scrollbar-thumb { background:color-mix(in srgb,var(--ui-color-muted) 55%,transparent); border-radius:8px; }
+.rider-editor .editor-fields.more { -webkit-mask-image:linear-gradient(#000 0,#000 calc(100% - 28px),transparent calc(100% - 8px)); mask-image:linear-gradient(#000 0,#000 calc(100% - 28px),transparent calc(100% - 8px)); }
+.rider-editor .editor-more { position:sticky; bottom:0; z-index:1; height:12px; margin:0; padding:0 12px; font:600 12px/12px system-ui; color:var(--ui-color-text); text-align:right; pointer-events:none; background:linear-gradient(transparent,var(--ui-color-background) 55%); }
 .rider-editor .field { min-height:64px; grid-template-columns:minmax(120px,.7fr) minmax(0,1.5fr); gap:4px 20px; padding:10px 12px; border:0; border-bottom:1px solid var(--line); border-radius:0; background:transparent; transform:none; font-size:13px; }
 .rider-editor .field.focused { background:color-mix(in srgb,var(--ui-color-accent) 3.14%,transparent); box-shadow:inset 3px 0 var(--ui-color-accent); }
 .rider-editor .field label { font-weight:600; }

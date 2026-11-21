@@ -17,7 +17,8 @@ import { decks, onDeck, underDeck } from './ground/deck';
 import { Machinery } from './machinery';
 import { along, cableRoutes, culvertPlates, strokeCrossings } from './cables';
 import { DynamoSound } from './dynamoSound';
-import { cableHeat, shimmerBands, stepBlend } from './overdrive';
+import { cableHeat, mixHex, shimmerBands, stepBlend } from './overdrive';
+import { bakeCables, blitCables, lampLook, lightFor, powerState, type CableBake, type PowerState } from './cableArt';
 import { HitFeedback, type Callout, type HitEvent } from './hitFeedback';
 import { ALARM_EVERY_S, FALL_S, HEAD_DELAY_S, damageState, dropDone, pipFlash } from './structureFx';
 import { prefetchLevel } from './levelPool';
@@ -71,6 +72,8 @@ export class TdRenderer implements GameRenderer {
   private shake = 0; private flash = { color: '#fff', a: 0 }; private lastT = -1; private wall = 0;
   /** Power pulses: sim time of each pedal half-stroke still travelling down the cables. */
   private pulses: number[] = []; private pulseRevs: number | null = null;
+  /** Painted cables for the current level and built pads (render/cableArt.ts). */
+  private cables: CableBake | null = null; private cablesLevel: TdLevel | null = null;
   private hitStopUntil = 0;
   /** 0..1 smoothed Overdrive (sprinting) for cable heat, flame, muzzle and edge shimmer */
   private odBlend = 0;
@@ -536,7 +539,7 @@ export class TdRenderer implements GameRenderer {
     // the loading card. Usually the menu already baked it, and the level appears at once.
     const waiting = !!s.loading && !this.bgReal;
     if (!s.loading) this.readySent = false;
-    else if (!waiting && !this.readySent) { this.readySent = true; this.send?.({ type: 'levelReady' }); }
+    else if (!waiting && !this.readySent) { this.readySent = true; cableRoutes(this.geo.level); this.send?.({ type: 'levelReady' }); } // routes are cached: plan them under the loading card
     this.hud.render(s, this.L, this.W, waiting ? { progress: this.battlefield.progress(this.geo.level) } : null);
     if (waiting) { this.holdMenuFrame(); return; }
     this.heldDim = false;
@@ -618,6 +621,7 @@ export class TdRenderer implements GameRenderer {
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
       drawBurnFlames(g, this.patches, this.view.P, k, s.t);
       this.drawDecks(g, s, t, puppets);
+      this.drawBridgeCables(g, s);
       this.drawFx(g, s, muzzle, t);
       this.drawParticles(g);
       this.contactShadow(g, bx, by, k * 2.4);
@@ -690,35 +694,63 @@ export class TdRenderer implements GameRenderer {
   }
 
   /**
-   * Power cables from under the deck to each built tower, routed around the road (render/cables.ts). Every pedal
-   * half-stroke sends a pulse down each one while the dynamo is live.
+   * Power cables from under the deck to each built tower (routes: render/cables.ts; painted bitmaps and the power
+   * indicator: render/cableArt.ts). At ordinary power the cables are quiet with a steady green socket lamp per tower;
+   * under power the lamps blink amber (red when the dynamo stalls); overclocked, cyan pulses run down the cables
+   * with every pedal half-stroke; in Overdrive the cables go white-hot with gold pulses.
    */
   private drawCables(g: CanvasRenderingContext2D, s: TdSnapshot, bike: Readonly<BikeState>) {
-    // Overdrive (odBlend) turns the cables white-hot and speeds up their pulses.
-    const k = this.k, speed = 55, H = cableHeat(this.odBlend);
+    const k = this.k, speed = 55, H = cableHeat(this.odBlend), power = powerState(s.grid, s.stalled, s.overdrive);
     const n = this.pulseRevs === null ? 0 : strokeCrossings(this.pulseRevs, bike.crankRevs);
     this.pulseRevs = bike.crankRevs;
-    if (s.grid > 0) for (let i = 0; i < n; i++) this.pulses.push(s.t);
+    if (lampLook(power, s.t).pulses) for (let i = 0; i < n; i++) this.pulses.push(s.t);
     this.pulses = this.pulses.filter((t0) => s.t >= t0 && (s.t - t0) * speed < 160).slice(-16);
-    if (!s.towers.length) return;
+    const bake = this.cableArt(s);
+    if (!bake) return;
+    if (bake.ground) blitCables(g, this.view, bake.ground, power, this.odBlend);
     const routes = cableRoutes(this.geo.level);
-    g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+    g.save(); g.globalCompositeOperation = 'lighter';
+    const pulseColor = power.kind === 'over' && this.odBlend < 0.5 ? '#7ff2ff' : H.pulseColor;
+    const pulseA = power.kind === 'over' ? 0.3 + 0.4 * power.amount : 0.75;
     for (const tw of s.towers) {
       const c = routes.find((r) => r.pad === tw.pad); if (!c) continue;
-      const path = () => { g.beginPath(); c.pts.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
-      if (H.glow) { g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = H.glow.alpha; g.strokeStyle = H.glow.color; g.lineWidth = H.glow.width * k; path(); g.stroke(); g.restore(); }
-      for (const [color, width] of [['rgba(0,0,0,0.45)', 1.5], ['#0b0e12', 1.1], [H.sheath, 0.56], [H.core, 0.3]] as const) {
-        g.strokeStyle = color; g.lineWidth = Math.max(0.6, width * k); path(); g.stroke();
-      }
-      g.globalCompositeOperation = 'lighter';
       for (const t0 of this.pulses) {
         const f = (s.t - t0) * speed * H.pulseSpeed / c.length; if (f > 1) continue;
-        const p = along(c.pts, c.length, f), q = this.P(p.x, p.y);
-        glowAt(g, H.pulseColor, q.x, q.y, 1.6 * k * H.pulseSize, 0.6 * Math.min(1, s.grid + this.odBlend));
+        const q = along(c.pts, c.length, f), p = this.P(q.x, q.y);
+        glowAt(g, pulseColor, p.x, p.y, 1.3 * k * H.pulseSize, pulseA);
       }
-      g.globalCompositeOperation = 'source-over';
     }
     g.restore();
+    this.drawLamps(g, s, bake, power);
+  }
+  /** The socket lamp where each tower's cable enters its clearing. */
+  private drawLamps(g: CanvasRenderingContext2D, s: TdSnapshot, bake: CableBake, power: PowerState) {
+    const k = this.k, look = lampLook(power, s.t);
+    for (const so of bake.sockets) {
+      const p = this.P(so.at.x, so.at.y), on = look.on;
+      // ok: a small steady pilot light; anything else throws a halo onto the ground around the socket
+      const halo = power.kind === 'ok' ? 1.1 : 2.6;
+      g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, look.color, p.x, p.y, halo * k * (0.6 + 0.4 * on), (power.kind === 'ok' ? 0.35 : 0.75) * on); g.restore();
+      g.fillStyle = on > 0.3 ? mixHex(look.color, '#ffffff', 0.35 * on) : '#2a2622';
+      g.beginPath(); g.arc(p.x, p.y, Math.max(1.2, (power.kind === 'ok' ? 0.24 : 0.36) * k), 0, TAU); g.fill();
+    }
+  }
+  /** The painted cables for the built pads, re-painted when a tower is built or sold or the view changes. */
+  private cableArt(s: TdSnapshot): CableBake | null {
+    if (!s.towers.length) return null;
+    const K = Math.max(8, Math.min(14, Math.round(this.k * this.dpr))), pads = s.towers.map((t) => t.pad).sort((a, b) => a - b);
+    const key = `${this.geo.level.id}|${this.view.turned}|${K}|${pads.join(',')}`;
+    if (this.cables?.key !== key || this.cablesLevel !== this.geo.level) {
+      this.cables = bakeCables(this.geo.level, new Set(pads), K, lightFor(this.view.turned), key);
+      this.cablesLevel = this.geo.level;
+    }
+    return this.cables;
+  }
+  /** Cables clamped along a bridge deck's side cross over the road below it, so they draw after the decks. */
+  private drawBridgeCables(g: CanvasRenderingContext2D, s: TdSnapshot) {
+    const b = this.cables?.bridge;
+    if (!b || this.cablesLevel !== this.geo.level) return;
+    blitCables(g, this.view, b, powerState(s.grid, s.stalled, s.overdrive), this.odBlend);
   }
   /** Steel covers where cables run under the road (forks and merges): drawn over the cables, so they pass beneath. */
   private drawCulverts(g: CanvasRenderingContext2D) {

@@ -46,7 +46,9 @@ const hudRoot = document.getElementById('hud')!, probe = document.getElementById
 const renderHud = () => { if (useHud) render(h(HudLayer, { session, profile, paused: false, layout: legendOn ? 'controller' : 'touch', fake: true }), hudRoot); };
 const hudInset = () => useHud ? probe.offsetHeight : inset;
 const insets = () => useHud ? readHudInsets(app, probe) : { top: 0, right: 0, bottom: inset, left: 0 };
-const paint = () => r.render(session.sim.snapshot(), session.ctx.bike(), input.state());
+// __td.power({ grid, stalled, overdrive }) overrides the cables' power state for screenshots
+let power: Partial<TdSnapshot> | null = null;
+const paint = () => r.render({ ...session.sim.snapshot() as TdSnapshot, ...power }, session.ctx.bike(), input.state());
 const resize = () => { r.resize?.(innerWidth, innerHeight); r.setInsets?.(insets()); paint(); };
 document.getElementById('inset')!.style.height = `${inset}px`;
 document.getElementById('inset')!.hidden = useHud || inset <= 0;
@@ -86,12 +88,13 @@ window.__td = {
       menu: ws ? radialLayout(innerWidth, L.UH, toScreen(L.field, p), ws.rows.length) : null };
   },
   legend: (on: boolean) => { legendOn = on; renderHud(); },
+  power: (p: Partial<TdSnapshot> | null) => { power = p; paint(); },
   events: () => session.finish().events,
   dispose: () => { cancelAnimationFrame(raf); observer.disconnect(); render(null, hudRoot); offKeys(); window.removeEventListener('resize', resize); window.removeEventListener(HUD_LAYOUT_EVENT, resize); r.unmount(); session.sim.dispose?.(); },
 };
 declare global { interface Window { __td: {
   snapshot(): TdSnapshot; advance(seconds: number): void; send(a: unknown): void;
   ui(): { layout: ReturnType<typeof layout>; base: { x: number; y: number }; pads: Array<{ id: number; x: number; y: number }>; menu: ReturnType<typeof radialLayout> | null };
-  legend(on: boolean): void;
+  legend(on: boolean): void; power(p: Partial<TdSnapshot> | null): void;
   events(): ReturnType<typeof session.finish>['events']; dispose(): void;
 } } }

@@ -158,7 +158,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const fireballFlight = T.num('fireballFlightS', 0.8, 0.2, 3, 0.05);
   const railPulseS = T.num('railPulseS', 4, 1, 20, 0.5, 'a full Railgun pulse banks this many seconds of the tier\'s rated watts');
   const railDmgMult = T.num('railDamageMult', 1, 0, 3, 0.05, 'Railgun pulse damage x (tests and balance)');
-  const railSnapMin = T.num('railSnapMinShare', 0.05, 0.02, 1, 0.01, 'least share of a full pulse a quick snap at a light alien spends');
   const railSnapS = T.num('railSnapS', 0.2, 0.1, 3, 0.05, 'shortest gap between Railgun shots');
   const swapS = T.num('swapS', 3, 0.1, 8, 0.1, 'seconds to mount a weapon (Y / B / Z): the turret holds fire meanwhile');
   const turnRate = T.num('turretTurnRate', 6, 1, 20, 0.5, 'rad/s the turret slews toward its target');
@@ -770,25 +769,33 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const railCost = () => ratedFtp(tier) * railPulseS();
 
   /**
-   * One Railgun pulse along the aim: the tier sets damage, width and how many it passes through. A pulse spends
-   * only what it needs: a full pulse for anything tough, a quick snap (a share of the bank) for light aliens.
-   * Returns false (nothing spent) when the bank cannot pay for the shot yet.
+   * One full Railgun pulse, only once the bank is full. It fires along the line through the most aliens in reach
+   * (bosses and heavies count triple, the colours it is strong against count more), not just the nearest, so a full
+   * beam pays off against small aliens too. The tier sets damage, width and how many it passes through.
+   * Returns false (nothing spent) when the bank is not full or nothing is in reach.
    */
   function fireRail(): boolean {
-    const shape = railShape(tier), live = enemies.filter((e) => !e.dead);
-    const hits = beamHits(live.map((e) => ({ x: e.x, y: e.y, r: radiusOf(e) })), BASE_X, BASE_Y, aim, shape.width, turretRange(), shape.pierce);
-    if (!hits.length) return false;
-    const full = shape.dmg * railDmgMult() * Math.min(1, effortK()) * odMult();
-    const toughest = Math.max(...hits.map((i) => live[i].hp / Math.max(1e-6, full * match.rail[elementOf(live[i])]())));
-    const share = live.some((e, i) => hits.includes(i) && (e.boss || KINDS[e.kind].heavy)) ? 1 : clamp(toughest * 1.1, railSnapMin(), 1);
-    if (railBank < railCost() * share - 1e-9) return false;
-    railBank -= railCost() * share; railFired++; railCooldown = railSnapS();
-    addFx({ kind: 'beam', life: 0.45, angle: aim, spread: false, width: shape.width * (share < 1 ? 0.5 : 1) });
-    railVolley = share >= 1;
-    for (const i of hits) hit(live[i], full * share, 'purple');
+    if (railBank < railCost() - 1e-9) return false;
+    const shape = railShape(tier), live = enemies.filter((e) => !e.dead && e.dist <= turretRange() + radiusOf(e));
+    if (!live.length) return false;
+    const targets = live.map((e) => ({ x: e.x, y: e.y, r: radiusOf(e) }));
+    const worth = (e: Enemy) => (e.boss || KINDS[e.kind].heavy ? 3 : 1) * match.rail[elementOf(e)]();
+    let best: number[] = [], bestAngle = aim, bestScore = 0;
+    for (const e of live) { // every alien's bearing is a candidate line
+      const hits = beamHits(targets, BASE_X, BASE_Y, e.angle, shape.width, turretRange(), shape.pierce);
+      const score = hits.reduce((n, i) => n + worth(live[i]), 0);
+      if (score > bestScore) { best = hits; bestAngle = e.angle; bestScore = score; }
+    }
+    if (!best.length) return false;
+    aim = bestAngle;
+    const dmg = shape.dmg * railDmgMult() * Math.min(1, effortK()) * odMult();
+    railBank = 0; railFired++; railCooldown = railSnapS();
+    addFx({ kind: 'beam', life: 0.45, angle: aim, spread: false, width: shape.width });
+    railVolley = true;
+    for (const i of best) hit(live[i], dmg, 'purple');
     railVolley = false;
     cue('rail');
-    ctx.emit({ type: 'railFired', data: { charges: 1, hits: hits.length, tier, full: share >= 1 } });
+    ctx.emit({ type: 'railFired', data: { charges: 1, hits: best.length, tier, full: true } });
     return true;
   }
 
@@ -1450,9 +1457,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
     updateFireballs(dt);
 
-    // the Railgun fires a slow pulse once it has banked enough, along the aim at whatever is lined up
+    // the Railgun fires one full pulse each time its bank fills, along the line through the most aliens
     railCooldown = Math.max(0, railCooldown - dt);
-    if (weapon === 'rail' && ready && railCooldown <= 0 && tgt && angDiff(tgt.angle, aim) < 0.08 && tgt.dist <= turretRange() + radiusOf(tgt)) fireRail();
+    if (weapon === 'rail' && ready && railCooldown <= 0) fireRail();
 
     updateTowers(dt);
 

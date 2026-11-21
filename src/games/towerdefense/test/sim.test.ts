@@ -397,7 +397,7 @@ function rigged(script = 'intervals') {
 }
 
 describe('rail', () => {
-  it('fires slow pulses by itself, no button: full pulses at heavies, quick snaps at light aliens', () => {
+  it('fires only full pulses by itself, no button, along the line through the most aliens', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'intervals' }, seed: 3, simOpts: { stars: 99, skipGarage: true, tier: 4 } });
     s.step(30 * 20);
     s.sim.receive!({ type: 'weapon', weapon: 'rail', epoch: snap(s).inputEpoch });
@@ -406,7 +406,10 @@ describe('rail', () => {
     s.step(30 * 90);
     const evs = s.finish().events.filter(e => e.type === 'railFired');
     expect(evs.length).toBeGreaterThan(3);
-    expect(evs.every(e => e.data?.tier === 4)).toBe(true);
+    expect(evs.every(e => e.data?.tier === 4 && e.data?.full === true)).toBe(true);
+    // one pulse per full bank: never faster than railPulseS at full power
+    for (let i = 1; i < evs.length; i++) expect(evs[i].t - evs[i - 1].t).toBeGreaterThan(2);
+    expect(evs.some(e => Number(e.data?.hits) >= 2)).toBe(true);
     expect(snap(s).railMaxCharges).toBe(1);
   });
 });

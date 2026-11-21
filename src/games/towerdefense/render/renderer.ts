@@ -852,7 +852,7 @@ export class TdRenderer implements GameRenderer {
 
   /**
    * The Railgun's charge as a ring round the turret: it fills with banked watts, drains by what each shot spends
-   * (a full pulse empties it, a quick snap at a small alien takes a sliver), and pulses once a full pulse is ready.
+   * (each full pulse empties it), and pulses once a full pulse is ready.
    */
   private railRing(g: CanvasRenderingContext2D, s: TdSnapshot, x: number, y: number, k: number, t: number) {
     const r = k * 6.2, p = Math.max(0, Math.min(1, s.railProgress)), ready = p >= 1;
@@ -956,7 +956,7 @@ export class TdRenderer implements GameRenderer {
         g.globalAlpha = 1;
       } else if (f.kind === 'beam') {
         const a = f.angle + rot, ex = muzzle.x + Math.sin(a) * 160 * k, ey = muzzle.y - Math.cos(a) * 160 * k;
-        // the pulse is as wide as the tier's beam (field units), a quick snap half that
+        // the pulse is as wide as the tier's beam (field units)
         g.strokeStyle = COL.purple; g.globalAlpha = life * 0.6; g.lineWidth = Math.max(2.5, (f.width ?? 1.5) * k) * life;
         g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(ex, ey); g.stroke();
         g.strokeStyle = '#ffffff'; g.globalAlpha = life; g.lineWidth = 1.2 * k * life;

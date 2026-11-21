@@ -362,13 +362,13 @@ export function tierHtml(s: TdSnapshot): string {
 
 /**
  * Under the ladder: the selected tier's target (watts at the gearbox cadence) and what the next tier adds; the
- * Railgun adds its charge (a full pulse when charged; a quick snap at a small alien spends a sliver).
+ * Railgun adds its charge (one full piercing pulse each time it fills).
  */
 export function guideHtml(s: TdSnapshot, full = true): string {
   const target = `${watts(s, s.tierFtp)}+ W · ${s.power.refRpm} rpm`;
   const next = s.tier < s.tierCount ? `${roman(s.tier + 1)}: ${tierGain(s.weapon, s.tier, s.tier + 1)}` : 'Top tier';
   const rail = s.weapon === 'rail'
-    ? `<div class="td-charge${s.railProgress >= 1 ? ' ready' : ''}" title="The Railgun banks your watts: a full pulse when charged, quick snaps at small aliens spend a sliver"><i style="width:${(s.railProgress * 100).toFixed(0)}%"></i><span>${s.railProgress >= 1 ? 'Pulse ready' : `Charging ${Math.floor(s.railProgress * 100)}%`}</span></div>`
+    ? `<div class="td-charge${s.railProgress >= 1 ? ' ready' : ''}" title="The Railgun banks your watts and fires one full piercing pulse each time it is charged"><i style="width:${(s.railProgress * 100).toFixed(0)}%"></i><span>${s.railProgress >= 1 ? 'Pulse ready' : `Charging ${Math.floor(s.railProgress * 100)}%`}</span></div>`
     : '';
   return `<div class="td-guide">${rail}<p class="td-gain"><b>${esc(target)}</b>${full ? ` · ${esc(next)}` : ''}</p></div>`;
 }

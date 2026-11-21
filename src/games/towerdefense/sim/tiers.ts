@@ -72,3 +72,38 @@ export function beamHits(targets: readonly BeamTarget[], ox: number, oy: number,
   hits.sort((a, b) => a.along - b.along);
   return hits.slice(0, Number.isFinite(pierce) ? Math.max(1, Math.floor(pierce)) : hits.length).map((h) => h.i);
 }
+
+/** Below this share of a tier's rated watts the rider is "under": the shots visibly shrink. */
+export const UNDER_SHARE = 0.92;
+export type PowerState = 'under' | 'on' | 'over';
+/**
+ * Where the rider sits against the selected tier: `under` its rated watts (output = the share), `on` it (full power
+ * up to the effort cap), or `over` the cap (the extra watts are wasted: shift up). `gapFtp` is how far below the
+ * rating (under) or above the cap (over) they are, in ftpFraction.
+ */
+export function powerState(nowFtp: number, rated: number, cap: number): { state: PowerState; share: number; gapFtp: number } {
+  const share = rated > 0 ? nowFtp / rated : 0;
+  if (share < UNDER_SHARE) return { state: 'under', share, gapFtp: rated - nowFtp };
+  if (share > cap) return { state: 'over', share, gapFtp: nowFtp - rated * cap };
+  return { state: 'on', share, gapFtp: 0 };
+}
+/** The shell's power-zone band (1–5, by %FTP) a share of FTP falls in; matches the zone strip's boundaries. */
+export const powerZoneOf = (ftp: number): 1 | 2 | 3 | 4 | 5 => ftp < 0.56 ? 1 : ftp < 0.76 ? 2 : ftp < 0.91 ? 3 : ftp < 1.06 ? 4 : 5;
+
+/** What a tier gives the mounted weapon, in short words (for "next tier" hints). */
+export function tierGain(weapon: 'gatling' | 'flame' | 'rail', from: number, to: number): string {
+  if (to <= from) return '';
+  const pct = (a: number, b: number) => `+${Math.round((b / a - 1) * 100)}%`;
+  if (weapon === 'gatling') {
+    const a = gatlingShape(from), b = gatlingShape(to), out = [`${pct(a.dmg, b.dmg)} damage`];
+    if (b.pierce > a.pierce) out.push(`pierce ${b.pierce}`);
+    if (b.splash > a.splash) out.push(a.splash ? 'bigger splash' : 'splash');
+    return out.join(' · ');
+  }
+  if (weapon === 'flame') {
+    const a = fireballShape(from), b = fireballShape(to);
+    return [`${pct(a.radius, b.radius)} blast`, `${b.burnS}s burn`, ...(to >= 4 && from < 4 ? ['slows the Ram'] : [])].join(' · ');
+  }
+  const a = railShape(from), b = railShape(to);
+  return [`${pct(a.dmg, b.dmg)} damage`, Number.isFinite(b.pierce) ? `pierce ${b.pierce}` : 'pierces all', ...(to >= 4 && from < 4 ? ['cracks plates'] : [])].join(' · ');
+}

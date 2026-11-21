@@ -45,7 +45,9 @@ export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: 
 export interface BurnView { x: number; y: number; r: number; k: number }
 export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }
 /** `locked`: a tower kind not yet earned with campaign stars (shown, never buildable). */
-export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean; locked?: boolean }
+/** A tower attribute on an upgrade row: stars now (`from`) and after the upgrade (`to`), out of `max`, and the change in words. */
+export interface RowStat { name: string; from: number; to: number; max: number; change: string }
+export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean; locked?: boolean; stats?: RowStat[] }
 export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }
 /** A ride-select row. `unlocks` shows the star count and the next unlock (A does nothing). */
 export interface GarageRow { kind: 'start' | 'campaign' | 'quick' | 'intensity' | 'unlocks' | 'next' | 'finish'; name: string; desc: string }
@@ -140,6 +142,9 @@ export interface TdSnapshot {
   tier: number; tierCount: number; suggestedTier: number; tierFtp: number;
   /** How much of the current tier's rated output the rider is making (0 … the effort cap): what scales the shots. */
   tierOutput: number;
+  /** The power guide: the rider's FTP in watts, their live ftpFraction and cadence, the gearbox reference cadence, the effort cap
+   * (the most of a tier's rated output that spinning over it pays) and every tier's rated ftpFraction (index = tier - 1). */
+  power: { ftpW: number; nowFtp: number; cadence: number; refRpm: number; cap: number; rated: number[] };
   /** Railgun pulse: 1 when banked, progress toward the next pulse (railMaxCharges is 1). */
   railCharges: number; railMaxCharges: number; railProgress: number; railCharging: boolean; zHold: number; railDumpHoldS: number;
   /** Flamer lobbing fireballs; `flameRange` = how far it can lob */

@@ -107,3 +107,12 @@ export const PADS = G0.pads;
 /** The workshop's pseudo-pad for the base (repair). */
 export const BASE_PAD = G0.basePad;
 export const padOrder = G0.padOrder;
+
+/** Before/after stars for a tower upgrade from `level` (one star per level, out of TOWER_MAX_LEVEL), with the change in words. */
+export function upgradeStats(level: number): Array<{ name: string; from: number; to: number; max: number; change: string }> {
+  const i = Math.max(1, Math.min(TOWER_MAX_LEVEL - 1, level)) - 1;
+  return [
+    { name: 'Damage', from: i + 1, to: i + 2, max: TOWER_MAX_LEVEL, change: `x${(LEVEL_DMG[i + 1] / LEVEL_DMG[i]).toFixed(1)}` },
+    { name: 'Range', from: i + 1, to: i + 2, max: TOWER_MAX_LEVEL, change: `+${Math.round((LEVEL_RANGE[i + 1] / LEVEL_RANGE[i] - 1) * 100)}%` },
+  ];
+}

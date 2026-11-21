@@ -4,7 +4,7 @@ import type { InputState, Profile } from '../../../contracts';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { progressLine } from '../card';
-import { BASE_PAD, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, FIELD_H, FIELD_W, KIND_FROM, KINDS, PADS, ROAD_LENGTH, TOWERS, flightAt, flightLength, padOrder, roadAt, towerBuildCost, type Element } from '../sim/defs';
+import { BASE_PAD, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, FIELD_H, FIELD_W, KIND_FROM, KINDS, PADS, ROAD_LENGTH, TOWERS, flightAt, flightLength, padOrder, roadAt, towerBuildCost, upgradeStats, type Element } from '../sim/defs';
 import { nextBrood, troughHealFor, planWave, waveCounts, waveRole, type WaveOpts } from '../sim/waves';
 import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, starTotal } from '../sim/unlocks';
 import { CAMPAIGN } from '../sim/campaign';
@@ -397,7 +397,7 @@ function rigged(script = 'intervals') {
 }
 
 describe('rail', () => {
-  it('fires slow pulses by itself, no button: full pulses at heavies, quick snaps at light aliens', () => {
+  it('fires only full pulses by itself, no button, along the line through the most aliens', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'intervals' }, seed: 3, simOpts: { stars: 99, skipGarage: true, tier: 4 } });
     s.step(30 * 20);
     s.sim.receive!({ type: 'weapon', weapon: 'rail', epoch: snap(s).inputEpoch });
@@ -406,7 +406,38 @@ describe('rail', () => {
     s.step(30 * 90);
     const evs = s.finish().events.filter(e => e.type === 'railFired');
     expect(evs.length).toBeGreaterThan(3);
-    expect(evs.every(e => e.data?.tier === 4)).toBe(true);
+    expect(evs.every(e => e.data?.tier === 4 && e.data?.full === true)).toBe(true);
+    // one pulse per full bank: never faster than railPulseS at full power
+    for (let i = 1; i < evs.length; i++) expect(evs[i].t - evs[i - 1].t).toBeGreaterThan(2);
+    expect(evs.some(e => Number(e.data?.hits) >= 2)).toBe(true);
     expect(snap(s).railMaxCharges).toBe(1);
+  });
+});
+
+describe('test-ride HUD fixes', () => {
+  it('weapon chips always carry a fill, so swapping never resizes the shell chip row (which moved the field)', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 30, press: 'b' }, { t: 30.2, release: 'b' }]), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true, stars: 99 } });
+    for (const sec of [20, 31, 40]) {
+      s.step(30 * (sec - s.clock.now()));
+      const chips = (s.sim.hud?.().controls ?? []).filter((c) => c.indicator);
+      expect(chips).toHaveLength(3);
+      for (const c of chips) expect(typeof (c.indicator as { fill?: number }).fill, `${c.button} at ${sec}s`).toBe('number');
+    }
+    s.sim.dispose?.();
+  });
+  it('the zone strip asks for the selected tier\'s full-power band and says the one thing to do', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true, stars: 99 } });
+    s.step(30 * 40);
+    const hud = s.sim.hud!(), v = s.sim.snapshot() as TdSnapshot;
+    expect(hud.targetZone?.label).toMatch(/^(Shift (up|down) to [IV]+|Tier [IV]+ · (\d+ W under|full power)|Tier [IV]+ maxed · shift up)$/);
+    expect(hud.targetZone?.label).not.toMatch(/you're on|trough/i);
+    expect(hud.targetCadence?.min).toBe(v.power.refRpm - 5);
+    s.sim.dispose?.();
+  });
+  it('an upgrade row carries before/after stars for damage and range', () => {
+    expect(upgradeStats(2)).toEqual([
+      { name: 'Damage', from: 2, to: 3, max: 5, change: 'x1.7' },
+      { name: 'Range', from: 2, to: 3, max: 5, change: '+12%' },
+    ]);
   });
 });

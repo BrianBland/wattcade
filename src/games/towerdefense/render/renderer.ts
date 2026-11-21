@@ -627,6 +627,7 @@ export class TdRenderer implements GameRenderer {
         railCharge: s.railCharges / Math.max(1, s.railMaxCharges), flaming: s.flaming,
       });
       this.baseDamage(g, s, bx, by);
+      if (s.weapon === 'rail' && s.swapLeft <= 0) this.railRing(g, s, bx, by, k, t);
       // Fireballs arc over everything, from the launcher.
       this.drawShells(g, s, muzzle);
       if (this.odBlend > 0.02) { // Overdrive: a white-hot muzzle that flares with each shot
@@ -849,6 +850,24 @@ export class TdRenderer implements GameRenderer {
     g.restore();
   }
 
+  /**
+   * The Railgun's charge as a ring round the turret: it fills with banked watts, drains by what each shot spends
+   * (each full pulse empties it), and pulses once a full pulse is ready.
+   */
+  private railRing(g: CanvasRenderingContext2D, s: TdSnapshot, x: number, y: number, k: number, t: number) {
+    const r = k * 6.2, p = Math.max(0, Math.min(1, s.railProgress)), ready = p >= 1;
+    g.save(); g.lineCap = 'round';
+    g.strokeStyle = '#0009'; g.lineWidth = Math.max(4, k * 1.2);
+    g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke();
+    if (p > 0) {
+      g.strokeStyle = COL.purple; g.lineWidth = Math.max(2.5, k * 0.8);
+      g.globalAlpha = ready ? 0.75 + 0.25 * Math.sin(t * 7) : 0.85;
+      if (ready) { g.shadowColor = COL.purple; g.shadowBlur = 12; }
+      g.beginPath(); g.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + TAU * p); g.stroke();
+    }
+    g.restore();
+  }
+
   /** The turret's target gets a white reticle; a rider's lock gets a gold one that holds still. */
   /** Purple's shield plates ring the boss and fall away as they break; red's charge warning flashes ahead of it. */
   private bossTrick(g: CanvasRenderingContext2D, e: EnemyView, s: TdSnapshot, x: number, y: number, heading: number, t: number) {
@@ -937,7 +956,7 @@ export class TdRenderer implements GameRenderer {
         g.globalAlpha = 1;
       } else if (f.kind === 'beam') {
         const a = f.angle + rot, ex = muzzle.x + Math.sin(a) * 160 * k, ey = muzzle.y - Math.cos(a) * 160 * k;
-        // the pulse is as wide as the tier's beam (field units), a quick snap half that
+        // the pulse is as wide as the tier's beam (field units)
         g.strokeStyle = COL.purple; g.globalAlpha = life * 0.6; g.lineWidth = Math.max(2.5, (f.width ?? 1.5) * k) * life;
         g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(ex, ey); g.stroke();
         g.strokeStyle = '#ffffff'; g.globalAlpha = life; g.lineWidth = 1.2 * k * life;

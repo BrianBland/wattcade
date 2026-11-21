@@ -1,5 +1,5 @@
 // Big, inset-aware touch targets; the controller operates the very same WorkshopView.
-import type { TdSnapshot } from '../sim/types';
+import type { RowStat, TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
 import { geoOf } from '../sim/level';
 import { toScreen } from './fieldView';
@@ -76,23 +76,29 @@ export function drawDock(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout
   return hits;
 }
 
-export function radialLayout(W: number, UH: number, anchor: { x: number; y: number }, count: number): { body: Box; options: Box[]; close: Box } {
+/** Height of the upgrade detail strip (before/after stars) under the options. */
+export const DETAIL_H = 58;
+export function radialLayout(W: number, UH: number, anchor: { x: number; y: number }, count: number, detail = false): { body: Box; options: Box[]; close: Box; detail: Box | null } {
   const gap = 8, w = Math.min(154, (W - 3 * gap) / 2), h = 48;
   // A two-column grid the D-pad walks (the four towers read as a 2x2), with Exit across the bottom. A lone option
-  // on the last row is centred.
-  const rows = Math.ceil(count / 2), bw = w * 2 + gap, bh = 48 + rows * (h + gap) + 48;
+  // on the last row is centred. A tower's menu adds a strip under the options for the upgrade's before/after stars.
+  const rows = Math.ceil(count / 2), bw = w * 2 + gap, plain = 48 + rows * (h + gap) + 48;
+  if (detail && plain + DETAIL_H + gap > UH - 2 * gap) detail = false; // short screens keep the plain menu
+  const bh = plain + (detail ? DETAIL_H + gap : 0);
   const body = { x: Math.max(gap, Math.min(W - gap - bw, anchor.x - bw / 2)), y: Math.max(gap, Math.min(UH - gap - bh, anchor.y - bh / 2)), w: bw, h: bh };
   const options = Array.from({ length: count }, (_, i) => ({
     x: body.x + (i === count - 1 && count % 2 ? (w + gap) / 2 : (i % 2) * (w + gap)),
     y: body.y + 48 + Math.floor(i / 2) * (h + gap), w, h,
   }));
-  return { body, options, close: { x: body.x, y: body.y + bh - 44, w: bw, h: 44 } };
+  const strip = detail ? { x: body.x, y: body.y + 48 + rows * (h + gap), w: bw, h: DETAIL_H } : null;
+  return { body, options, close: { x: body.x, y: body.y + bh - 44, w: bw, h: 44 }, detail: strip };
 }
 
 export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout, W: number): Hit[] {
   const ws = s.workshop!;
   const geo = geoOf(s), p = ws.pad < geo.basePad ? geo.pads[ws.pad] : { ...geo.base, name: 'Base' };
-  const r = radialLayout(W, L.UH, toScreen(L.field, p), ws.rows.length);
+  const stats = ws.rows.find((row) => row.stats)?.stats ?? null;
+  const r = radialLayout(W, L.UH, toScreen(L.field, p), ws.rows.length, !!stats);
   const font = getComputedStyle(g.canvas).fontFamily, cx = r.body.x + r.body.w / 2;
   g.save(); plate(g, { x: r.body.x - 4, y: r.body.y - 4, w: r.body.w + 8, h: r.body.h + 8 }, 7);
   g.fillStyle = TD.brass; g.font = `800 13px ${font}`; g.textAlign = 'center';
@@ -105,7 +111,33 @@ export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: 
     button(g, r.options[i], row.label, row.cost ? `${row.cost} scrap${row.affordable ? '' : ' · need more'}` : row.desc, ws.row === i, row.affordable, row.tower && TOWER_TINT[row.tower]);
     hits.push({ ...r.options[i], action: row.affordable ? { type: 'row', row: i, pad: ws.pad, revision: ws.revision, epoch: s.inputEpoch } : null });
   });
+  if (r.detail && stats) drawStats(g, r.detail, stats, ws.rows[ws.row]?.kind === 'upgrade', font);
   button(g, r.close, 'Exit', 'Back to the field', ws.row >= ws.rows.length);
   hits.push({ ...r.close, action: { type: 'close', epoch: s.inputEpoch } });
   g.restore(); return hits;
+}
+
+/**
+ * The upgrade's before/after: per attribute, the stars it has now (filled brass) and the star the upgrade adds
+ * (lit while the upgrade row is selected, outlined otherwise), then the change in words.
+ */
+function drawStats(g: CanvasRenderingContext2D, b: Box, stats: readonly RowStat[], selected: boolean, font: string) {
+  g.save();
+  g.fillStyle = '#0006'; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 5); g.fill();
+  const rowH = b.h / stats.length, starW = Math.min(16, (b.w - 150) / 5);
+  stats.forEach((st, i) => {
+    const y = b.y + rowH * (i + 0.5);
+    g.textBaseline = 'middle'; g.textAlign = 'left'; g.font = `700 12px ${font}`; g.fillStyle = TD.dim;
+    g.fillText(st.name, b.x + 10, y);
+    for (let k = 0; k < st.max; k++) {
+      const x = b.x + 70 + k * starW + starW / 2, now = k < st.from, next = !now && k < st.to;
+      g.font = `${Math.round(starW)}px ${font}`; g.textAlign = 'center';
+      if (next && selected) { g.shadowColor = '#9be27a'; g.shadowBlur = 8; }
+      g.fillStyle = now ? TD.brassHi : next ? (selected ? '#9be27a' : '#9be27a88') : '#ffffff22';
+      g.fillText(now || next ? '★' : '☆', x, y + 1); g.shadowBlur = 0;
+    }
+    g.textAlign = 'right'; g.font = `800 12px ${font}`; g.fillStyle = selected ? '#9be27a' : TD.dim;
+    g.fillText(st.change, b.x + b.w - 10, y);
+  });
+  g.restore();
 }

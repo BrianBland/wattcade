@@ -28,14 +28,17 @@ describe('Dynamo Defense layout vs HUD inset', () => {
       for (const a of hudControls ? [] : L.dock.actions) { expect(a.h).toBeGreaterThanOrEqual(44); expect(overlaps(field, a)).toBe(false); }
       for (const p of [{ x: 0, y: 0 }, { x: W, y: H }, { x: W / 2, y: H / 2 }]) {
         for (const count of [2, 3, 4]) {
-          const r = radialLayout(W, L.UH, p, count);
-          for (const b of [r.body, ...r.options, r.close]) {
+          for (const detail of [false, true]) {
+          const r = radialLayout(W, L.UH, p, count, detail);
+          for (const b of [r.body, ...r.options, r.close, ...(r.detail ? [r.detail] : [])]) {
             expect(b.x).toBeGreaterThanOrEqual(0); expect(b.y).toBeGreaterThanOrEqual(0);
             expect(b.x + b.w).toBeLessThanOrEqual(W); expect(bottom(b)).toBeLessThanOrEqual(H - inset);
           }
           for (const b of [...r.options, r.close]) expect(b.h).toBeGreaterThanOrEqual(44);
           if (count === 4) { // the four towers form a 2x2 grid: two rows, two columns
             expect(new Set(r.options.map((o) => o.y)).size).toBe(2); expect(new Set(r.options.map((o) => o.x)).size).toBe(2);
+          }
+          if (r.detail) for (const o of [...r.options, r.close]) expect(overlaps(r.detail, o), 'stars strip clear of the buttons').toBe(false);
           }
         }
       }

@@ -25,9 +25,9 @@ class SlotFlame:
     def __init__(self):
         rng = np.random.default_rng(310)
         self.grains = [rng.normal(size=(64, n)) for n in (7, 14, 36, 76)]
-        # Scatter broad, pointed brush marks through the fan. Their roots
-        # overlap, while the trailing gaps let the ground show through.
-        self.marks = rng.uniform(size=(72, 6))
+        # Unevenly spaced eddies turn the arriving fuel back along the front.
+        self.eddies = [(-.50, 17, -1), (-.34, 24, 1), (-.11, 19, 1),
+                       (.06, 26, -1), (.27, 17, 1), (.45, 23, -1)]
         self.cinders = rng.uniform(size=(24, 4))
 
     def texture(self, scale, distance, across):
@@ -47,41 +47,53 @@ class SlotFlame:
         brush = self.texture(2, along, across / 3 + .32 * broken)
         tooth = self.texture(3, along, across / 1.8)
         spread = soft(X / 33)
-        # Rounded shoulders collapse into deep notches behind passing lobes.
         side = (.555 - abs(angle)) * radius + spread * (
             10 * np.tanh(broad) + 5 * np.tanh(broken) + 1.7 * brush)
-        front = 196 * reach - distance + spread * (
-            12 * np.tanh(broad) + 6 * np.tanh(broken) + 2 * brush)
+
+        # Bend the leading isotherm around the centres of the rolling lobes.
+        # All lengths here are in sprite pixels, including in the short poses.
+        extent = 196 * reach
+        front = extent - distance
+        for i, (lane, size, handedness) in enumerate(self.eddies):
+            pulse = TAU * phase + i * 2.4
+            r = size * (.49 + .51 * reach)
+            normal = distance - extent + .42 * r - 4 * np.sin(pulse) * reach
+            tangent = (angle - lane - .022 * np.sin(pulse)) * (extent + 38)
+            turn = (handedness * (2.22 + .78 * np.cos(pulse)) *
+                    np.exp(-(normal ** 2 + tangent ** 2) / r ** 2))
+            front += normal * (1 - np.cos(turn)) + tangent * np.sin(turn)
+        front += spread * (6 * np.tanh(broad) + 4 * np.tanh(broken) + 1.3 * brush)
         edge = np.minimum(side, front)
-        plume = soft((edge + 3) / (5 + 6 * spread))
-        bed = soft((edge + 1) / 30)
-        hot = np.exp(-distance / 63) * soft((side + 5) / (7 + 7 * spread))
-        marks = np.zeros_like(X)
-        for offset, lane, length, width, hook, lean in self.marks:
-            t = np.mod(along - self.period * offset, self.period) / (23 + 40 * length)
-            bend = np.minimum(t, 1)
-            center = (lane - .5) * 117 + (lean - .5) * 11 * bend
-            center += (hook - .5) * 18 * bend ** 2
-            breadth = (4 + 8 * width) * (1 - bend) ** .75
-            profile = abs(across - center + 1.4 * broken) / np.maximum(.05, breadth)
-            stroke = soft(t / .23) * soft((1 - t) / .04) * soft((1 - profile) * 1.5)
-            marks = np.maximum(marks, stroke)
-        flow = np.clip(.48 + .23 * broad + .19 * broken + .08 * brush, 0, 1)
-        # Light and coverage are separate: even a bright tip can be transparent.
-        heat = (.33 + .37 * bed + .38 * hot - .25 * distance / 196 +
-                .19 * (flow - .5) + .22 * marks + .032 * brush + .009 * tooth)
-        stops = [0, .22, .36, .50, .64, .77, .88, 1]
-        colors = [[171, 41, 12], [219, 54, 10], [248, 78, 8], [255, 125, 12],
-                  [255, 183, 23], [255, 219, 59], [255, 239, 135], [255, 253, 222]]
+        plume = soft((edge + 3) / (5 + 5 * spread))
+
+        # A continuous fuel field splits and rejoins as it moves down the fan.
+        # Shear broadens some tongues while peeling others into short wisps.
+        shear = self.texture(0, along + 17 * broad, across / 13 + 23)
+        fuel = self.texture(0, along + 5 * broken, across / 4.5 + .67 * shear)
+        tongues = np.tanh(1.18 * fuel + .34 * broken + .21 * brush)
+        throat_grain = self.texture(1, along, Y / 10 + .28 * broad)
+        axis = np.exp(-(Y / (21 + .28 * X)) ** 2)
+        core = axis * np.exp(-(X / 80) ** 1.53)
+        core = np.clip(core * (1 + .14 * np.tanh(throat_grain)), 0, 1)
+        depth = soft((edge + 1) / 22)
+        rim = (np.exp(-((front - 6 - 1.2 * brush) / (4.7 + 2 * soft(broad))) ** 2)
+               * soft((side + 2) / 14) * (.55 + .45 * soft(.55 + .46 * broken)))
+        heat = (.19 + .19 * depth + .58 * core + .09 * axis +
+                (.24 * tongues + .044 * brush) * (1 - .85 * core) +
+                .043 * throat_grain * core + .015 * tooth + .52 * rim)
+        stops = [0, .13, .26, .41, .55, .68, .80, .91, 1]
+        colors = [[150, 22, 8], [214, 35, 5], [247, 55, 4], [255, 86, 4],
+                  [255, 122, 6], [255, 164, 15], [255, 205, 44],
+                  [255, 235, 116], [255, 250, 202]]
         rgb = np.stack([np.interp(heat, stops, c) for c in np.array(colors).T], -1)
-        veil = (.08 + .26 * flow + .47 * marks + .10 * bed) * (
-            1 - .34 * soft(distance / 195))
-        body = plume * np.clip(veil + .83 * hot ** 1.6, 0, .97)
-        # Compose the outer light behind the strokes, then unassociate alpha.
-        halo = .18 * np.exp(-np.maximum(0, -edge / 6.0) ** 1.3)
-        halo *= (1 - .4 * soft(distance / 195)) * soft((224 - X) / 9)
+        envelope = .27 + .18 * depth * (1 - .80 * soft(distance / 196)) + .51 * core
+        coverage = envelope + .25 * tongues * (1 - core) + .21 * rim
+        body = plume * np.clip(coverage, .045, .92)
+        # Compose a warm emissive fringe, then return to straight alpha.
+        halo = .13 * np.exp(-np.maximum(0, -edge / 6.0) ** 1.3)
+        halo *= soft((224 - X) / 9)
         alpha = body + halo * (1 - body)
-        light = np.array([255, 107, 15])
+        light = np.array([255, 105, 8])
         rgb = (rgb * body[..., None] + light * (alpha - body)[..., None])
         for offset, lane, size, drift in self.cinders:
             age = (phase + offset) % 1

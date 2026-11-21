@@ -14,6 +14,11 @@ export class RallySound {
   update(s: RaceView) {
     const prev = this.previous;
     this.previous = s;
+    if (sfxGraph() && prev && !prev.bell && s.bell) play('bell', { vol: 0.8 });
+    if (sfxGraph() && prev && s.doubleFiring > prev.doubleFiring) {
+      play('horn', { vol: 0.45, pitch: 1.28 });
+      play('foghorn', { vol: 0.28, pitch: 1.6 });
+    }
     if (!sfxGraph() || s.menu || s.at >= s.finishAt) {
       this.stop();
       return;

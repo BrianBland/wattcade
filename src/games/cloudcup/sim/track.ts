@@ -1,3 +1,4 @@
+import { passPoint } from './pass';
 // Closed surveying line, resampled by distance. Handling, camera, scenery and
 // opponents share these frames so the visual bank agrees with cornering load.
 export const LAP = 1080;
@@ -138,10 +139,38 @@ function causeway(a: number) {
     y: 26 + 20 * Math.cos(a) + 5 * Math.sin(2 * a),
   };
 }
+function cableSurvey(cut: boolean) {
+  function track(d: number) {
+    const p = passPoint(d, cut),
+      a = passPoint(d - 0.5, cut),
+      b = passPoint(d + 0.5, cut);
+    const yaw = Math.atan2(b.x - a.x, a.z - b.z);
+    const change = Math.atan2(b.x - p.x, p.z - b.z) - Math.atan2(p.x - a.x, a.z - p.z);
+    const turn = Math.max(-1, Math.min(1, (42 * Math.sin(change)) / Math.hypot(b.x - a.x, b.z - a.z)));
+    return { ...p, yaw, turn, bank: 0 };
+  }
+  function world(at: number, side: number, lift = 0) {
+    const p = track(at);
+    return {
+      ...p,
+      x: p.x + WIDTH * side * Math.cos(p.yaw),
+      z: p.z + WIDTH * side * Math.sin(p.yaw),
+      y: p.y + lift,
+    };
+  }
+  return { name: 'Cablehead Pass', track, world };
+}
+export const winchCut = cableSurvey(true);
 export const courses = [
   surveyCourse('Magnet Mile', route),
   surveyCourse('Kiln Switchbacks', quarry, flumeCamber),
   surveyCourse('Stormglass Causeway', causeway),
+  surveyCourse('Cinder Bowl', (a) => ({
+    x: 115 - 110 * Math.cos(a),
+    z: -64 * Math.sin(a) * (1 + 0.19 * Math.cos(a)),
+    y: 0,
+  })),
+  cableSurvey(false),
 ];
 export type Course = (typeof courses)[number];
 export const { track, world } = courses[0];

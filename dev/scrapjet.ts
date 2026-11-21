@@ -9,12 +9,14 @@ const host = document.querySelector('main')!,
 const courseButton = document.querySelector<HTMLButtonElement>('[data-key="KeyX"]')!;
 const distanceButton = document.querySelector<HTMLButtonElement>('[data-key="ArrowUp"]')!;
 const keys: Record<string, Button> = {
+  ArrowDown: 'down',
   ArrowUp: 'up',
   ArrowLeft: 'left',
   ArrowRight: 'right',
   KeyZ: 'a',
   KeyX: 'b',
 };
+const cupButton = document.querySelector<HTMLButtonElement>('[data-key="ArrowDown"]')!;
 const sources = new Map<string, string>(),
   edges = new Set<Button>();
 const base = new NullInput().state();
@@ -41,7 +43,20 @@ const session = createGameSession({
   },
 });
 const gridCourse = new URLSearchParams(location.search).get('course');
-const courseSteps = gridCourse === 'stormglass' ? 2 : gridCourse === 'kiln' ? 1 : 0;
+if (gridCourse === 'cup') {
+  edges.add('down');
+  session.step(1);
+}
+const courseSteps =
+  gridCourse === 'cablehead'
+    ? 4
+    : gridCourse === 'cinder'
+      ? 3
+      : gridCourse === 'stormglass'
+        ? 2
+        : gridCourse === 'kiln'
+          ? 1
+          : 0;
 for (let i = 0; i < courseSteps; i++) {
   edges.add('b');
   session.step(1);
@@ -86,18 +101,20 @@ function draw(time: number) {
   };
   session.frame(Math.min(0.1, (time - previous) / 1000));
   previous = time;
-  renderer.render(
-    session.sim.snapshot(),
-    session.ctx.bike(),
-    session.ctx.input(),
-    session.loop.frameFraction,
-  );
-  if (!session.sim.inMenu?.() && !distanceButton.hidden) {
-    leftAction.textContent = 'Left sweep · Z';
-    courseButton.textContent = 'Right sweep · X';
-    distanceButton.hidden = true;
-  }
+  const state = session.sim.snapshot() as import('../src/games/cloudcup/sim/race').RaceView;
+  renderer.render(state, session.ctx.bike(), session.ctx.input(), session.loop.frameFraction);
+  leftAction.textContent = state.menu ? 'Start · Z' : 'Left sweep · Z';
+  courseButton.textContent = state.menu ? 'Course · X' : 'Right sweep · X';
+  courseButton.hidden = state.menu && state.cupStage >= 0;
+  distanceButton.hidden = !state.menu || state.cupStage >= 0;
+  cupButton.hidden = !state.menu || state.cupStage > 0;
+  cupButton.textContent = state.cupStage === 0 ? 'Single race · ↓' : 'Cup · ↓';
   if (session.sim.isOver()) {
+    if (state.cupStage === 4) {
+      const place = 1 + state.cupPoints.slice(1).filter((p) => p > state.cupPoints[0]).length;
+      again.textContent =
+        'Cup ' + ['1st', '2nd', '3rd', '4th'][place - 1] + ' · ' + state.cupPoints[0] + ' pts · Race again';
+    }
     again.hidden = false;
     return;
   }

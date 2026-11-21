@@ -235,3 +235,7 @@
   background-color: #363a59;
   background-image: url('/scrapjet/stormglass.webp');
 }
+
+.scrapjet-stage.cinder-sky, .scrapjet-world.cinder-sky { background-image:url('/scrapjet/bowl-sky.webp'); background-color:#c89768; }
+.scrapjet-stage.cable-sky, .scrapjet-world.cable-sky { background-image:url('/scrapjet/pass-sky.webp'); background-color:#acbcca; }
+.scrapjet-stage.cinder-sky, .scrapjet-stage.cable-sky { background-size: cover; }

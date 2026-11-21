@@ -5,7 +5,9 @@ import { RallySound } from './sound';
 import * as T from 'three';
 import { NO_INSETS, type GameRenderer, type Insets } from '../../../contracts';
 import { classes, LAP, type RaceView } from '../sim/race';
-import { courses } from '../sim/track';
+import { buildEndCourse } from './endCourses';
+import { valley, saddle, onClimb, passRate } from '../sim/pass';
+import { courses, winchCut } from '../sim/track';
 import { lapAt, LIP, LAUNCH_SPEED, CATCH, DROP, RESCUE, easeBetween } from '../sim/deck';
 import { buildBike } from './bike';
 import { buildWake } from './wake';
@@ -41,6 +43,12 @@ function glowMap() {
 }
 
 function courseCue(s: RaceView, d: number) {
+  if (s.course === 3) return Math.abs(s.x) > 1.65 ? 'LOOSE CINDER' : d > 905 ? 'HOME STRAIGHT' : '';
+  if (s.course === 4) {
+    if (d < valley) return '‹ CARRIAGE     WINCH CUT ›';
+    if (onClimb(d)) return (s.cut ? 'WINCH CUT' : 'CARRIAGE') + '  ·  ' + s.grade.toFixed(1) + '%';
+    return '';
+  }
   if (s.course === 2) {
     const station = stations.find((g) => g.at > d && g.at - d < 52);
     if (!station) return '';
@@ -66,8 +74,11 @@ export class Renderer implements GameRenderer {
   private info!: HTMLDivElement;
   private scene!: T.Scene;
   private cranes!: ReturnType<typeof buildCranes>;
-  private yards = new Map<number, { root: T.Group; animate: ReturnType<typeof buildYard> }>();
-  private yardMaps?: [T.Texture, T.Texture, T.Texture, T.Texture, T.Texture];
+  private yards = new Map<
+    number,
+    { root: T.Group; animate: (time: number, distance: number, state: RaceView) => void }
+  >();
+  private yardMaps?: [T.Texture, T.Texture, T.Texture, T.Texture, T.Texture, T.Texture];
   private activeCourse = -1;
   private camera = new T.PerspectiveCamera(58, 1, 0.15, 360);
   private gl!: T.WebGLRenderer;
@@ -85,7 +96,7 @@ export class Renderer implements GameRenderer {
   private insets = NO_INSETS;
   private width = 1;
   private height = 1;
-  private animateYard?: (time: number, distance: number) => void;
+  private animateYard?: (time: number, distance: number, state: RaceView) => void;
   private sound = new RallySound();
   private skyLight = new T.HemisphereLight('#ffead1', '#8d6575', 2.1);
   private moon = new T.Color('#adcbe6');
@@ -233,16 +244,16 @@ export class Renderer implements GameRenderer {
     this.routeMap.height = 114;
     this.resize(host.clientWidth, host.clientHeight);
     this.assets = Promise.all(
-      ['slag-road', 'salvage-enamel', 'kiln-plates', 'kiln-bricks', 'stormglass'].map((name) =>
+      ['slag-road', 'salvage-enamel', 'kiln-plates', 'kiln-bricks', 'stormglass', 'grit'].map((name) =>
         loader.loadAsync('/scrapjet/' + name + '.webp'),
       ),
-    ).then(([road, enamel, plates, brick, sky]) => {
+    ).then(([road, enamel, plates, brick, sky, grit]) => {
       if (this.disposed) {
-        [road, enamel, plates, brick, sky].forEach((t) => t.dispose());
+        [road, enamel, plates, brick, sky, grit].forEach((t) => t.dispose());
         return;
       }
       sky.colorSpace = T.SRGBColorSpace;
-      this.yardMaps = [road, enamel, plates, brick, sky];
+      this.yardMaps = [road, enamel, plates, brick, sky, grit];
       this.setCourse(0);
     });
     this.assets = Promise.all([this.assets, ...skinLoads]).then(() => undefined);
@@ -250,45 +261,66 @@ export class Renderer implements GameRenderer {
   private setCourse(id: number) {
     if (!this.yardMaps || this.activeCourse === id) return;
     const storm = id === 2;
+    for (const el of [this.stage, this.root]) {
+      el.classList.toggle('cinder-sky', id === 3);
+      el.classList.toggle('cable-sky', id === 4);
+    }
     this.stage.classList.toggle('storm-shelf', storm);
     this.root.classList.toggle('storm-night', storm);
     this.stage.classList.toggle('kiln-dusk', id === 1);
-    (this.scene.fog as T.FogExp2).color.set(storm ? '#716f92' : id === 1 ? '#475b70' : '#d28d70');
+    (this.scene.fog as T.FogExp2).color.set(
+      id === 4 ? '#a2adba' : id === 3 ? '#bc9275' : storm ? '#716f92' : id === 1 ? '#475b70' : '#d28d70',
+    );
     this.root.classList.toggle('kiln-night', id === 1);
     this.skyLight.color.set(storm ? '#b7c7ee' : id === 1 ? '#adafc1' : '#ffead1');
     this.skyLight.groundColor.set(storm ? '#62677c' : id === 1 ? '#435360' : '#8d6575');
-    this.sun.color.set(storm ? '#ffd4b8' : id === 1 ? '#adcbe6' : '#fff1bd');
+    this.sun.color.set(id === 4 ? '#ffd6a3' : storm ? '#ffd4b8' : id === 1 ? '#adcbe6' : '#fff1bd');
     const previous = this.yards.get(this.activeCourse);
     if (previous) previous.root.visible = false;
     let yard = this.yards.get(id);
     if (!yard) {
       const root = new T.Group();
-      const [road, enamel, plates, brick, sky] = this.yardMaps;
+      const [road, enamel, plates, brick, sky, grit] = this.yardMaps;
       const aniso = this.gl.capabilities.getMaxAnisotropy();
-      const animate = storm
-        ? buildCauseway(root, courses[id], sky)
-        : id === 1
-          ? buildFiringWorks(root, courses[id], plates, brick, aniso)
-          : buildYard(root, road, enamel, aniso, courses[id]);
-      timingLine(root, courses[id], storm ? stormWidth(0) : id === 1 ? 1.58 : 1.32);
+      const animate =
+        id >= 3
+          ? buildEndCourse(root, id === 3, grit)
+          : storm
+            ? buildCauseway(root, courses[id], sky)
+            : id === 1
+              ? buildFiringWorks(root, courses[id], plates, brick, aniso)
+              : buildYard(root, road, enamel, aniso, courses[id]);
+      timingLine(
+        root,
+        courses[id],
+        id === 3 ? 2.3 : id === 4 ? 1.43 : storm ? stormWidth(0) : id === 1 ? 1.58 : 1.32,
+      );
       yard = { root, animate };
       this.yards.set(id, yard);
       this.scene.add(root);
     }
     yard.root.visible = true;
     this.animateYard = yard.animate;
+    this.touchdowns.fill(0);
+    this.jumpCounts.fill(0);
     this.activeCourse = id;
     const g = this.routeMap.getContext('2d')!;
     g.clearRect(0, 0, 180, 114);
     g.beginPath();
     for (let i = 0; i <= 180; i++) {
       const p = courses[id].track((i * LAP) / 180);
-      const x = 32 + p.x * 0.34,
-        y = 55 + p.z * 0.27;
+      const x = (id === 4 ? 88 : 32) + p.x * 0.34,
+        y = 55 + p.z * (id === 4 ? 0.21 : 0.27);
       if (!i) g.moveTo(x, y);
       else g.lineTo(x, y);
     }
     g.closePath();
+    if (id === 4) {
+      const a = winchCut.track(valley),
+        b = winchCut.track(saddle);
+      g.moveTo(88 + a.x * 0.34, 55 + a.z * 0.21);
+      g.lineTo(88 + b.x * 0.34, 55 + b.z * 0.21);
+    }
     g.strokeStyle = '#221b26';
     g.lineWidth = 7;
     g.stroke();
@@ -324,12 +356,13 @@ export class Renderer implements GameRenderer {
   render(snapshot: RaceView, _bike?: unknown, _input?: unknown, frameFraction = 1) {
     const s = displayRace(snapshot, frameFraction);
     this.setCourse(s.course);
-    const { track, world } = courses[s.course];
+    const { track, world } = s.course === 4 && s.cut ? winchCut : courses[s.course];
     const f = track(s.at);
     if (s.course === 1) this.sun.color.copy(this.moon).lerp(this.fire, fireboxLight(s.at));
     const actors = [
       {
         at: s.at,
+        cut: s.cut,
         x: s.x,
         lean: s.lean,
         stun: s.slow,
@@ -344,13 +377,14 @@ export class Renderer implements GameRenderer {
       ...s.rivals,
     ];
     actors.forEach((r, i) => {
-      const p = world(r.at, r.x);
+      const p = (s.course === 4 && r.cut ? winchCut : courses[s.course]).world(r.at, r.x);
       const obj = this.bikes[i].group;
       const rebound = i && r.stun ? Math.sin(r.stun * 17) * Math.min(0.16, r.stun * 0.18) : 0;
       if (r.jumps > this.jumpCounts[i]) this.touchdowns[i] = s.time;
       this.jumpCounts[i] = r.jumps;
       const age = s.time - this.touchdowns[i];
-      const settle = this.touchdowns[i] && age < 0.55 ? Math.sin(age * 17) * Math.exp(-age * 7) : 0;
+      const settle =
+        this.touchdowns[i] && age >= 0 && age < 0.55 ? Math.sin(age * 17) * Math.exp(-age * 7) : 0;
       obj.visible = r.finish === null;
       obj.position.set(p.x, p.y + r.lift + 0.26 - settle * 0.34 + Math.sin(s.time * 8 + i) * 0.045, p.z);
       const ageOfFall = RESCUE - r.fall;
@@ -397,14 +431,16 @@ export class Renderer implements GameRenderer {
     });
     const rescueView = s.fall ? easeBetween(RESCUE - s.fall, 0, CATCH) : easeBetween(s.craneAway, 0, 0.4);
     const back = s.menu ? 8.5 : 6.65 + s.speed * 0.033 + rescueView * 4.3;
+    const stationRate = s.course === 4 ? passRate(s.at, s.cut) : 1;
     const eye = world(
-      s.at - back,
+      s.at - back * stationRate,
       s.cameraX + rescueView * (s.x - s.cameraX) + (s.menu ? 0.65 : 0),
       s.menu ? 3.1 : 2.55 + s.speed * 0.017 + rescueView * 1.6,
     );
-    const focus = world(s.at + 8 + s.speed * 0.11, s.cameraX * 0.72, 1.1 + rescueView * 1.9);
+    const focus = world(s.at + (8 + s.speed * 0.11) * stationRate, s.cameraX * 0.72, 1.1 + rescueView * 1.9);
     const age = s.time - this.touchdowns[0];
-    const compression = this.touchdowns[0] && age < 0.55 ? Math.sin(age * 15) * Math.exp(-age * 7) : 0;
+    const compression =
+      this.touchdowns[0] && age >= 0 && age < 0.55 ? Math.sin(age * 15) * Math.exp(-age * 7) : 0;
     const j = s.impact * Math.sin(s.time * 97) * 0.23;
     this.camera.position.set(eye.x + j, eye.y + j - compression * 0.32 + Math.max(0, s.lift) * 0.67, eye.z);
     const roll = s.lean * 0.15 - f.bank * 0.36;
@@ -457,7 +493,7 @@ export class Renderer implements GameRenderer {
       }
       pos.needsUpdate = true;
     }
-    this.animateYard?.(s.menu ? performance.now() / 1000 : s.time, s.at);
+    this.animateYard?.(s.menu ? performance.now() / 1000 : s.time, s.at, s);
     this.sun.target.position.set(f.x, f.y, f.z);
     this.sun.position.set(f.x - 25, f.y + 37, f.z + 18);
     this.gl.render(this.scene, this.camera);
@@ -469,10 +505,16 @@ export class Renderer implements GameRenderer {
     g.clearRect(0, 0, 180, 114);
     g.drawImage(this.routeMap, 0, 0);
     for (const r of [...s.rivals, s]) {
-      const p = courses[s.course].track(r.at);
+      const p = (s.course === 4 && r.cut ? winchCut : courses[s.course]).track(r.at);
       g.fillStyle = r === s ? '#a6fff1' : '#ff8757';
       g.beginPath();
-      g.arc(32 + p.x * 0.34, 55 + p.z * 0.27, r === s ? 4 : 2.3, 0, Math.PI * 2);
+      g.arc(
+        (s.course === 4 ? 88 : 32) + p.x * 0.34,
+        55 + p.z * (s.course === 4 ? 0.21 : 0.27),
+        r === s ? 4 : 2.3,
+        0,
+        Math.PI * 2,
+      );
       g.fill();
     }
     const danger = s.rivals.find((r) => r.windup > 0);
@@ -519,6 +561,7 @@ export class Renderer implements GameRenderer {
       enough,
       !!s.boost,
       s.menu,
+      s.cupStage,
       s.course,
       s.laps,
       s.tier,
@@ -539,12 +582,29 @@ export class Renderer implements GameRenderer {
     this.info.classList.toggle('on-grid', s.menu);
     if (s.menu) {
       this.menu.querySelector('strong')!.textContent = courses[s.course].name;
+      this.menu.querySelector('small')!.textContent =
+        s.cupStage < 0
+          ? 'SCRAPJET RALLY'
+          : 'BREAKER CUP · HEAT ' +
+            (s.cupStage + 1) +
+            ' / 5' +
+            (s.lastPlace ? ' · LAST ' + places[s.lastPlace - 1] + ' · ' + s.cupPoints[0] + ' PTS' : '');
+      this.menu.querySelector('small:last-child')!.textContent =
+        s.cupStage > 0
+          ? 'A · start next heat'
+          : s.cupStage === 0
+            ? 'Paddles · class   ↓ · single race   A · start cup'
+            : 'Paddles · class   B · course   ↑ · distance   ↓ · cup   A · race';
       this.menu.querySelector('p')!.textContent =
-        s.course === 2
-          ? 'Read the grounding forks. Catch a charge on the exposed edge.'
-          : kiln
-            ? 'Hold the first seam. Ride the high bank, then follow the copper across the return drum.'
-            : 'Bridge left. Line up the right boost pad to clear the broken viaduct.';
+        s.course === 3
+          ? 'Hold a wheel around the bowl. Pass on the final straight to ring the tram bell.'
+          : s.course === 4
+            ? 'Stay left for the carriage road or take the steeper winch cut on the right.'
+            : s.course === 2
+              ? 'Read the grounding forks. Catch a charge on the exposed edge.'
+              : kiln
+                ? 'Hold the first seam. Ride the high bank, then follow the copper across the return drum.'
+                : 'Bridge left. Line up the right boost pad to clear the broken viaduct.';
       this.menu.querySelector('span')!.textContent =
         classes[s.tier] +
         ' · ' +

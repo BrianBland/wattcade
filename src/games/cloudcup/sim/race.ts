@@ -1,3 +1,4 @@
+import { valley, saddle, onClimb, passGrade, passRate } from './pass';
 import type { GameContext, GameSim } from '../../../contracts';
 import {
   chassis,
@@ -18,7 +19,7 @@ import {
   easeBetween,
 } from './deck';
 import { bikePose, bankBike } from './motion';
-import { LAP, courses, flumeCamber } from './track';
+import { LAP, courses, flumeCamber, winchCut } from './track';
 import {
   collectorGear,
   crossCollector,
@@ -45,6 +46,7 @@ export type Rival = ReturnType<typeof chassis> & {
   firing: ReturnType<typeof firingGear>;
   collector: ReturnType<typeof collectorGear>;
   release: number;
+  cut: boolean;
   at: number;
   x: number;
   lean: number;
@@ -56,7 +58,9 @@ export type Rival = ReturnType<typeof chassis> & {
   finish: number | null;
 };
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
-export function createRace(ctx: GameContext) {
+const cupOrder: readonly number[] = [3, 0, 1, 2, 4];
+type CupEntry = { stage: number; tier: number; points: number[]; lastPlace: number };
+function createHeat(ctx: GameContext, entry?: CupEntry) {
   const cruise = ctx.tuning.num('speedAtFtp', 24, 12, 35, 1);
   const pace = [
     ctx.tuning.num('breezeFtp', 0.55, 0.3, 1.3, 0.05),
@@ -72,6 +76,7 @@ export function createRace(ctx: GameContext) {
     firing: firingGear(),
     collector: collectorGear(),
     release: 0,
+    cut: false,
     at: [1.6, 4, 9][i],
     x,
     lean: 0,
@@ -87,9 +92,23 @@ export function createRace(ctx: GameContext) {
     firing: firingGear(),
     collector: collectorGear(),
     seamPowered: false,
+    cut: false,
+    grade: 0,
+    branchTime: 0,
+    split: 0,
+    bestCut: 0,
+    bestCarriage: 0,
+    bridgeBest: 0,
+    jumpBest: 0,
+    doubleFiring: 0,
+    doubleCharge: 0,
+    bell: false,
     menu: true,
-    tier: 1,
-    course: 0,
+    cupStage: entry?.stage ?? -1,
+    cupPoints: entry?.points.slice() ?? [0, 0, 0, 0],
+    lastPlace: entry?.lastPlace ?? 0,
+    tier: entry?.tier ?? 1,
+    course: entry ? cupOrder[entry.stage] : 0,
     laps: 3,
     finishAt: FINISH,
     at: 0,
@@ -127,6 +146,17 @@ export function createRace(ctx: GameContext) {
     next: 0,
     rivals,
   };
+  const climbLoad = ctx.tuning.num('climbDrag', 0.082, 0, 0.15, 0.005);
+  const gradeScale = ctx.tuning.num('terrainGradeScale', 1, 0, 1, 0.05);
+  let entryPlace = 4,
+    lapReleases = 0,
+    lapCharges = 0,
+    bridgeStart = 0,
+    jumpsAtFork = 0,
+    fallsAtFork = 0;
+  function sameRoad(a: { at: number; cut: boolean }, b: { at: number; cut: boolean }) {
+    return s.course !== 4 || a.cut === b.cut || (!onClimb(a.at) && !onClimb(b.at));
+  }
   function capturePose() {
     return {
       player: { ...bikePose(s), swing: s.swing },
@@ -168,6 +198,8 @@ export function createRace(ctx: GameContext) {
     s.speed *= 0.84;
     s.impact = 0.33;
     s.impactX = 0;
+    ctx.resistance.clear('cablehead');
+    s.grade = 0;
     ctx.resistance.set({ id: 'overload', mode: 'sim', gradePct: grade(), ttl: s.slow });
     say('JET OVERLOAD');
   }
@@ -183,9 +215,17 @@ export function createRace(ctx: GameContext) {
         delta = Math.sign(pd);
         paddleReady = false;
       }
-      s.tier = clamp(s.tier + delta, 0, 2);
-      if (input.pressed.has('b')) s.course = (s.course + 1) % courses.length;
-      if (input.pressed.has('up')) {
+      if (s.cupStage <= 0) s.tier = clamp(s.tier + delta, 0, 2);
+      if (s.cupStage <= 0 && input.pressed.has('down')) {
+        s.cupStage = s.cupStage < 0 ? 0 : -1;
+        if (s.cupStage === 0) {
+          s.course = cupOrder[0];
+          s.laps = 3;
+          s.finishAt = FINISH;
+        }
+      }
+      if (s.cupStage < 0 && input.pressed.has('b')) s.course = (s.course + 1) % courses.length;
+      if (s.cupStage < 0 && input.pressed.has('up')) {
         s.laps = distances[(distances.findIndex((n) => n === s.laps) + 1) % distances.length];
         s.finishAt = LAP * s.laps;
       }
@@ -200,7 +240,17 @@ export function createRace(ctx: GameContext) {
     const kiln = s.course === 1,
       storm = s.course === 2,
       viaduct = s.course === 0;
-    const solidWidth = kiln ? kilnWidth : storm ? stormWidth : undefined;
+    const bowl = s.course === 3,
+      pass = s.course === 4;
+    const solidWidth = bowl
+      ? () => 2.3
+      : pass
+        ? () => 1.43
+        : kiln
+          ? kilnWidth
+          : storm
+            ? stormWidth
+            : undefined;
     const rescuing = recover(s, dt, viaduct);
     const previousJumps = s.jumps;
     s.shield = Math.max(0, s.shield - dt);
@@ -214,7 +264,7 @@ export function createRace(ctx: GameContext) {
       s.swings++;
     }
     s.swing = Math.max(0, s.swing - dt);
-    const { turn, bank } = courses[s.course].track(s.at);
+    const { turn, bank } = (pass && s.cut ? winchCut : courses[s.course]).track(s.at);
     const keys = Number(input.held.has('right')) - Number(input.held.has('left'));
     const steer =
       keys ||
@@ -233,6 +283,16 @@ export function createRace(ctx: GameContext) {
       s.lateralSpeed = 0;
       s.speed = 0;
     }
+    if (bowl && Math.abs(s.x) > 1.65) {
+      s.x = clamp(s.x, -2.25, 2.25) - Math.sign(s.x) * dt * 0.84;
+    }
+    if (pass) {
+      const demand = rescuing || s.slow ? 0 : passGrade(s.at, s.cut) * gradeScale();
+      s.grade += clamp(demand - s.grade, -dt, dt);
+      if (demand === 0 && (rescuing || s.slow)) s.grade = 0;
+      if (s.grade > 0.01) ctx.resistance.set({ id: 'cablehead', mode: 'sim', gradePct: s.grade, ttl: 0.45 });
+      else ctx.resistance.clear('cablehead');
+    }
     // A trim shifts the line immediately. The visual bank follows that lateral
     // movement, with a little direct input to load the suspension on turn-in.
     const steeringLoad = 0.22 * steer + (0.78 * (s.lateralSpeed - drift)) / 1.95;
@@ -244,6 +304,7 @@ export function createRace(ctx: GameContext) {
       rivals.some(
         (r) =>
           r.finish === null &&
+          sameRoad(s, r) &&
           !r.fall &&
           !r.flight &&
           !r.stun &&
@@ -255,6 +316,8 @@ export function createRace(ctx: GameContext) {
     const span = deck(s.at, s.x > 0);
     const edgeX = solidWidth ? solidWidth(s.at) : Math.max(Math.abs(span.lo), Math.abs(span.hi));
     const target =
+      (bowl && Math.abs(s.x) > 1.65 ? 0.7 : 1) *
+      (pass ? 1 / (1 + (climbLoad() * passGrade(s.at, s.cut) ** 2) / Math.max(0.22, effort)) : 1) *
       cruise() *
       Math.sqrt(effort) *
       (1 + s.draft * 0.16) *
@@ -267,7 +330,35 @@ export function createRace(ctx: GameContext) {
     if (rescuing) s.speed = s.fall ? 0 : target * 0.45;
     else if (s.flight) s.speed = s.launchSpeed;
     const last = s.at;
-    s.at = Math.min(s.finishAt, s.at + (rescuing ? 0 : s.speed * dt));
+    s.at = Math.min(s.finishAt, s.at + (rescuing ? 0 : s.speed * dt * (pass ? passRate(last, s.cut) : 1)));
+    const crossed = (marker: number) => lapAt(last) < marker && last + (marker - lapAt(last)) <= s.at;
+    if (pass && crossed(valley)) {
+      s.cut = s.x > 0.25;
+      s.branchTime = s.time;
+      if (s.cut && s.x < 0.74) s.speed *= 0.52;
+      say(s.cut ? 'Winch cut' : 'Carriage road');
+    }
+    if (pass && crossed(saddle)) {
+      s.split = s.time - s.branchTime;
+      const record = s.cut ? 'bestCut' : 'bestCarriage';
+      s[record] = s[record] ? Math.min(s.split, s[record]) : s.split;
+      say((s.cut ? 'Cut ' : 'Carriage ') + s.split.toFixed(1) + 's');
+      s.cut = false;
+    }
+    if (viaduct && crossed(178)) {
+      bridgeStart = s.time;
+      jumpsAtFork = s.jumps;
+      fallsAtFork = s.falls;
+    }
+    if (viaduct && crossed(306)) {
+      const key = s.jumps > jumpsAtFork ? 'jumpBest' : 'bridgeBest';
+      if (s.falls === fallsAtFork && !s.fall) {
+        const elapsed = s.time - bridgeStart;
+        s[key] = s[key] ? Math.min(s[key], elapsed) : elapsed;
+        say((key === 'jumpBest' ? 'Jump ' : 'Bridge ') + elapsed.toFixed(1) + 's');
+      }
+    }
+    if (bowl && crossed(910)) entryPlace = s.place;
     if (!rescuing) crossDeck(s, last, s.speed, dt, solidWidth?.(s.at));
     if (s.fall && !rescuing) {
       if (s.at === s.finishAt) s.at = last;
@@ -278,6 +369,8 @@ export function createRace(ctx: GameContext) {
       s.slow = 0;
       s.purge = 0;
       ctx.resistance.clear('overload');
+      ctx.resistance.clear('cablehead');
+      s.grade = 0;
       say('Recovery magnet');
     }
     if (storm && !s.fall && !rescuing) {
@@ -333,7 +426,7 @@ export function createRace(ctx: GameContext) {
     const cells = kiln ? pressureCells : salvage;
     const crate = cells[s.nextCrate % cells.length],
       crateAt = crate.at + Math.floor(s.nextCrate / cells.length) * LAP;
-    if (last < crateAt && s.at >= crateAt) {
+    if (!bowl && !pass && last < crateAt && s.at >= crateAt) {
       s.nextCrate++;
       if (!s.fall && Math.abs(s.x - crate.x) < 0.35) {
         const reward = prize(Math.max(...rivals.map((r) => r.at)) - s.at, ctx.rng());
@@ -363,7 +456,7 @@ export function createRace(ctx: GameContext) {
         cruise() * Math.sqrt(pace[s.tier]()) * (0.97 + 0.025 * i + 0.045 * Math.sin(s.time / 5 + i));
       // The point rider contests the wake. Wing riders try to draw level, within
       // a bounded pace envelope: actual rider effort can break the formation.
-      const nearby = Math.abs(gap) < 32;
+      const nearby = Math.abs(gap) < 32 && sameRoad(s, r);
       let wantedX = nearby
         ? flank
           ? s.x + flankSide * 0.5
@@ -402,10 +495,21 @@ export function createRace(ctx: GameContext) {
         const limit = stormWidth(ahead) - 0.18;
         wantedX = clamp(wantedX, -limit, limit);
       }
+      if (pass && lapDistance < valley && lapDistance > valley - 50)
+        wantedX = i === 2 || (i === 1 && Math.floor(r.at / LAP) % 2 === 1) ? 0.95 : -0.66;
+      if (pass) wantedX = clamp(wantedX, -1.19, 1.19);
       const vx = r.stun || r.windup ? 0 : clamp((clamp(wantedX, -1.65, 1.3) - r.x) * 1.7, -0.85, 0.85);
       r.x += (vx + r.shove) * dt;
       r.shove *= Math.exp(-dt * 4);
-      r.lean += (clamp(-vx * 0.36 - courses[s.course].track(r.at).turn * 0.2, -0.6, 0.6) - r.lean) * dt * 5;
+      r.lean +=
+        (clamp(
+          -vx * 0.36 - (pass && r.cut ? winchCut : courses[s.course]).track(r.at).turn * 0.2,
+          -0.6,
+          0.6,
+        ) -
+          r.lean) *
+        dt *
+        5;
       const wantedGap = regrouping && flank ? 16 + flankSide * 3 : flank ? 1.5 : 9;
       const tactical = nearby
         ? clamp(s.speed + (wantedGap - gap) * 0.85, paceSpeed * 0.8, paceSpeed * 1.13)
@@ -416,7 +520,21 @@ export function createRace(ctx: GameContext) {
         ? r.launchSpeed
         : packSpeed * (r.stun ? 0.54 : 1) * (r.collector.drag ? 0.7 : 1) * Math.min(1, s.time * 1.35);
 
-      r.at = Math.min(s.finishAt, r.at + speed * dt);
+      r.at = Math.min(
+        s.finishAt,
+        r.at +
+          speed *
+            dt *
+            (pass
+              ? passRate(oldAt, r.cut) / (1 + (climbLoad() * passGrade(oldAt, r.cut) ** 2) / pace[s.tier]())
+              : 1),
+      );
+      if (pass) {
+        const dist = lapAt(oldAt);
+        if (dist < valley && dist + r.at - oldAt >= valley) r.cut = r.x > 0.25;
+        if (dist < saddle && dist + r.at - oldAt >= saddle) r.cut = false;
+      }
+      if (bowl) r.x = clamp(r.x, -2.2, 2.2);
       if (viaduct && !r.flight) {
         for (const pad of pads) {
           const marker = Math.floor(oldAt / LAP) * LAP + pad.at;
@@ -450,6 +568,7 @@ export function createRace(ctx: GameContext) {
         !s.flight &&
         !r.flight &&
         !r.grace &&
+        sameRoad(s, r) &&
         s.swing > 0 &&
         !s.contact &&
         swingConnects(dz, dx, s.side, 1 - s.swing / SWING)
@@ -467,6 +586,7 @@ export function createRace(ctx: GameContext) {
         s.impactX = dx;
       }
       if (
+        sameRoad(s, r) &&
         r.strike > 0 &&
         !s.fall &&
         !s.flight &&
@@ -487,6 +607,7 @@ export function createRace(ctx: GameContext) {
         !s.flight &&
         !s.grace &&
         !r.flight &&
+        sameRoad(s, r) &&
         flank &&
         !jumpRun &&
         s.time >= regroupUntil &&
@@ -505,7 +626,7 @@ export function createRace(ctx: GameContext) {
       const a = rivals[i];
       if (a.finish !== null || a.fall || a.flight) continue;
       for (const b of [s, ...rivals.slice(i + 1)]) {
-        if (b.fall || b.flight || ('finish' in b && b.finish !== null)) continue;
+        if (!sameRoad(a, b) || b.fall || b.flight || ('finish' in b && b.finish !== null)) continue;
         const dx = a.x - b.x;
         if (Math.abs(a.at - b.at) > 2.25 || Math.abs(dx) > 0.27) continue;
         const shove = (Math.sign(dx) || 1) * (0.27 - Math.abs(dx)) * 0.6;
@@ -517,7 +638,23 @@ export function createRace(ctx: GameContext) {
       1 +
       rivals.filter((r) => (s.at === s.finishAt ? r.finish !== null && r.finish < finishTime : r.at > s.at))
         .length;
+    if (Math.floor(last / LAP) !== Math.floor(s.at / LAP)) {
+      if (kiln && s.firing.releases - lapReleases === 2) s.doubleFiring++;
+      if (storm && s.collector.clears - lapCharges === 2) s.doubleCharge++;
+      lapReleases = s.firing.releases;
+      lapCharges = s.collector.clears;
+    }
     if (s.at === s.finishAt) {
+      s.bell = bowl && s.place < entryPlace;
+      if (s.cupStage >= 0) {
+        const order = rivals
+          .map((r, i) => ({ id: i + 1, finish: r.finish ?? Infinity, at: r.at }))
+          .sort((a, b) => a.finish - b.finish || b.at - a.at || a.id - b.id)
+          .map((r) => r.id);
+        order.splice(s.place - 1, 0, 0);
+        order.forEach((id, i) => (s.cupPoints[id] += [6, 3, 2, 1][i]));
+      }
+      ctx.resistance.clear('cablehead');
       ctx.resistance.clear('overload');
       ctx.save({ bestPlace: Math.min(s.place, ctx.load<{ bestPlace: number }>()?.bestPlace ?? 4) });
       ctx.emit({ type: 'cloudcup.finish', data: { place: s.place, class: classes[s.tier] } });
@@ -534,9 +671,16 @@ export function createRace(ctx: GameContext) {
         { button: 'right', label: 'Right' },
         { button: 'a', label: s.menu ? 'Race' : 'Sweep left' },
         { button: 'b', label: s.menu ? 'Change course' : 'Sweep right' },
-        ...(s.menu ? [{ button: 'up' as const, label: 'Race distance' }] : []),
+        ...(s.menu && s.cupStage < 0 ? [{ button: 'up' as const, label: 'Race distance' }] : []),
+        ...(s.menu && s.cupStage <= 0 ? [{ button: 'down' as const, label: 'Toggle Breaker Cup' }] : []),
       ],
-      touchControls: s.menu ? ['left', 'right', 'up', 'b', 'a'] : ['left', 'right', 'a', 'b'],
+      touchControls: s.menu
+        ? s.cupStage > 0
+          ? ['a']
+          : s.cupStage === 0
+            ? ['left', 'right', 'down', 'a']
+            : ['left', 'right', 'up', 'down', 'b', 'a']
+        : ['left', 'right', 'a', 'b'],
     }),
     snapshot: () => ({
       ...s,
@@ -549,6 +693,13 @@ export function createRace(ctx: GameContext) {
     }),
     summary: () => ({
       Place: s.place,
+      ...(s.cupStage >= 0
+        ? {
+            'Cup heats': s.cupStage + Number(s.at === s.finishAt),
+            'Cup points': s.cupPoints[0],
+            'Cup place': 1 + s.cupPoints.slice(1).filter((p) => p > s.cupPoints[0]).length,
+          }
+        : {}),
       Class: classes[s.tier],
       Course: courses[s.course].name,
       Laps: Math.floor(s.at / LAP),
@@ -561,11 +712,50 @@ export function createRace(ctx: GameContext) {
         : s.course === 2
           ? { Charges: s.collector.clears, Faults: s.collector.hits }
           : { Jumps: s.jumps }),
+      ...(s.course === 4
+        ? { 'Carriage best (s)': +s.bestCarriage.toFixed(1), 'Cut best (s)': +s.bestCut.toFixed(1) }
+        : {}),
+      ...(s.course === 0
+        ? { 'Bridge best (s)': +s.bridgeBest.toFixed(1), 'Jump best (s)': +s.jumpBest.toFixed(1) }
+        : {}),
       RingOuts: s.ringOuts,
       Salvage: s.crates,
       Hits: s.hits,
     }),
-    dispose: () => ctx.resistance.clear('overload'),
+    dispose: () => {
+      ctx.resistance.clear('overload');
+      ctx.resistance.clear('cablehead');
+    },
+  } satisfies GameSim;
+}
+export function createRace(ctx: GameContext) {
+  let heat = createHeat(ctx);
+  const nextGrid = () => {
+    if (!heat.isOver()) return false;
+    const stage = heat.snapshot().cupStage;
+    return stage >= 0 && stage < cupOrder.length - 1;
+  };
+  return {
+    update(dt: number) {
+      if (nextGrid()) {
+        const s = heat.snapshot();
+        heat.dispose();
+        heat = createHeat(ctx, {
+          stage: s.cupStage + 1,
+          tier: s.tier,
+          points: s.cupPoints,
+          lastPlace: s.place,
+        });
+        return;
+      }
+      heat.update(dt);
+    },
+    isOver: () => heat.isOver() && !nextGrid(),
+    inMenu: () => heat.inMenu(),
+    snapshot: () => heat.snapshot(),
+    summary: () => heat.summary(),
+    hud: () => heat.hud(),
+    dispose: () => heat.dispose(),
   } satisfies GameSim;
 }
 export type RaceView = ReturnType<ReturnType<typeof createRace>['snapshot']>;

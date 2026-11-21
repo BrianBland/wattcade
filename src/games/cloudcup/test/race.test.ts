@@ -18,6 +18,7 @@ import {
   prize,
 } from '../sim/deck';
 import { LAP, courses, track, world } from '../sim/track';
+import { valley, saddle, passPoint, passRate } from '../sim/pass';
 import { firebox, firingLine } from '../sim/kiln';
 import { displayRace } from '../render/motion';
 import { playBounds } from '../render/renderer';
@@ -502,4 +503,46 @@ it('advances the chain between consecutive physics poses at 60 Hz', () => {
   expect(start.swing - s.swing).toBeCloseTo(1 / 30);
   expect(start.swing - half.swing).toBeCloseTo(1 / 60);
   expect(half.swing - s.swing).toBeCloseTo(1 / 60);
+});
+
+it('measures both roads between the same Cablehead timing lines', () => {
+  for (const cut of [true, false]) {
+    let metres = 0;
+    for (let d = valley; d < saddle; d += 0.25) {
+      const a = passPoint(d, cut),
+        b = passPoint(d + 0.25, cut);
+      metres += Math.hypot(a.x - b.x, a.z - b.z);
+    }
+    expect(metres).toBeCloseTo(cut ? 375 : 600, 0);
+    expect(metres * passRate(valley + 5, cut)).toBeCloseTo(saddle - valley, 0);
+    expect(passPoint(saddle, cut).y - passPoint(valley, cut).y).toBe(15);
+  }
+  for (const d of [valley, saddle]) expect(passPoint(d, true)).toEqual(passPoint(d, false));
+});
+it('lets a rider ride the Bowl apron without a crane rescue', () => {
+  const r = race();
+  for (let i = 0; i < 3; i++) r.press('b');
+  r.press('a');
+  r.paddle(1);
+  r.session.step(900);
+  expect(r.snap().x).toBeGreaterThan(1.65);
+  expect(r.snap().falls).toBe(0);
+});
+it('scores all four pilots through five heats in a single workout', () => {
+  const r = race();
+  r.press('down');
+  r.press('down');
+  expect(r.snap().cupStage).toBe(-1);
+  r.press('down');
+  r.press('left');
+  for (const [index, course] of [3, 0, 1, 2, 4].entries()) {
+    expect(r.snap()).toMatchObject({ course, tier: 0, menu: true, cupStage: index, laps: 3 });
+    expect(r.snap().cupPoints.reduce((a, b) => a + b, 0)).toBe(12 * index);
+    r.press('a');
+    for (let t = 0; t < 1800 && !r.session.sim.isOver() && !r.snap().menu; t++) r.session.step(10);
+  }
+  expect(r.session.sim.isOver()).toBe(true);
+  expect(r.snap().cupPoints.reduce((a, b) => a + b, 0)).toBe(60);
+  expect(r.session.sim.summary()['Cup heats']).toBe(5);
+  expect(r.session.mixer.debug().activeEffects).toHaveLength(0);
 });

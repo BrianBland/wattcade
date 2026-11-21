@@ -210,6 +210,7 @@ export function buildCauseway(root: T.Object3D, course: Course, sky: T.Texture) 
   }
   // Split-ring storm crowns anchor the two eyes of the figure eight. The
   // missing segment leaves a recognizable silhouette even in the far mist.
+  const signals: T.MeshBasicMaterial[] = [];
   for (const [x, z, top] of [
     [62, 0, 48],
     [216, 0, 72],
@@ -221,10 +222,12 @@ export function buildCauseway(root: T.Object3D, course: Course, sky: T.Texture) 
       for (let y = -35; y < top - 8; y += 9)
         girders.rod(alloy, v(x - side * 4, y, z), v(x + side * 4, y + 9, z), 0.35);
     }
+    const signal = mint.clone();
+    signals.push(signal);
     for (let ring = 0; ring < 3; ring++) {
       const radius = 10.5 - ring * 1.7;
       const tor = new T.TorusGeometry(radius, ring === 0 ? 0.85 : 0.27, 8, 55, Math.PI * 1.72);
-      girders.add(ring === 1 ? mint : ring === 2 ? copper : alloy, tor, x, top + 8, z, -0.34, 0.27, 0.48);
+      girders.add(ring === 1 ? signal : ring === 2 ? copper : alloy, tor, x, top + 8, z, -0.34, 0.27, 0.48);
     }
     girders.rod(copper, centre.clone().add(v(0, -14, 0)), centre.clone().add(v(0, 18, 0)), 0.33);
     for (let i = 0; i < 8; i++) girders.add(porcelain, cylinder(2.9, 2.2, 0.54), x, top - 11 + i * 1.1, z);
@@ -386,7 +389,18 @@ export function buildCauseway(root: T.Object3D, course: Course, sky: T.Texture) 
     fuse.finish();
     return node;
   });
-  return (time: number, at: number) => {
+  const chargedColor = new T.Color('#fff1ac');
+  let lastCharge = 0,
+    firedAt = -100;
+  return (time: number, at: number, state: { doubleCharge: number }) => {
+    if (state.doubleCharge > lastCharge) firedAt = time;
+    if (state.doubleCharge < lastCharge || time < firedAt) firedAt = -100;
+    lastCharge = state.doubleCharge;
+    signals.forEach((m, i) => {
+      const t = time - firedAt - i * 0.72;
+      const pulse = t < 0 ? 0 : Math.min(1, t * 6) * Math.max(0, 1 - t / 7);
+      m.color.set('#8dd6c9').lerp(chargedColor, pulse);
+    });
     water.uniforms.tide.value = time;
     let nearest = Infinity;
     for (const { station, arm, arcGroup, patch, discharge } of forkRigs) {

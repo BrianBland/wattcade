@@ -150,20 +150,28 @@ it('prioritizes boss phases and sprint windows in a boss peak', () => {
   expect(card.hidden).toBe(true);
 });
 
-it('the gearbox lights tiers up to the current one, marks the called tier and cues the key toward it', () => {
+it('the power ladder lights the selected tier, outlines the called one, places the needle and cues the key toward the call', () => {
   const { snapshot } = hudFixture();
+  const power = { ftpW: 200, nowFtp: 0.5, cadence: 80, refRpm: 85, cap: 1.2, rated: [0.45, 0.6, 0.75, 0.9, 1.05] };
   const el = document.createElement('div');
-  el.innerHTML = tierHtml({ ...snapshot, tier: 2, suggestedTier: 4, tierFtp: 0.6, tierOutput: 0.5 });
-  expect(el.querySelector('.td-slots b')?.textContent).toBe('II');
-  expect([...el.querySelectorAll('.td-slots .lit')].map((n) => n.textContent)).toEqual(['I']);
-  expect(el.querySelector('.td-slots .call')?.textContent).toBe('IV');
+  el.innerHTML = tierHtml({ ...snapshot, tier: 2, suggestedTier: 4, tierFtp: 0.6, swapLeft: 0, power });
+  expect([...el.querySelectorAll('.td-ladder > span')].map((n) => n.textContent)).toEqual(['I', 'II', 'III', 'IV', 'V']);
+  expect(el.querySelector('.td-ladder .on')?.textContent).toBe('II');
+  expect(el.querySelector('.td-ladder .call')?.textContent).toBe('IV');
   expect(el.querySelector('[data-step="1"]')!.classList.contains('cue')).toBe(true);
   expect(el.querySelector('[data-step="-1"]')!.classList.contains('cue')).toBe(false);
-  expect(el.querySelector('.td-load')!.classList.contains('short')).toBe(true);
-  expect(el.querySelector('.td-tier-read')?.textContent).toBe('120 Wat 85 rpm');
-  el.innerHTML = tierHtml({ ...snapshot, tier: 4, suggestedTier: 4, tierFtp: 0.9, tierOutput: 1.1 });
+  expect(el.querySelector('.td-tier')!.classList.contains('under')).toBe(true);
+  expect(el.querySelector('.td-verdict')?.textContent).toBe('Push +20 W');
+  expect(el.querySelector('.td-needle')?.textContent).toBe('100');
+  // the needle sits inside the lit block when the rider makes the tier's watts
+  el.innerHTML = tierHtml({ ...snapshot, tier: 4, suggestedTier: 4, tierFtp: 0.9, swapLeft: 0, power: { ...power, nowFtp: 0.95 } });
+  const left = (q: string) => parseFloat((el.querySelector<HTMLElement>(q)!.style.left));
+  const block = el.querySelector<HTMLElement>('.td-ladder .on')!;
+  expect(left('.td-needle')).toBeGreaterThan(parseFloat(block.style.left));
   expect(el.querySelectorAll('.cue')).toHaveLength(0);
-  expect(el.querySelector('.td-load')!.classList.contains('short')).toBe(false);
+  expect(el.querySelector('.td-verdict')?.textContent).toBe('Full power');
+  el.innerHTML = tierHtml({ ...snapshot, tier: 2, suggestedTier: 2, tierFtp: 0.6, swapLeft: 0, power: { ...power, nowFtp: 0.8 } });
+  expect(el.querySelector('.td-verdict')?.textContent).toBe('Shift up');
 });
 
 it('lays radar blips out without overlaps when the column has room, keeping arrival times; Stalkers cycle colour', () => {
@@ -188,19 +196,13 @@ it('lays radar blips out without overlaps when the column has room, keeping arri
   expect(el.querySelector('.td-blip')!.classList.contains('prism')).toBe(true);
 });
 
-it('the power guide says under / full power / over against the selected tier, and what the next tier adds', () => {
+it('under the ladder: the tier target, what the next tier adds, and the Railgun charge', () => {
   const { snapshot } = hudFixture();
   const base: TdSnapshot = { ...snapshot, weapon: 'gatling', tier: 3, tierCount: 5, tierFtp: 0.75, swapLeft: 0,
     power: { ftpW: 200, nowFtp: 0.6, cadence: 80, refRpm: 85, cap: 1.2, rated: [0.45, 0.6, 0.75, 0.9, 1.05] } };
   const el = document.createElement('div');
   el.innerHTML = guideHtml(base);
-  expect(el.querySelector('.td-guide')!.classList.contains('under')).toBe(true);
-  expect(el.querySelector('.td-verdict')!.textContent).toBe('30 W under · shots at 80%');
-  expect(el.querySelector('.td-gain')!.textContent).toBe('IV: +27% damage · splash');
-  el.innerHTML = guideHtml({ ...base, power: { ...base.power, nowFtp: 0.8 } });
-  expect(el.querySelector('.td-verdict')!.textContent).toBe('Full power · 150–180 W');
-  el.innerHTML = guideHtml({ ...base, power: { ...base.power, nowFtp: 1 } });
-  expect(el.querySelector('.td-verdict')!.textContent).toBe('Over the cap · shift up to IV');
+  expect(el.querySelector('.td-gain')!.textContent).toBe('150+ W · 85 rpm · IV: +27% damage · splash');
   el.innerHTML = guideHtml({ ...base, weapon: 'rail', railProgress: 0.62 });
   expect(el.querySelector('.td-charge')!.textContent).toBe('Charging 62%');
   el.innerHTML = guideHtml({ ...base, weapon: 'rail', railProgress: 1 });

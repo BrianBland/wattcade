@@ -37,36 +37,29 @@ const CSS = `
 .td-brood { grid-area:brood; min-width:0; }
 .td-brood b { display:block; color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .td-current small { display:block; margin-top:3px; }
-.td-tier { grid-area:tier; display:flex; align-items:center; gap:8px; min-width:0; pointer-events:auto; }
-.td-gate { flex:1 1 auto; width:150px; min-width:110px; display:flex; flex-direction:column; gap:3px; padding:3px 4px 4px; background:var(--td-well); border:1px solid #000; border-radius:3px; box-shadow:inset 0 2px 5px #000, 0 1px 0 #ffdca014; }
-.td-slots { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:3px; align-items:end; }
-.td-slots > * { position:relative; display:grid; place-items:center; height:16px; font-size:10px; font-weight:800; font-style:normal; line-height:1; letter-spacing:.03em; color:var(--td-mute); border:1px solid #000; border-radius:2px;
   background:linear-gradient(180deg, #ffffff08, transparent 60%), var(--td-plateLo); box-shadow:inset 0 1px 0 #ffdca00f; transition:background .2s, height .2s; }
-.td-slots > :nth-child(2) { height:18px; } .td-slots > :nth-child(3) { height:19px; } .td-slots > :nth-child(4) { height:21px; } .td-slots > :nth-child(5) { height:23px; }
-.td-slots > .lit { color:#2a1c0a; background:linear-gradient(180deg, #c9964a, #8f6327); box-shadow:inset 0 1px 0 #ffdb8e55; }
-.td-slots > b { color:var(--td-ink); font-size:12px; background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass) 50%, var(--td-brassLo)); box-shadow:inset 0 1px 0 #fff9, 0 0 10px #e8b24aaa; text-shadow:none; }
-.td-slots > .call { outline:1px solid var(--td-copper); outline-offset:1px; box-shadow:0 0 8px #c8743c88; }
-.td-slots > span.call:not(.lit) { color:#e59a62; }
-.td-load { position:relative; height:4px; border-radius:1px; background:#000; overflow:hidden; }
-.td-load > i { display:block; height:100%; background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass)); box-shadow:0 0 6px #e8b24a88; transition:width .3s; }
-.td-load.short > i { background:linear-gradient(180deg, #ff8a5c, var(--td-copper)); box-shadow:none; }
 .td-key { flex:none; width:34px; height:34px; display:grid; place-items:center; padding:0 0 2px; border:1px solid #000; border-radius:4px; cursor:pointer; color:var(--td-brass); font:900 20px/1 system-ui, sans-serif;
   background:linear-gradient(180deg, #ffffff10, transparent 45%), var(--td-plateHi); box-shadow:inset 0 1px 0 #ffdca026, inset 0 -2px 0 #0007, 0 2px 0 #000; }
 .td-key:active { transform:translateY(1px); box-shadow:inset 0 2px 4px #000; }
 .td-key.cue { color:var(--td-ink); background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass) 50%, var(--td-brassLo)); box-shadow:inset 0 1px 0 #fff8, inset 0 -2px 0 #0005, 0 2px 0 #000, 0 0 12px #e8b24a99; animation:td-cue 1.2s ease-in-out infinite; }
 @keyframes td-cue { 50% { box-shadow:inset 0 1px 0 #fff8, inset 0 -2px 0 #0005, 0 2px 0 #000, 0 0 18px 2px #ffdb8ecc; } }
-.td-tier-read { flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:2px; line-height:1; }
-.td-tier-read strong { font-size:17px; font-weight:900; font-variant-numeric:tabular-nums; color:var(--td-text); text-shadow:0 2px 0 #000; }
-.td-hud .td-tier-read small { margin:0; font-size:9px; letter-spacing:.12em; color:var(--td-dim); }
 .td-next { grid-area:next; min-width:0; justify-self:end; }
+.td-tier { grid-area:tier; min-width:0; display:flex; flex-direction:column; gap:6px; pointer-events:auto; --v:var(--td-text); }
+.td-tier.under { --v:#ff9a6c; } .td-tier.on { --v:#9be27a; } .td-tier.over { --v:var(--td-brassHi); } .td-tier.mount { --v:var(--td-dim); }
+.td-hud:not([data-narrow=true]):not([data-column=true]) .td-tier { width:min(320px, 42vw); }
+.td-tier-head { display:flex; align-items:center; gap:8px; min-width:0; }
+.td-tier-head > .td-key { width:36px; height:30px; font-size:20px; }
+.td-hud[data-column=true] .td-ladder { height:30px; }
+.td-tier-name { flex:none; font-size:15px; font-weight:900; letter-spacing:.06em; text-transform:uppercase; color:var(--td-brassHi); }
+.td-hud .td-verdict { flex:1 1 auto; min-width:0; text-align:right; font-size:16px; font-weight:900; color:var(--v); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px #000; }
+.td-ladder { position:relative; height:24px; border-radius:2px; background:#0b0806; box-shadow:inset 0 1px 3px #000; margin-bottom:2px; }
+.td-ladder > span { position:absolute; top:3px; bottom:3px; display:grid; place-items:center; box-sizing:border-box; border-left:2px solid #0b0806; font-size:11px; font-weight:800; color:#a8916a; background:linear-gradient(180deg, #2e2418, #1d160f); }
+.td-ladder > span.on { color:var(--td-ink); background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass) 55%, var(--td-brassLo)); box-shadow:0 0 10px #e8b24a66; z-index:1; }
+.td-ladder > span.call:not(.on) { outline:2px solid var(--td-copper); outline-offset:-2px; color:#e59a62; }
+.td-ladder > .td-needle { position:absolute; top:-4px; bottom:-4px; width:3px; margin-left:-1.5px; z-index:2; background:var(--v); box-shadow:0 0 0 1px #000, 0 0 8px var(--v); border-radius:1px; }
+.td-needle > small { position:absolute; bottom:100%; left:50%; transform:translateX(-50%); margin:0 0 1px; font-size:9px; font-weight:800; color:var(--v); text-shadow:0 1px 2px #000; white-space:nowrap; }
 .td-guide { grid-area:guide; min-width:0; display:flex; flex-direction:column; gap:4px; }
-.td-meter { position:relative; height:10px; border-radius:2px; background:linear-gradient(90deg, #4a1d12 0%, #2a1a12 100%); box-shadow:inset 0 1px 3px #000; }
-.td-band { position:absolute; top:0; bottom:0; background:linear-gradient(180deg, #8fd16a, #4f8f36); box-shadow:0 0 8px #8fd16a55; border-radius:1px; }
-.td-needle { position:absolute; top:-3px; bottom:-3px; width:3px; margin-left:-1.5px; background:#fff; box-shadow:0 0 4px #000, 0 0 6px #fff8; border-radius:1px; }
-.td-guide.under .td-needle { background:#ff8a5c; } .td-guide.over .td-needle { background:var(--td-brassHi); }
-.td-hud .td-verdict { margin:0; font-size:13px; line-height:1.25; color:var(--td-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.td-verdict strong { color:var(--td-text); }
-.td-guide.on .td-verdict strong { color:#9be27a; } .td-guide.under .td-verdict strong { color:#ff9a6c; } .td-guide.over .td-verdict strong { color:var(--td-brassHi); }
+.td-hud .td-gain b { color:var(--td-text); font-weight:700; }
 .td-hud .td-gain { margin:0; font-size:12px; color:var(--td-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .td-charge { position:relative; height:16px; border-radius:2px; background:#160d22; box-shadow:inset 0 1px 3px #000; overflow:hidden; }
 .td-charge > i { position:absolute; left:0; top:0; bottom:0; background:linear-gradient(180deg, #c790ff, #7a3fd0); }
@@ -170,21 +163,21 @@ const CSS = `
 @keyframes td-shimmer { from { background-position:100% 0, 0 0; } to { background-position:-150% 0, 0 0; } }
 .td-loading { display:grid; place-items:center; pointer-events:auto; }
 .td-loading-card { width:min(440px, 100%); max-height:100%; box-sizing:border-box; display:flex; flex-direction:column; gap:10px; padding:14px; overflow:hidden; animation:td-rise .3s ease-out; }
-@keyframes td-rise { from { opacity:0; transform:translateY(12px) scale(.98); } to { opacity:1; transform:none; } }
 .td-loading-art { position:relative; overflow:hidden; border-radius:10px; aspect-ratio:var(--map-aspect); max-height:46vh; box-shadow:0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px var(--glass-line); }
 .td-loading-art .td-map { position:absolute; inset:0; border-radius:0; animation:td-drift 9s ease-in-out infinite alternate; }
 .td-loading-art::after { content:''; position:absolute; inset:0; background:linear-gradient(115deg, transparent 35%, rgba(130,240,255,.18) 50%, transparent 65%) 0 0 / 300% 100%; animation:td-sweep 2.2s ease-in-out infinite; }
-@keyframes td-drift { from { transform:scale(1.04); } to { transform:scale(1.12) translate(-1.5%, 1%); } }
-@keyframes td-sweep { from { background-position:100% 0; } to { background-position:-100% 0; } }
 .td-loading-card small { color:var(--dim); }
 .td-loading-card h2 { margin:0; color:var(--neon); font-size:clamp(22px,3.2vw,30px); font-style:italic; line-height:1.1; }
 .td-loading-card p { margin:0; color:var(--dim); font-size:14px; }
 .td-loading-bar { position:relative; height:8px; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }
 .td-loading-bar > i { position:absolute; inset:0 auto 0 0; border-radius:inherit; background:linear-gradient(90deg, var(--neon), #ffd24a); box-shadow:0 0 12px var(--neon); transition:width .25s ease-out; }
 .td-loading-bar > i::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent) 0 0 / 40% 100% no-repeat; animation:td-glint 1.1s linear infinite; }
-@keyframes td-glint { from { background-position:-40% 0; } to { background-position:140% 0; } }
 .td-loading-status { display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--dim); }
 .td-loading-status b { color:var(--fg); font-weight:700; }
+@keyframes td-rise { from { opacity:0; transform:translateY(12px) scale(.98); } to { opacity:1; transform:none; } }
+@keyframes td-drift { from { transform:scale(1.04); } to { transform:scale(1.12) translate(-1.5%, 1%); } }
+@keyframes td-sweep { from { background-position:100% 0; } to { background-position:-100% 0; } }
+@keyframes td-glint { from { background-position:-40% 0; } to { background-position:140% 0; } }
 .td-hud[data-wide="true"] .td-loading-card { width:min(620px, 100%); display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); align-items:center; column-gap:16px; }
 .td-hud[data-wide="true"] .td-loading-art { grid-row:span 5; max-height:none; }
 @media (prefers-reduced-motion: reduce) { .td-loading-art .td-map, .td-loading-art::after, .td-loading-bar > i::after, .td-map-wait { animation:none; } }
@@ -251,9 +244,6 @@ const CSS = `
 .td-hud[data-column=true] .td-next > small, .td-hud[data-column=true] .td-next > span { grid-area:detail; margin:0; text-align:left; font-size:13px; }
 .td-hud[data-column=true] .td-next > small { font-size:11px; }
 .td-hud[data-column=true] .td-current .td-brood b { font-size:21px; line-height:1.1; }
-.td-hud[data-column=true] .td-slots > * { height:18px; font-size:11px; } .td-hud[data-column=true] .td-slots > :nth-child(2) { height:20px; } .td-hud[data-column=true] .td-slots > :nth-child(3) { height:22px; }
-.td-hud[data-column=true] .td-slots > :nth-child(4) { height:24px; } .td-hud[data-column=true] .td-slots > :nth-child(5) { height:26px; } .td-hud[data-column=true] .td-slots > b { font-size:13px; }
-.td-hud[data-column=true] .td-key { width:38px; height:38px; }
 .td-hud[data-column=true] .td-stat b { font-size:22px; }
 .td-hud[data-compact=true] .td-status, .td-hud[data-compact=true] .td-current { overflow:auto; pointer-events:auto; overscroll-behavior:contain; padding:6px 10px; }
 .td-hud[data-compact=true] .td-status { grid-template-columns:1fr auto; gap:4px 8px; }
@@ -331,47 +321,51 @@ export function radarHtml(s: TdSnapshot, dir: 'h' | 'v', size?: ScopeSize): stri
 // Snapshot strings are game-owned, but garage descriptions may contain a profile-derived value.
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/**
- * The gearbox: five stepped slots I–V (lit up to the current tier, copper-marked at the tier the flow calls for),
- * an output strip (how much of the tier's rated power the rider is making: what fills the shots), the rated %FTP,
- * and touch keys. The key toward the called tier glows.
- */
-export function tierHtml(s: TdSnapshot): string {
-  const name = roman(s.tier), call = s.suggestedTier, out = Math.max(0, s.tierOutput ?? 1);
-  const slots = Array.from({ length: s.tierCount }, (_, i) => {
-    const t = i + 1, cls = `${t < s.tier ? 'lit' : ''}${t === call ? ' call' : ''}`.trim(), attr = cls ? ` class="${cls}"` : '';
-    return t === s.tier ? `<b${attr}>${roman(t)}</b>` : `<span${attr}>${roman(t)}</span>`;
-  }).join('');
-  const key = (step: -1 | 1) => `<button class="td-key${(step > 0 ? call > s.tier : call < s.tier) ? ' cue' : ''}" data-command="tier" data-step="${step}" aria-label="Tier ${step > 0 ? 'up' : 'down'}">${step > 0 ? '+' : '−'}</button>`;
-  return `<div class="td-tier" aria-label="Intensity tier ${name} of ${s.tierCount}${call !== s.tier ? `, ride calls for ${roman(call)}` : ''}">${key(-1)}`
-    + `<div class="td-gate"><div class="td-slots">${slots}</div><div class="td-load${out < 0.85 ? ' short' : ''}" title="Output"><i style="width:${(Math.min(1, out) * 100).toFixed(0)}%"></i></div></div>`
-    + `${key(1)}<div class="td-tier-read"><strong>${watts(s, s.tierFtp)} W</strong><small>at ${s.power.refRpm} rpm</small></div></div>`;
-}
-
 /** Watts for a share of the rider's FTP, rounded to 5. */
 const watts = (s: Pick<TdSnapshot, 'power'>, ftp: number) => Math.max(0, Math.round((ftp * s.power.ftpW) / 5) * 5);
 
+/** Where the rider is against the selected tier, as one word to read at a glance plus its colour class. */
+export function powerVerdict(s: TdSnapshot): { word: string; cls: 'under' | 'on' | 'over' | 'mount' } {
+  if (s.swapLeft > 0) return { word: `Mounting ${Math.ceil(s.swapLeft)}s`, cls: 'mount' };
+  const ps = powerState(s.power.nowFtp, s.tierFtp, s.power.cap);
+  if (ps.state === 'under') return { word: `Push +${Math.max(5, watts(s, ps.gapFtp))} W`, cls: 'under' };
+  if (ps.state === 'over' && s.tier < s.tierCount) return { word: 'Shift up', cls: 'over' };
+  return { word: 'Full power', cls: 'on' };
+}
+
 /**
- * The power guide under the gearbox: a meter of the rider's watts against the selected tier (shortfall, the
- * full-power band from its rated watts to the effort cap, and beyond it), one line saying where they are and what to
- * do, and what the next tier would add. The Railgun also shows its charge: it fires a full pulse when charged, and
- * spends a sliver of it on a quick snap at a small alien.
+ * The power ladder: the five tiers as blocks along one watts bar (each block runs from its tier's rated watts to the
+ * next tier's), the selected tier lit, the tier the wave calls for outlined in copper, and a needle at the rider's
+ * watts. Keep the needle in the lit block: left of it the shots shrink, right of it you belong a tier up. The header
+ * holds the − / + keys (the one toward the called tier glows), the tier and a one-word verdict.
+ */
+export function tierHtml(s: TdSnapshot): string {
+  const r = s.power.rated, cap = s.power.cap, call = s.suggestedTier, v = powerVerdict(s);
+  const lo = r[0] * 0.75, hi = r[r.length - 1] * cap, span = hi - lo;
+  const pct = (ftp: number) => `${(Math.min(1, Math.max(0, (ftp - lo) / span)) * 100).toFixed(1)}%`;
+  const blocks = r.map((rated, i) => {
+    const t = i + 1, end = i + 1 < r.length ? r[i + 1] : hi;
+    const cls = `${t === s.tier ? 'on' : ''}${t === call ? ' call' : ''}`.trim();
+    return `<span${cls ? ` class="${cls}"` : ''} style="left:${pct(rated)};width:calc(${pct(end)} - ${pct(rated)})">${roman(t)}</span>`;
+  }).join('');
+  const key = (step: -1 | 1) => `<button class="td-key${(step > 0 ? call > s.tier : call < s.tier) ? ' cue' : ''}" data-command="tier" data-step="${step}" aria-label="Tier ${step > 0 ? 'up' : 'down'}">${step > 0 ? '+' : '−'}</button>`;
+  return `<div class="td-tier ${v.cls}" aria-label="Tier ${roman(s.tier)} of ${s.tierCount}: ${v.word}${call !== s.tier ? `, the wave calls for ${roman(call)}` : ''}">`
+    + `<div class="td-tier-head">${key(-1)}<b class="td-tier-name">Tier ${roman(s.tier)}</b><strong class="td-verdict">${esc(v.word)}</strong>${key(1)}</div>`
+    + `<div class="td-ladder" role="meter" aria-label="Your watts on the tier ladder" aria-valuemin="${watts(s, lo)}" aria-valuemax="${watts(s, hi)}" aria-valuenow="${watts(s, s.power.nowFtp)}">${blocks}`
+    + `<b class="td-needle" style="left:${pct(s.power.nowFtp)}"><small>${watts(s, s.power.nowFtp)}</small></b></div></div>`;
+}
+
+/**
+ * Under the ladder: the selected tier's target (watts at the gearbox cadence) and what the next tier adds; the
+ * Railgun adds its charge (a full pulse when charged; a quick snap at a small alien spends a sliver).
  */
 export function guideHtml(s: TdSnapshot, full = true): string {
-  const p = s.power, rated = s.tierFtp, top = rated * p.cap, scale = top * 1.3;
-  const ps = powerState(p.nowFtp, rated, p.cap), at = (ftp: number) => `${(Math.min(1, Math.max(0, ftp / scale)) * 100).toFixed(1)}%`;
-  const short = Math.round(Math.min(1, ps.share) * 100);
-  const verdict = s.swapLeft > 0 ? `<strong>Mounting</strong> · turret silent ${Math.ceil(s.swapLeft)}s`
-    : ps.state === 'under' ? `<strong>${watts(s, ps.gapFtp)} W under</strong> · shots at ${short}%`
-    : ps.state === 'over' && s.tier < s.tierCount ? `<strong>Over the cap</strong> · shift up to ${roman(Math.max(s.tier + 1, s.suggestedTier))}`
-    : `<strong>Full power</strong> · ${watts(s, rated)}–${watts(s, top)} W`;
+  const target = `${watts(s, s.tierFtp)}+ W · ${s.power.refRpm} rpm`;
   const next = s.tier < s.tierCount ? `${roman(s.tier + 1)}: ${tierGain(s.weapon, s.tier, s.tier + 1)}` : 'Top tier';
-  const meter = `<div class="td-meter" role="meter" aria-label="Power against tier ${roman(s.tier)}" aria-valuemin="0" aria-valuemax="${watts(s, scale)}" aria-valuenow="${watts(s, p.nowFtp)}">`
-    + `<i class="td-band" style="left:${at(rated)};width:calc(${at(top)} - ${at(rated)})"></i><b class="td-needle" style="left:${at(p.nowFtp)}"></b></div>`;
   const rail = s.weapon === 'rail'
     ? `<div class="td-charge${s.railProgress >= 1 ? ' ready' : ''}" title="The Railgun banks your watts: a full pulse when charged, quick snaps at small aliens spend a sliver"><i style="width:${(s.railProgress * 100).toFixed(0)}%"></i><span>${s.railProgress >= 1 ? 'Pulse ready' : `Charging ${Math.floor(s.railProgress * 100)}%`}</span></div>`
     : '';
-  return `<div class="td-guide ${s.swapLeft > 0 ? 'mount' : ps.state}">${meter}<p class="td-verdict">${verdict}</p>${rail}${full ? `<p class="td-gain">${esc(next)}</p>` : ''}</div>`;
+  return `<div class="td-guide">${rail}<p class="td-gain"><b>${esc(target)}</b>${full ? ` · ${esc(next)}` : ''}</p></div>`;
 }
 
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;

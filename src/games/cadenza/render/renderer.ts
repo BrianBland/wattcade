@@ -213,7 +213,7 @@ export class CadenzaRenderer implements GameRenderer {
     // blocks
     const speed = s.menu ? 0 : sampleAt(t.speed, t.hz, p);
     this.blocks!.update(s.blockState, this.craft.group.position, dCraft, this.fr.f, speed, dt, tNow, {
-      absorb: (c) => { this.craft!.absorb(c); play('coin', { vol: 0.14, minGapS: 0.05, pitch: 0.9 + 0.3 * Math.random() }); },
+      absorb: (c, tier) => { this.craft!.absorb(c); play('coin', { vol: 0.1, minGapS: 0.045, pitch: 0.84 + tier * 0.42 }); },
       greyHit: () => { this.craft!.greyHit(); this.shake = 1; this.hurt = 1; },
     });
 

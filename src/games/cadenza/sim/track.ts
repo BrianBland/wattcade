@@ -12,10 +12,11 @@ export type Difficulty = 'casual' | 'pro' | 'elite';
 export type Mode = 'mono' | 'classic';
 export const DIFFICULTIES: readonly Difficulty[] = ['casual', 'pro', 'elite'];
 
-export const DIFF: Record<Difficulty, { lanes: number; minGap: number; thr: number; grey: number; buildZone: 3 | 4; dropZone: 4 | 5; sprintS: number; holdZone: 3 | 4; sprintEveryS: number; restS: number; mixRestS: number; maxWorkS: number; periodicRestS: number }> = {
-  casual: { lanes: 3, minGap: 0.36, thr: 0.35, grey: 0.05, buildZone: 3, dropZone: 4, sprintS: 10, holdZone: 3, sprintEveryS: 150, restS: 25, mixRestS: 36, maxWorkS: 150, periodicRestS: 40 },
-  pro: { lanes: 3, minGap: 0.22, thr: 0.22, grey: 0.12, buildZone: 4, dropZone: 5, sprintS: 15, holdZone: 3, sprintEveryS: 120, restS: 15, mixRestS: 24, maxWorkS: 180, periodicRestS: 30 },
-  elite: { lanes: 5, minGap: 0.11, thr: 0.12, grey: 0.18, buildZone: 4, dropZone: 5, sprintS: 20, holdZone: 4, sprintEveryS: 75, restS: 12, mixRestS: 20, maxWorkS: 210, periodicRestS: 25 },
+/** Effort ramp only. Lane count comes from the ship (`ships.ts`), not the difficulty. */
+export const DIFF: Record<Difficulty, { minGap: number; thr: number; grey: number; buildZone: 3 | 4; dropZone: 4 | 5; sprintS: number; holdZone: 3 | 4; sprintEveryS: number; restS: number; mixRestS: number; maxWorkS: number; periodicRestS: number }> = {
+  casual: { minGap: 0.36, thr: 0.35, grey: 0.05, buildZone: 3, dropZone: 4, sprintS: 10, holdZone: 3, sprintEveryS: 150, restS: 25, mixRestS: 36, maxWorkS: 150, periodicRestS: 40 },
+  pro: { minGap: 0.22, thr: 0.22, grey: 0.12, buildZone: 4, dropZone: 5, sprintS: 15, holdZone: 3, sprintEveryS: 120, restS: 15, mixRestS: 24, maxWorkS: 180, periodicRestS: 30 },
+  elite: { minGap: 0.11, thr: 0.12, grey: 0.18, buildZone: 4, dropZone: 5, sprintS: 20, holdZone: 4, sprintEveryS: 75, restS: 12, mixRestS: 20, maxWorkS: 210, periodicRestS: 25 },
 };
 /** ERG watts (FTP fraction) per effort phase, for the ERG option. */
 export const ERG_FTP = { cruise: 0.65, climb: [0.75, 0.92], sprint: 1.12, hold: 0.88, recover: 0.5 } as const;
@@ -63,7 +64,7 @@ export interface Track {
   /** From the music, for the renderer's pulses and skyline (program seconds / curves at hz). */
   beats: number[]; downbeats: number[]; phrases: number[]; bands: [number[], number[], number[]]; intensity: number[];
 }
-export interface TrackOpts { difficulty: Difficulty; mode: Mode; seed: number; vBase?: number; maxGrade?: number }
+export interface TrackOpts { difficulty: Difficulty; mode: Mode; seed: number; lanes?: number; vBase?: number; maxGrade?: number }
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 export function hexHue(hex: string | undefined): number {
@@ -213,7 +214,7 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
   const launches = stunts.filter((s) => s.kind === 'launch');
   const onsets = tl.onsets.filter((s) => s.s >= d.thr && s.t > 2 && s.t < tl.durationS - 1
     && !launches.some((l) => s.t > l.t0 - LAUNCH.clearBefore && s.t < l.t1 + LAUNCH.clearAfter)); // launches are block-free: just punch it
-  const half = (d.lanes - 1) / 2;
+  const lanes = o.lanes ?? 3, half = (lanes - 1) / 2;
   let lastT = -1, lane = 0;
   for (const s of onsets) {
     if (s.t - lastT < d.minGap) continue;
@@ -242,7 +243,7 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
     }
   }
   return {
-    durationS: tl.durationS, hz, lanes: d.lanes, maxGrade, dist, speed, height, grade, curve, zones, blocks, rideBlocks, roll, tunnel, tunnels, stunts,
+    durationS: tl.durationS, hz, lanes, maxGrade, dist, speed, height, grade, curve, zones, blocks, rideBlocks, roll, tunnel, tunnels, stunts,
     beats: tl.beats, downbeats: tl.downbeats, phrases: tl.phrases, bands: tl.bands, intensity: tl.intensity,
   };
 }

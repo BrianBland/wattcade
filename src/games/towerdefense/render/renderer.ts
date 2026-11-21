@@ -799,7 +799,7 @@ export class TdRenderer implements GameRenderer {
     for (const tw of s.towers) {
       if (tw.kind !== 'flamer' || s.grid <= 0) continue;
       const m = this.machinery.towerMuzzle(tw as TowerView, this.view, t), a = tw.angle + this.view.rot, L = tw.level;
-      // Bursts: aim locked while it fires (sim), then a short cool-off; the fire travels out and lets go (blastFx).
+      // Bursts: aim locked while it fires (sim), then a short cool-off; the fire travels out, then recedes into the mouth (blastFx).
       const age = tw.burstAt != null ? s.t - tw.burstAt : -1, dur = tw.burstS ?? 0;
       const firing = age >= 0 && age <= dur, range = TOWERS.flamer.range * LEVEL_RANGE[L - 1] * k, half = TOWERS.flamer.cone ?? 0.5;
       // The mouth's heat lights the pad and road around it: wider and hotter every level, flaring while it fires.

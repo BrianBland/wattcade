@@ -70,19 +70,20 @@ export function prepareBlastSprites() { sprites ??= bake(); }
 const sp = () => (sprites ??= bake());
 const heatCss = (h: number) => { const [r, g, b] = heatColor(h); return `rgb(${r | 0},${g | 0},${b | 0})`; };
 
-/** How long a Flamethrower burst's front takes to reach full range, and its fire to let go of the mouth and fade (s). */
-export const FLAME_REACH_S = 0.28, FLAME_LETGO_S = 0.32, FLAME_FADE_S = 0.42;
+/** How long a Flamethrower burst's front takes to reach full range, and to pull back into the mouth after it (s). */
+export const FLAME_REACH_S = 0.28, FLAME_RECEDE_S = 0.34;
 /**
  * The part of a burst's fire on screen, `age` seconds into a burst lasting `dur`: the slice [tail, head] of the
  * painted fan (0 = mouth, 1 = front), pushed `drift` of its length further out, at `alpha`; null once it is gone.
+ * The front races out as the burst starts and, when it ends, recedes back into the mouth.
  */
 export function flameSpan(age: number, dur: number): { tail: number; head: number; drift: number; alpha: number } | null {
   if (age < 0) return null;
-  const head = Math.min(1, age / FLAME_REACH_S);
-  if (age <= dur) return { tail: 0, head, drift: 0, alpha: 1 };
-  const e = age - dur;
-  if (e >= FLAME_FADE_S) return null;
-  return { tail: Math.min(head, e / FLAME_LETGO_S), head, drift: e * 0.35, alpha: 1 - (e / FLAME_FADE_S) ** 2 };
+  const out = Math.min(1, age / FLAME_REACH_S);
+  if (age <= dur) return { tail: 0, head: out, drift: 0, alpha: 1 };
+  const e = age - dur, head = out * (1 - e / FLAME_RECEDE_S);
+  if (head <= 0) return null;
+  return { tail: 0, head, drift: 0, alpha: 0.6 + 0.4 * head };
 }
 
 export class Blasts {
@@ -93,7 +94,7 @@ export class Blasts {
   private craters: Crater[] = [];
   private embers: Ember[] = [];
   private jets: Jet[] = [];
-  /** Each Flamethrower's last burst: where and which way it fired (a finished burst drifts on along it). */
+  /** Each Flamethrower's last burst: where and which way it fired (a finished burst recedes along it). */
   private jetBurst = new Map<number, { x: number; y: number; a: number; range: number; smoked: boolean }>();
   private clock = 0;
 
@@ -182,8 +183,8 @@ export class Blasts {
     for (const j of this.jets) {
       const img = s.jet[j.frame];
       g.save(); g.translate(j.x, j.y); g.rotate(j.a - Math.PI / 2);
-      // Only the travelling part of the fire is drawn: its front races out from the mouth as a burst starts, and when
-      // the burst ends its back leaves the mouth and the whole mass drifts on outward.
+      // Only the fire up to its front is drawn: the front races out from the mouth as a burst starts and pulls back in
+      // when it ends.
       // Both ends are feathered over the speckled fire, so they read as a ragged front and a breaking-up tail.
       if (j.head - j.tail > 0.01) {
         const src = j.tail > 0 || j.head < 1 ? this.feather(img, j.tail, j.head) : img, dx = j.len * (j.drift - 0.02);
@@ -237,7 +238,7 @@ export class Blasts {
    * The Flamethrower's duckbill burner at screen (x, y), aimed `a` (0 = up the screen), `w` px across: idle, flame licks
    * curl off the mouth, more and hotter every level (L1 a banked ember, L5 white-hot). A burst (`burst.age` seconds
    * into one lasting `burst.dur`) throws a fan of fire `range` px long that travels out from the mouth; after it ends
-   * the fire leaves the mouth along the burst's own line and drifts on, smoking, while the tower is free to turn.
+   * the fire recedes back into the mouth along the burst's own line, leaving smoke where its front was.
    * `key` tells towers apart.
    */
   burner(x: number, y: number, a: number, w: number, level: number, k: number, dt: number, burst?: { age: number; dur: number; range: number }, key = 0) {
@@ -255,13 +256,13 @@ export class Blasts {
     // The painted fire's front billows about 90% along the sprite; keep the sprite's aspect so its pixels stay square.
     const R = st.range, len = R / 0.9, bx = Math.sin(st.a), by = -Math.cos(st.a);
     this.jets.push({ x: st.x, y: st.y, a: st.a, len, wide: len * JET_H / JET_W, tail: span.tail, head: span.head, drift: span.drift, alpha: span.alpha, glow: 0.06 + 0.03 * L, frame: Math.floor(this.clock * 20 + key * 3.7) % JET_FRAMES });
-    // Black smoke rolls off the front while it burns, and the fire leaves a smoky trail as it lets go of the mouth.
+    // Black smoke rolls off the front while it burns, and hangs where the front was as the fire pulls back.
     const soot = (f: number) => {
       const off = (Math.random() - 0.5) * R * 0.35, v = k * (2 + Math.random() * 3);
       this.embers.push({ x: st!.x + bx * R * f + by * -off, y: st!.y + by * R * f + bx * off, vx: bx * v, vy: by * v, age: 0, life: 0.5 + Math.random() * 0.4, size: u * (1.6 + Math.random() * 1.4) * (0.6 + f), heat: 0.15, rise: k * 6 });
     };
     if (firing) { if (span.head >= 1) for (let n = 7 * dt + Math.random(); n >= 1 && this.embers.length < MAX_EMBERS; n--) soot(0.8 + Math.random() * 0.15); }
-    else if (!st.smoked) { st.smoked = true; for (let i = 0; i < 7 && this.embers.length < MAX_EMBERS; i++) soot(0.35 + i * 0.09); }
+    else if (!st.smoked) { st.smoked = true; for (let i = 0; i < 5 && this.embers.length < MAX_EMBERS; i++) soot(0.7 + i * 0.06); }
   }
 
   private scratch: HTMLCanvasElement | null = null;
@@ -271,7 +272,9 @@ export class Blasts {
     if (c.width !== img.width || c.height !== img.height) { c.width = img.width; c.height = img.height; }
     const cg = c.getContext('2d')!, F = 0.16;
     cg.globalCompositeOperation = 'copy'; cg.globalAlpha = 1; cg.drawImage(img, 0, 0);
-    const gr = cg.createLinearGradient(0, 0, img.width, 0), at = (v: number) => Math.max(0, Math.min(1, v));
+    // radial from the mouth, so the front is an arc like the fan's own billowing front
+    const Rr = Math.hypot(img.width, img.height / 2), sc = img.width / Rr;
+    const gr = cg.createRadialGradient(0, img.height / 2, 0, 0, img.height / 2, Rr), at = (v: number) => Math.max(0, Math.min(1, v * sc));
     if (tail > 0) { gr.addColorStop(at(tail - F / 2), 'rgba(0,0,0,0)'); gr.addColorStop(at(tail + F / 2), 'rgba(0,0,0,1)'); } else gr.addColorStop(0, 'rgba(0,0,0,1)');
     if (head < 1) { gr.addColorStop(at(Math.max(tail + F / 2, head - F)), 'rgba(0,0,0,1)'); gr.addColorStop(at(head), 'rgba(0,0,0,0)'); } else gr.addColorStop(1, 'rgba(0,0,0,1)');
     cg.globalCompositeOperation = 'destination-in'; cg.fillStyle = gr; cg.fillRect(0, 0, c.width, c.height);

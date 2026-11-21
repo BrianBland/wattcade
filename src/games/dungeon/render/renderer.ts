@@ -1,7 +1,7 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
 import { desaturate } from '../../kit/actionButton';
-import { runLayout, bossHudLayout } from './layout';
+import { runLayout, bossHudLayout, shrineBannerLayout } from './layout';
 import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
@@ -667,22 +667,22 @@ export function createRenderer(): GameRenderer {
       }
     }
 
-    // active shrine banner
+    // active shrine banner, then the curse stacked 50*hu below it
     const act = s.shrines.find((x) => x.state === 'active');
-    const infoTop=s.boss?.active?bossHudLayout(W,H,insetCss*dpr,hu).y+78*hu:L+28*hu;
-    if (act) {
-      const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by=infoTop;
+    const banners = shrineBannerLayout(W, H, insetCss * dpr, u, hu, (act && s.curse ? 2 : 1) as 1 | 2);
+    const shrineBar = act ? banners[0] : undefined, curseBar = s.curse ? (act ? banners[1] : banners[0]) : undefined;
+    if (act && shrineBar) {
+      const { x: bx, y: by, w: bw } = shrineBar;
       bar(bx, by, bw, 14 * u, act.progress, SHRINE_COLORS[act.kind], '');
       gg.fillStyle = '#fff'; gg.textAlign = 'center'; gg.font = pixelFont(fs);
-      fillText(gg, `${act.label} — ${Math.ceil(act.leftS)}s`, W / 2, by - 6 * u); gg.textAlign = 'left';
+      fillText(gg, `${act.label} — ${Math.ceil(act.leftS)}s`, bx + bw / 2, by - 6 * u); gg.textAlign = 'left';
     }
     // active curse
-    if (s.curse) {
-      const c = s.curse, bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2;
-      const by=infoTop+(act?50*hu:0);
+    if (s.curse && curseBar) {
+      const c = s.curse, { x: bx, y: by, w: bw } = curseBar;
       bar(bx, by, bw, 14 * u, c.left / c.total, c.color, '');
       gg.fillStyle = c.color; gg.textAlign = 'center'; gg.font = pixelFont(fs);
-      fillText(gg, `☠ ${c.name}: ${c.desc} · ${Math.ceil(c.left)}s`, W / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
+      fillText(gg, `☠ ${c.name}: ${c.desc} · ${Math.ceil(c.left)}s`, bx + bw / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
     }
     // big banners (uniques, curses)
     let bannerRow = 0; // stack banners that overlap in time (e.g. EXPLORE straight into AMBUSH), newest lowest

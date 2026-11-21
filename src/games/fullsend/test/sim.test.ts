@@ -125,6 +125,27 @@ describe('leaps', () => {
   });
 });
 
+describe('medal stamp is known at arrive, before the gag ends', () => {
+  it('a z2 smash into the hay wall previews medal 0 with an empty results list, then records one result', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, simOpts: { tour: 'quick', forks: 'main' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 12 && !(snap().phase === 'payoff' && snap().piece?.kind === 'smash'); i++) s.step(1);
+    const q = snap();
+    expect(q.phase).toBe('payoff');
+    expect(q.piece?.medal).toBe(-1); // finishPiece has not run
+    expect(q.results).toEqual([]);
+    expect(q.last).toBeNull();
+    expect(q.pending).toEqual({ medal: 0, title: q.piece!.title, detail: `0/${q.piece!.n}` });
+    expect(q.phaseT).toBeLessThan(3.5); // the stamp's 3.5s window starts here, during the hay hit
+    for (let i = 0; i < 30 * 30 && snap().phase === 'payoff'; i++) s.step(1);
+    const done = snap();
+    expect(done.phase).not.toBe('payoff');
+    expect(done.results).toHaveLength(1);
+    expect(done.results[0]).toMatchObject({ medal: 0, detail: `0/${q.piece!.n}` });
+    expect(done.pending).toBeNull(); // cleared when finishPiece wrote last, so the preview cannot stamp again in recovery
+  });
+});
+
 describe('loops: pedal round', () => {
   const toLoop = () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'classic', forks: 'main' }, seed: 3 });

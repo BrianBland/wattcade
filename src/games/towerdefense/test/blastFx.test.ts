@@ -22,11 +22,12 @@ describe('painted blast sprites', () => {
     const centre = (i: number) => { const s = burstFrame(i), c = ((s.h >> 1) * s.w + (s.w >> 1)) * 4; return s.data[c + 1]; };
     expect(centre(0)).toBeGreaterThan(centre(BURST_FRAMES - 1)); // white-hot heart cools to soot
   });
-  it('paints the Flamethrower as one continuous jet: unbroken along its axis, hottest at the bill, looping seamlessly', () => {
+  it('paints the Flamethrower as one continuous stream: unbroken along its axis, hottest at the bill, looping seamlessly', () => {
     const f = jetFrame(0.3), mid = Math.floor(JET_H / 2), at = (x: number) => (mid * JET_W + x) * 4;
     for (let x = Math.ceil(JET_W * 0.04); x < JET_W * 0.6; x++) expect(f.data[at(x) + 3]).toBeGreaterThan(100);
-    const lum = (x: number) => f.data[at(x)] + f.data[at(x) + 1] + f.data[at(x) + 2];
-    expect(lum(Math.floor(JET_W * 0.1))).toBeGreaterThan(lum(Math.floor(JET_W * 0.6)));
+    // mean brightness of the flame in a column: the stream is pale near the bill, orange in its rolling head
+    const lum = (x: number) => { let sum = 0, n = 0; for (let y = 0; y < JET_H; y++) { const i = (y * JET_W + x) * 4; if (f.data[i + 3] > 128) { sum += f.data[i] + f.data[i + 1] + f.data[i + 2]; n++; } } return sum / Math.max(1, n); };
+    expect(lum(Math.floor(JET_W * 0.1))).toBeGreaterThan(lum(Math.floor(JET_W * 0.72)) + 40);
     const a = jetFrame(0), b = jetFrame(1); let diff = 0;
     for (let i = 0; i < a.data.length; i++) diff = Math.max(diff, Math.abs(a.data[i] - b.data[i]));
     expect(diff).toBeLessThanOrEqual(1);

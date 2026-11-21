@@ -90,45 +90,52 @@ export function puffSprite(heat: number, seed = 7, S = PUFF_S): Sprite {
   return out;
 }
 
-/** Frames of the Flamethrower's flame (a seamless flow loop) and its size: mouth at the left edge, firing along +x. */
-export const JET_FRAMES = 12, JET_W = 192, JET_H = 128;
-/** The flame's bands, coolest to hottest: ox-blood rim, red-orange, orange, yellow, a near-white core (owner reference sheet). */
-export const JET_BANDS: number[][] = [[112, 22, 10], [198, 50, 16], [242, 112, 24], [255, 192, 62], [255, 246, 204]];
+/** Frames of the Flamethrower's flame (a seamless flow loop) and its size: mouth at the left edge's middle, firing along +x. */
+export const JET_FRAMES = 12, JET_W = 224, JET_H = 300;
+/** Half the flame's width at the mouth, as a share of the sprite's half-height (the duckbill's lip). */
+export const JET_MOUTH = 0.16;
+/** The flame's colours, coolest to hottest (owner reference sheet): dark ember, reds, orange, yellow, near-white. */
+export const JET_BANDS: number[][] = [[92, 16, 10], [152, 30, 12], [206, 60, 16], [240, 112, 22], [255, 166, 40], [255, 214, 92], [255, 246, 212]];
 /**
- * One frame of the Flamethrower's flame, after the owner's reference sheet: a short thin streak from the mouth (left
- * edge) feeding a big billowing fire cloud that fills the cone, a near-white core mottled red and orange,
- * crisp colour bands, and curling wisps and flecks torn off its edge. Everything flows outward as `phase` goes 0 → 1
- * (seamless loop: the noise fields slide one period and cross-fade).
+ * One frame of the Flamethrower's flame, after the owner's reference sheet: fire fanning straight out of the
+ * duckbill's wide mouth (left edge) across the tower's cone into a billowing front, painted at pixel-level detail —
+ * a near-white core speckled with yellow, orange and red, edges that break into tongues, curling wisps and a scatter
+ * of loose flecks. Everything flows outward as `phase` goes 0 → 1 (seamless: the noise slides one period and
+ * cross-fades).
  */
-export function jetFrame(phase: number, seed = 3, W = JET_W, H = JET_H): Sprite {
-  const out = sprite(W, H), D = 1.2;
-  const fade = (f: (o: number) => number) => f(phase * D) * (1 - phase) + f((phase - 1) * D) * phase;
-  const field = (u: number, v: number, sd: number, oct = 3) => fade((o) => fbm(u - o, v, sd, oct));
+export function jetFrame(phase: number, seed = 3, W = JET_W, H = JET_H, fanTan = 0.62): Sprite {
+  const out = sprite(W, H), P = 48; // flow period, px
+  // pixel-space noise flowing along +x (seamless loop)
+  const field = (px: number, py: number, scale: number, sd: number, oct = 3) => {
+    const a = fbm((px - phase * P) / scale, py / scale, sd, oct), b = fbm((px - (phase - 1) * P) / scale, py / scale, sd, oct);
+    return a * (1 - phase) + b * phase;
+  };
   const band = (h: number) => JET_BANDS[Math.max(0, Math.min(JET_BANDS.length - 1, Math.floor(clamp01(h) * JET_BANDS.length)))];
-  const ar = H / W; // v units per s unit, so the noise is isotropic in pixels
+  const half = H / 2;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const s = (x + 0.5) / W, v = ((y + 0.5) / H) * 2 - 1, vv = v * ar * 0.5; // vv: v in s units
-    const n = field(s * 5, vv * 5, seed), n2 = field(s * 9 + 7, vv * 9, seed + 9, 2), n3 = field(s * 16 + 3, vv * 16, seed + 5, 2);
-    // the streak from the mouth, and the cloud: an egg that tapers back toward the mouth and bulges forward
-    const streak = 1 - Math.abs(v) / (0.035 + 0.12 * s) - smooth(0.42, 0.5, s) * 2;
-    const s0 = 0.6, back = s < s0, rx = back ? 0.42 : 0.36, ry = 0.84 * (back ? 0.25 + 0.75 * smooth(0.18, s0, s) : 1);
-    const d = Math.hypot((s - s0) / rx, v / ry);
-    const cloud = 1 - d + (n - 0.5) * 0.95 + (n2 - 0.5) * 0.35;
-    const body = Math.max(streak, cloud);
-    // curling wisps and flecks torn off the edge
-    const wisp = d > 0.85 && d < 1.45 && Math.abs(((n2 * 3.2) % 1) - 0.5) < 0.07 && n > 0.5 ? 1 : 0;
-    const fleck = d > 0.9 && d < 1.6 && n3 > 0.74 ? 1 : 0;
-    if (body > -0.06) {
-      const core = clamp01(body * 1.6);
-      let h = 0.22 + core * 0.8 + (n2 - 0.5) * 0.9 - (s > 0.85 ? (s - 0.85) * 2 : 0);
-      const m = field(s * 13 + 21, vv * 13, seed + 31, 2);
-      if (m > 0.6 && s > 0.3) h -= 0.25 + (m - 0.6) * 2.5; // red-orange mottling through the fire
-      if (body < 0.07) h = Math.min(h, 0.15); // the dark rim
+    const s = (x + 0.5) / W, ly = (y + 0.5 - half) / half; // ly: -1..1 across
+    const lobe = field(x, y, 34, seed), mid = field(x, y, 11, seed + 9, 2), fine = field(x, y, 4, seed + 5, 2), grain = field(x, y, 1.6, seed + 17, 1);
+    // the fan: as wide as the duckbill at the mouth, opening at the cone's angle, with a billowing rounded front
+    const fanHalf = (JET_MOUTH + fanTan * s * (W / half)) * (1 + 0.16 * Math.sin(Math.PI * Math.min(1, s / 0.9)));
+    const front = 0.9 - 0.16 * ly * ly + (lobe - 0.5) * 0.14;
+    const e1 = 1 - Math.abs(ly) / fanHalf, e2 = (front - s) / 0.22;
+    const body = Math.min(e1 * 1.2, e2) + (lobe - 0.5) * 0.62 + (mid - 0.5) * 0.4 + (fine - 0.5) * 0.18;
+    const out1 = -body; // how far outside the edge
+    if (body > 0) {
+      // heat: hottest through the middle and near the mouth, speckled at pixel scale
+      const core = clamp01(body * 1.25);
+      let h = 0.13 + core * 0.66 + (1 - s) * 0.18 + (mid - 0.5) * 0.62 + (fine - 0.5) * 0.45 + (grain - 0.5) * 0.3;
+      if (body < 0.06) h = Math.min(h, 0.3); // a thin red rim
       const col = band(h);
-      put(out, x, y, col[0], col[1], col[2], edge(body, 0.03) * smooth(0, 0.02, s));
-    } else if (wisp || fleck) {
-      const col = band(fleck ? 0.3 + (n3 - 0.74) * 3 : 0.35 + (n - 0.5));
-      put(out, x, y, col[0], col[1], col[2], 1);
+      put(out, x, y, col[0], col[1], col[2], edge(body, 0.04) * smooth(0, 0.015, s));
+    } else if (out1 < 0.32 && s > 0.08) {
+      // the edge breaks up: loose flecks and curling wisps, thinning with distance
+      const fleck = fine + (grain - 0.5) * 0.5 - out1 * 1.1 > 0.62;
+      const wisp = Math.abs(((mid * 4.5) % 1) - 0.5) < 0.05 && lobe > 0.45 && out1 < 0.22;
+      if (fleck || wisp) {
+        const col = band(0.12 + (fine - 0.4) * 0.9 + (wisp ? 0.12 : 0) - out1);
+        put(out, x, y, col[0], col[1], col[2], 1);
+      }
     }
   }
   return out;

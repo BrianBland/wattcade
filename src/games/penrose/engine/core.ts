@@ -149,7 +149,7 @@ class View {
       this.scene.overrideMaterial = DEPTH_ONLY; this.camera.layers.set(2); R3.render(this.scene, this.camera); this.scene.overrideMaterial = null;
       this.camera.layers.set(1); R3.render(this.scene, this.camera); this.camera.layers.set(0); this.scene.background = bg; R3.autoClear = ac; }
   }
-  clear() { this.scene.clear(); this.updaters = []; this.yawFrames = null; this.yawK = undefined; this.overlay = false; }
+  clear() { this.scene.clear(); this.updaters = []; this.trackFade = null; this.yawFrames = null; this.yawK = undefined; this.overlay = false; }
 }
 
 /* ---------- the wheel ---------- */
@@ -458,7 +458,7 @@ function drift(view, tex, color, n, size, opt = {}) {
   const [l, r, b, t] = view.screenBox(), W = r - l, H = t - b;
   for (let i = 0; i < n; i++) { const s = sprite(tex, size, size, color, { opacity: opt.opacity ?? .9, depthTest: false, order: 4, add: opt.add }); const o = { x: rnd() * W, y: rnd() * H, vx: (opt.vx ?? .25) * (.5 + rnd()), vy: (opt.vy ?? -.15) * (.5 + rnd()), f: rnd() * TAU };
     view.scene.add(s); view.updaters.push(tt => { const x = l + (((o.x + tt * o.vx) % W) + W) % W, y = b + (((o.y + tt * o.vy + Math.sin(tt + o.f) * .3) % H) + H) % H; s.position.copy(view.sp(x + Math.sin(tt * 1.3 + o.f) * .25, y, 30));
-      s.material.rotation = tt * (opt.spin ?? 1) + o.f; if (opt.twinkle) s.material.opacity = (opt.opacity ?? .9) * (.35 + .65 * Math.abs(Math.sin(tt * opt.twinkle + o.f))); }); }
+      s.material.rotation = tt * (opt.spin ?? 1) + o.f; s.material.opacity = (opt.opacity ?? .9) * (opt.twinkle ? .35 + .65 * Math.abs(Math.sin(tt * opt.twinkle + o.f)) : 1) * (view.trackFade ? view.trackFade(s.position) : 1); }); }
 }
 function backdrop(view, tex, w, h, sx, sy, depth = -90, color = '#fff', opacity = 1) { const s = sprite(tex, w, h, color, { opacity }); s.position.copy(view.sp(sx, sy, depth)); view.scene.add(s); return s; }
 
@@ -904,6 +904,8 @@ function makeLevel(def, idx) {
     view.frame(fr.center, frames[0].b, pad); view.yawFrames = frames.length > 1 ? frames : null; view.yawK = undefined; }
   if (def.decor) def.decor(L);
   setHaze(L);
+  // ambient life per theme (./ambient.ts): slow motion at the edges of the scene, never on or beside the track
+  if (def.ambient !== false && $scope.ambient) L.ambient = $scope.ambient(L);
   const W = { mode: 'spawn', t: 0, road: null, s: 0, dir: 1, spin: 0, pos: new T.Vector2(), vel: new T.Vector2(), vz: 0, from: null };
   L.W = W;
   const attach = (r, s, dir) => { W.mode = 'road'; W.road = r; W.s = s; W.dir = dir; };

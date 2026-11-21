@@ -260,7 +260,7 @@ function sceneryPass(L, o = {}) {
     const under = new T.Mesh(new T.ConeGeometry(pw * .62, 1.35, 4), tri(sp(th, 0))); under.rotation.set(Math.PI, Math.PI / 4, 0); under.position.set(x, base - .45 - .675, z); gI.add(under);
     if (kind === 'tower') { B(gI, x - w / 2, z - w / 2, base, x + w / 2, z + w / 2, base + h, stone);   // B takes sketch order (x, y, z)
       const cap = new T.Mesh(new T.ConeGeometry(w * .78, .7, 4), roof); cap.rotation.y = Math.PI / 4; cap.position.set(x, base + h + .35, z); gI.add(cap);
-      for (let yy = base + h - 1; yy > base + .5; yy -= 1.3) { onFace(gI, 'x', x + w / 2, z, yy - .3, archGeo(.26, .55), win); onFace(gI, 'y', z + w / 2, x, yy - .3, archGeo(.26, .55), win); } }
+      for (let yy = base + h - 1; yy > base + .5; yy -= 1.3) { onFace(gI, 'x', x + w / 2, z, yy - .3, archGeo(.26, .55), win).userData.window = true; onFace(gI, 'y', z + w / 2, x, yy - .3, archGeo(.26, .55), win).userData.window = true; } }
     else if (kind === 'column') { CY(gI, x, z, w / 2, base, base + h, stone, 18); const dome = new T.Mesh(new T.SphereGeometry(w * .62, 16, 8, 0, TAU, 0, Math.PI / 2), roof); dome.position.set(x, base + h, z); gI.add(dome); CY(gI, x, z, w * .62, base + h - .12, base + h + .02, dark, 18); }
     else { // a stepped ziggurat crowned by a tree in the garden, a little domed shrine elsewhere
       for (let k = 0; k < 3; k++) { const ins = .25 + k * .4; B(gI, x - w / 2 + ins, z - w / 2 + ins, base + k * .4, x + w / 2 - ins, z + w / 2 - ins, base + (k + 1) * .4, k % 2 ? tri(th.idle) : stone); }

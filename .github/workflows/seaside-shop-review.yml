@@ -8,6 +8,9 @@ on:
       - '.github/workflows/seaside-shop-review.yml'
 permissions:
   contents: read
+concurrency:
+  group: seaside-shop-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 jobs:
   shop:
     runs-on: ubuntu-latest

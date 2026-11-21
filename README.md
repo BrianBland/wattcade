@@ -95,7 +95,7 @@ The site is static, so it ships as a Worker with no script: `wrangler.jsonc` poi
 3. Optional gate: Zero Trust → Access → self-hosted application on that hostname, with an email allow-list (free).
 
 **CI/CD (GitHub Actions)**
-- `ci.yml`: typecheck, tests, `sim:all`, build on every PR and push to main.
+- `ci.yml`: typecheck, asset validation, build, then the full test suite on every PR and push to main. Tests include every game's headless scenarios; `sim:all` is the local equivalent. Resource measurements are kept for seven days; see [CI audit](docs/CI_AUDIT.md).
 - `deploy.yml`: deploys to production after CI passes on main (also manually via *Run workflow*), without waiting on the arcade card clips: it ships with the cached ones, then a `clips` job re-records only the games whose clip is out of date (each clip is cached under a key of its game's code, shot, harness and dependency versions; a change to shared code such as `src/core` re-records all of them, ~11 min, Watershed ~6 of it, any other game under ~1.5 min) and `publish-clips` redeploys with them, unless main has moved on (the next deploy then publishes them from the cache). A failed recording keeps the previous clip and only warns.
 - `preview.yml`: each same-repo PR gets a `pr-<n>` preview URL, posted as a PR comment. It reuses main's cached card clips without re-recording (`--cached-only`).
 - Secrets (repo Settings → Secrets → Actions): `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`. Create the token from the **Edit Cloudflare Workers** template. Create a GitHub environment named `production` (optionally with required reviewers). Without the secrets, deploy and preview steps skip with a notice.

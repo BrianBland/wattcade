@@ -62,7 +62,7 @@ export function ferretRun(g: G, x: number, w: number, ty: number, tw: number, t:
   const fp = stopped ? 0.3 + k * 0.17 : (t * 0.25 * speed + k * 0.27) % 1;
   const [pos, ang] = bez(fp);
   g.save(); g.translate(pos.x, pos.y); g.rotate(ang); g.translate(0, tw * 0.3);
-  ferret(g, 0, 0, tw * 1.5, t * 10 * speed, { noShadow: true, sleep: stopped }, t); g.restore();
+  ferret(g, 0, 0, tw * 1.5, t * 10 * speed, { noShadow: true, sleep: stopped }, t, k); g.restore();
   glassShine(g, path, tw);
   coil(true);
   for (const p of w > 200 ? [0.06, 0.32, 0.56, 0.94] : [0.12]) {

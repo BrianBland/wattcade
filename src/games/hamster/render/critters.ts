@@ -1,6 +1,6 @@
 // The rest of Gerald's workforce: gerbils, guinea pigs and ferrets, each with its own silhouette.
 // Same conventions as `hamster()`: side view facing right, feet at (x, y), `s` ≈ body length, `p` = gait phase.
-import { FONT, TAU, rr, shadow, type Look } from './draw';
+import { FONT, TAU, quirk, rr, shadow, shiftColor, type Look } from './draw';
 type G = CanvasRenderingContext2D;
 
 export interface Gear { hardhat?: boolean; vest?: boolean; sweatband?: boolean }
@@ -43,8 +43,9 @@ function picket(g: G, px: number, s: number, text: string, time: number) {
 // ---------- gerbil ----------
 export const GERBIL = { light: '#f7e9cc', mid: '#d2a467', dark: '#9b6d3c', line: '#5c3e20', tip: '#4a3220' };
 /** Slim agouti body, long tufted tail, big hind feet, upright ears. */
-export function gerbil(g: G, x: number, y: number, s: number, p: number, look: Look & Gear = {}, time = 0) {
-  const f = GERBIL, still = !!look.sleep;
+export function gerbil(g: G, x: number, y: number, s: number, p: number, look: Look & Gear = {}, time = 0, seed = 0) {
+  const q = quirk(seed + 101), sh = (h: string, k = 1) => shiftColor(h, q.hue, q.light * k);
+  const f = { light: sh(GERBIL.light, 0.5), mid: sh(GERBIL.mid), dark: sh(GERBIL.dark), line: GERBIL.line, tip: sh(GERBIL.tip) }, hi = sh('#e6c28c'), hhi = sh('#ecd09e'), still = !!look.sleep;
   g.save(); g.translate(x, y);
   if (!look.noShadow) shadow(g, 0, 0, s * 0.4, s * 0.06, 0.3);
   if (look.flip) g.scale(-1, 1);
@@ -64,7 +65,7 @@ export function gerbil(g: G, x: number, y: number, s: number, p: number, look: L
   // body
   const bx = -s * 0.04, by = -s * 0.28, brx = s * 0.36, bry = s * 0.2;
   const bg = g.createRadialGradient(bx - brx * 0.2, by - bry * 0.8, s * 0.02, bx, by, brx * 1.1);
-  bg.addColorStop(0, '#e6c28c'); bg.addColorStop(0.6, f.mid); bg.addColorStop(1, f.dark);
+  bg.addColorStop(0, hi); bg.addColorStop(0.6, f.mid); bg.addColorStop(1, f.dark);
   g.fillStyle = bg; g.beginPath(); g.ellipse(bx, by, brx, bry, -0.1, 0, TAU); g.fill();
   g.strokeStyle = f.line; g.globalAlpha = 0.45; g.lineWidth = lw(s, 0.016, 1); g.stroke(); g.globalAlpha = 1;
   // white belly and a big hind haunch
@@ -82,12 +83,12 @@ export function gerbil(g: G, x: number, y: number, s: number, p: number, look: L
   // head: pointed, tilted down toward the nose
   const hx = s * 0.33, hy = -s * 0.4;
   const hg = g.createRadialGradient(hx - s * 0.05, hy - s * 0.07, 1, hx, hy, s * 0.2);
-  hg.addColorStop(0, '#ecd09e'); hg.addColorStop(0.6, f.mid); hg.addColorStop(1, f.dark);
+  hg.addColorStop(0, hhi); hg.addColorStop(0.6, f.mid); hg.addColorStop(1, f.dark);
   g.fillStyle = hg; g.beginPath(); g.ellipse(hx, hy, s * 0.17, s * 0.13, 0.3, 0, TAU); g.fill();
   g.beginPath(); g.ellipse(hx + s * 0.13, hy + s * 0.06, s * 0.1, s * 0.07, 0.35, 0, TAU); g.fill();
   g.fillStyle = 'rgba(255,250,238,0.95)'; g.beginPath(); g.ellipse(hx + s * 0.12, hy + s * 0.1, s * 0.08, s * 0.035, 0.35, 0, TAU); g.fill();
   // upright ear
-  g.fillStyle = f.dark; g.beginPath(); g.ellipse(hx - s * 0.08, hy - s * 0.13, s * 0.045, s * 0.08, -0.35, 0, TAU); g.fill();
+  g.fillStyle = f.dark; g.beginPath(); g.ellipse(hx - s * 0.08, hy - s * 0.13, s * 0.045 * q.ear, s * 0.08 * q.ear, -0.35, 0, TAU); g.fill();
   g.fillStyle = '#e9a2ad'; g.beginPath(); g.ellipse(hx - s * 0.075, hy - s * 0.125, s * 0.025, s * 0.055, -0.35, 0, TAU); g.fill();
   const blink = time % 6.3 > 6.15;
   bead(g, hx + s * 0.05, hy - s * 0.02, s * 0.05, still || blink, f.line, s);
@@ -104,7 +105,9 @@ export function gerbil(g: G, x: number, y: number, s: number, p: number, look: L
 export const GUINEA = { base: '#fbf3e6', shade: '#e4d3bd', ginger: '#dc8b3e', brown: '#4f321d', line: '#3f2715' };
 /** A tailless loaf: tricolour patches, petal ears, almost no visible legs. */
 export function guineaPig(g: G, x: number, y: number, s: number, p: number, look: Look & Gear = {}, time = 0, seed = 0) {
-  const c = GUINEA, still = !!look.sleep;
+  const q = quirk(seed + 211), pal = [['#dc8b3e', '#4f321d'], ['#e6b06a', '#7a5a3a'], ['#4a3a32', '#2a1d16'], ['#c9643a', '#f1e6d4'], ['#b9a58e', '#5d5048']][seed % 5];
+  const c = { ...GUINEA, ginger: shiftColor(pal[0], q.hue * 0.5, q.light * 0.5), brown: shiftColor(pal[1], q.hue * 0.5, q.light * 0.5) }, still = !!look.sleep;
+  const j = (k: number) => (q.size - 1) * k * s * 2.5;
   g.save(); g.translate(x, y);
   if (!look.noShadow) shadow(g, 0, 0, s * 0.48, s * 0.07, 0.3);
   if (look.flip) g.scale(-1, 1);
@@ -120,9 +123,9 @@ export function guineaPig(g: G, x: number, y: number, s: number, p: number, look
   g.fillStyle = c.base; body(); g.fill();
   g.save(); body(); g.clip();
   const flipPatch = seed % 2 === 1;
-  g.fillStyle = flipPatch ? c.brown : c.ginger; g.beginPath(); g.ellipse(-s * 0.3, -s * 0.33, s * 0.28, s * 0.3, 0.3, 0, TAU); g.fill();
-  g.fillStyle = flipPatch ? c.ginger : c.brown; g.beginPath(); g.ellipse(s * 0.02, -s * 0.52, s * 0.17, s * 0.16, 0, 0, TAU); g.fill();
-  g.fillStyle = c.ginger; g.beginPath(); g.ellipse(s * 0.33, -s * 0.38, s * 0.18, s * 0.12, -0.2, 0, TAU); g.fill();
+  g.fillStyle = flipPatch ? c.brown : c.ginger; g.beginPath(); g.ellipse(-s * 0.3 + j(1), -s * 0.33, s * 0.28, s * 0.3, 0.3, 0, TAU); g.fill();
+  g.fillStyle = flipPatch ? c.ginger : c.brown; g.beginPath(); g.ellipse(s * 0.02 - j(2), -s * 0.52, s * 0.17 * q.ear, s * 0.16, 0, 0, TAU); g.fill();
+  if (q.mark !== 0) { g.fillStyle = q.mark % 2 ? c.ginger : c.brown; g.beginPath(); g.ellipse(s * 0.33, -s * 0.38, s * 0.18, s * 0.12, -0.2, 0, TAU); g.fill(); }
   g.fillStyle = c.base; g.beginPath(); g.ellipse(s * 0.47, -s * 0.33, s * 0.05, s * 0.2, 0.5, 0, TAU); g.fill(); // blaze
   // shading and hair strands
   const sh = g.createLinearGradient(0, -s * 0.55, 0, 0); sh.addColorStop(0, 'rgba(255,255,255,0.18)'); sh.addColorStop(0.6, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(60,30,10,0.22)');
@@ -155,8 +158,14 @@ export const FERRET = { cream: '#f6ead3', fawn: '#c9a27a', sable: '#7a5236', dar
  * A long bounding ferret. `p` drives the arch of the gallop. Feet at (x, y), nose near x + 0.6s, tail to x − 0.75s.
  * Draw rotated to send it along a tube.
  */
-export function ferret(g: G, x: number, y: number, s: number, p: number, look: Look = {}, time = 0) {
-  const c = FERRET, still = !!look.sleep;
+const FERRET_MORPHS = [FERRET,
+  { ...FERRET, fawn: '#d9c0a0', sable: '#a98868', dark: '#6e5440', mask: '#8a6c54' },
+  { ...FERRET, cream: '#efe4d0', fawn: '#6a5040', sable: '#3e2c22', dark: '#1e140e', mask: '#2a1c14' },
+  { ...FERRET, fawn: '#f4ecdc', sable: '#e8dcc6', dark: '#cdbda4', mask: '#f0e6d4' },
+];
+/** `seed` picks a coat: sable, champagne, black sable or a nearly white "albino". */
+export function ferret(g: G, x: number, y: number, s: number, p: number, look: Look = {}, time = 0, seed = 0) {
+  const c = FERRET_MORPHS[seed % FERRET_MORPHS.length], still = !!look.sleep;
   g.save(); g.translate(x, y);
   if (!look.noShadow) shadow(g, 0, 0, s * 0.5, s * 0.05, 0.28);
   if (look.flip) g.scale(-1, 1);

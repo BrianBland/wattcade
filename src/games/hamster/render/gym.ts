@@ -1,6 +1,6 @@
 // Hamster Gym stations: barbells that are held, racked or resting on the floor, never floating.
 // Lifters stand up and face the camera, so the bar reads end to end like a real gym poster.
-import { FONT, FURS, TAU, rr, shadow, type Fur } from './draw';
+import { FONT, FURS, TAU, quirk, rr, shadow, varyFur, type Fur } from './draw';
 type G = CanvasRenderingContext2D;
 type P = { x: number; y: number };
 
@@ -112,7 +112,7 @@ const rep = (o: GymOpts, t: number, rate = 2.2) => o.stopped ? 0 : 0.5 - 0.5 * M
 
 /** One gym station with its feet on the floor at (x, y). `s` ≈ the lifter's size (like `hamster()`'s `s`). */
 export function gymStation(g: G, x: number, y: number, s: number, kind: GymKind, t: number, o: GymOpts = {}) {
-  const fur = o.fur ?? FURS.gerald, stopped = !!o.stopped, color = o.plate ?? PLATES[['press', 'squat', 'deadlift', 'curl'].indexOf(kind)];
+  const fur = varyFur(o.fur ?? FURS.gerald, quirk(Math.round((o.phase ?? 0) * 7) + 31)), stopped = !!o.stopped, color = o.plate ?? PLATES[['press', 'squat', 'deadlift', 'curl'].indexOf(kind)];
   const look: UprightLook = { fur, sleep: stopped, sweat: !stopped };
   g.save();
   if (o.mat !== false) mat(g, x, y, s);

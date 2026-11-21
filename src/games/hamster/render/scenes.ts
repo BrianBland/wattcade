@@ -6,6 +6,7 @@ import type { HamsterSnapshot } from '../sim/sim';
 import { gerbil, guineaPig, treadmill } from './critters';
 import { gymStation, mirror, type GymKind } from './gym';
 import { ferretRun } from './turbine';
+import { quirk, varyFur } from './draw';
 import { FONT, FURS, STEEL, TAU, glow, hamster, hash, rr, shadow, wheelWith, type Fur, type Look, type WheelStyle } from './draw';
 
 export interface Box { x: number; y: number; w: number; h: number }
@@ -40,19 +41,19 @@ export function geraldWheel(g: G, x: number, y: number, r: number, st: SceneStat
   if (giant > 1) run(x, y + r * 0.94);
 }
 function minion(g: G, x: number, y: number, r: number, st: SceneState, idx: number, fur: Fur, extra: Look = {}, gen = 0) {
-  const sign = st.strikeOn && idx % 3 === 0 ? 'STRIKE!' : undefined;
+  const sign = st.strikeOn && idx % 3 === 0 ? 'STRIKE!' : undefined, q = quirk(idx);
   if (gen === 2) {
     const top = treadmill(g, x, y + r * 1.12, r * 1.9, st.time * st.speed + idx, st.stopped);
-    guineaPig(g, x - r * 0.1, top, r * 1.05, st.spin * 5 + idx, { sleep: st.stopped, noShadow: true, sweatband: true, sign }, st.time, idx);
+    guineaPig(g, x - r * 0.1, top, r * 1.05 * quirk(idx + 50).size, st.spin * 5 + idx, { sleep: st.stopped, noShadow: true, sweatband: true, sign }, st.time, idx);
     return;
   }
   if (gen === 1) {
     wheelWith(g, x, y, r, st.spin * 1.4 + idx, style(st, idx), st.speed * 1.4, (fx, fy) =>
-      gerbil(g, fx + r * 0.08, fy, r * 0.8, st.spin * 5 + idx, { sleep: st.stopped, noShadow: true, hardhat: true, vest: true, sign }, st.time));
+      gerbil(g, fx + r * 0.08, fy, r * 0.8 * quirk(idx).size, st.spin * 5 + idx, { sleep: st.stopped, noShadow: true, hardhat: true, vest: true, sign }, st.time, idx));
     return;
   }
   wheelWith(g, x, y, r, st.spin * 1.4 + idx, style(st, idx), st.speed * 1.4, (fx, fy) =>
-    hamster(g, fx, fy, r * 0.75, st.spin * 5 + idx, { fur, sleep: st.stopped, noShadow: true, sign, ...extra }, st.time));
+    hamster(g, fx, fy, r * 0.75 * q.size, st.spin * 5 + idx, { fur: varyFur(fur, q), mark: q.mark, ear: q.ear, sleep: st.stopped, noShadow: true, sign, ...extra }, st.time));
 }
 
 // ---------- shared backgrounds ----------

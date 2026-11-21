@@ -119,7 +119,7 @@ describe('sim: death fx name the alien', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'sprints' }, seed: 3, simOpts: { autopilot: true } });
     const deaths: Array<Extract<Fx, { kind: 'death' }>> = [];
     const seen = new Set<number>();
-    for (let i = 0; i < 30 * 600 && !(deaths.length > 40 && deaths.some((d) => d.fire && d.color === 'red')); i++) {
+    for (let i = 0; i < 30 * 900 && !(deaths.length > 40 && deaths.some((d) => d.fire && d.color === 'red')); i++) {
       s.step(1);
       for (const f of (s.sim.snapshot() as TdSnapshot).fx) if (f.kind === 'death' && !seen.has(f.id)) { seen.add(f.id); deaths.push(f); }
     }

@@ -99,7 +99,7 @@ describe('level data seam', () => {
       for (const e of snap.enemies) {
         if (e.flying) continue;
         walkers++;
-        if (e.kind === 'boss') { bosses++; expect(e.radius).toBe(NARROW_ROAD.bossRadius); }
+        if (e.kind === 'boss') { bosses++; expect(e.radius).toBeCloseTo(NARROW_ROAD.bossRadius * 1.5, 6); } // bossSize
         // lane offset plus the walkers' wobble, inside the road
         expect(g.distanceToRoad(e)).toBeLessThan(level.roadHalfWidth);
       }

@@ -1,5 +1,5 @@
-// Levels as workouts (docs/towerdefense/LEVELS-DESIGN.md §1–3): a level = a seeded map + a fixed wave list
-// (warm-up → sets of work waves and a boss, easy recovery waves between sets → done). Pure: no rng but the seed's.
+// Levels as workouts (docs/towerdefense/LEVELS-DESIGN.md §1–3): a level = a seeded map + a fixed segment list
+// (warm-up → sets that build to a peak or a boss, a trough between sets → done); the flow never stops between them. Pure: no rng but the seed's.
 import { makeRng } from '../../../core/rng';
 import { GROUND_STYLES, ROAD_STYLES, padsFor, type GroundStyle, type RoadStyle } from './generator';
 import type { WaveRole } from './waves';
@@ -27,11 +27,10 @@ export interface LevelSpec {
 }
 
 /**
- * Rough minutes per wave including its lull (lull 45 s + a 90–150 s work wave; bosses run longer). Sizes the wave
- * lists, so it is left as tuned: the shorter first (15 s) and easy-wave (25 s) lulls make a level run ~0.5–1.5 min
- * under its estimate without changing which waves it has.
+ * Rough minutes per segment of the flow (segmentS 120 s, troughS 100 s; a boss peak lasts until its boss dies,
+ * capped at bossPeakMaxS). Sizes the segment lists so a level runs close to its minutes.
  */
-export const WAVE_MIN = { work: 2.75, boss: 3.25, easy: 2.75 } as const;
+export const WAVE_MIN = { work: 2, boss: 2.75, easy: 1.75 } as const;
 export interface LevelWave { role: WaveRole; warmup?: boolean; set: number; pos: number; of: number }
 
 /** Bosses for a level length: 0–1 at 15 min, 1 at 20–25, 2 at 30–40, 3 at 60 (the seed picks within a band). */
@@ -101,7 +100,7 @@ export function endlessMap(seed: number, grounds: readonly GroundStyle[] = GROUN
 }
 
 /** Stars from the share of base HP not lost over the level, heals not counted (a fall is no stars). */
-export function starsFor(hpFrac: number, two = 0.5, three = 0.85): 1 | 2 | 3 {
+export function starsFor(hpFrac: number, two = 0.5, three = 1): 1 | 2 | 3 {
   return hpFrac >= three ? 3 : hpFrac >= two ? 2 : 1;
 }
 /** The campaign levels open to play: the first, and each one after a cleared level. */

@@ -18,6 +18,9 @@ export const achievements: AchievementDef[] = [
   feat(G, { id: 'ws_dry_feet', name: 'Dry Feet', desc: 'Finish a Watershed ride without flooding Millbrook', bonusXp: 40, check: (r) => hasEvent(r, 'rideDone') && Number(r.gameSummary.floodS ?? 1) === 0 }),
   tally(G, 'dams', (r) => num(r, 'damsBroken'))({ id: 'ws_dam_buster', name: 'Dam Buster', desc: 'Flush away 15 beaver dams', bonusXp: 50, goal: 15, unit: ' dams' }),
   tally(G, 'harvests', r => num(r, 'harvests'))({ id: 'ws_breadbasket', name: 'Breadbasket', desc: 'Bring in 200 harvests across Watershed rides', bonusXp: 60, goal: 200, unit: ' harvests' }),
+  feat(G, { id: 'ws_level_clear', name: 'First Drops', desc: 'Clear a Watershed campaign level', bonusXp: 40, check: (r) => num(r, 'levelGoal') >= 1 }),
+  feat(G, { id: 'ws_full_bucket', name: 'Full Bucket', desc: 'Earn all 3 drops on a Watershed level', bonusXp: 60, check: (r) => num(r, 'levelDrops') >= 3 }),
+  feat(G, { id: 'ws_campaign', name: 'Keeper of the Watershed', desc: 'Clear all 8 Watershed campaign levels', bonusXp: 150, check: (r) => num(r, 'levelsCleared') >= 8 }),
   { id: 'ws_meteor', name: 'Extinction Event', desc: 'Witness a meteor strike in Watershed', bonusXp: 60, check: (_p, r) => hasEvent(r, 'eventHit', (d) => d.kind === 'meteor') },
   feat(G, { id: 'ws_act_of_nature', name: 'Act of Nature', desc: 'Finish a Watershed ride after two geological events have completed', bonusXp: 40, check: (r) => hasEvent(r, 'rideDone') && new Set(r.events.filter(e => e.type === 'eventDone').map(e => e.data?.kind).filter(kind => ['earthquake', 'landslide', 'volcano', 'meteor'].includes(String(kind)))).size >= 2 }),
 ];

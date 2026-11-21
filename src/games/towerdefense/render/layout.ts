@@ -16,6 +16,8 @@ export interface TdLayout {
   /** Standalone renderer fallback only; the shell supplies controls in normal play. */
   dock: { construct: Box; workshop: Box; actions: Box[] };
   banner: { x: number; y: number; w: number };
+  /** The boss health bar: full width along the top of the field area. */
+  bossBar: Box;
 }
 /** World units of hive kept visible beyond the spawn edge in landscape, so the enemy side reads. */
 export const HIVE_SHOW = 20;
@@ -93,6 +95,7 @@ export function layout(W: number, H: number, inset: number | Insets, hudControls
   return {
     UH, wide, u, column, field, status, current, dock, workshop, brood, objective,
     banner: { x: area.x + area.w / 2, y: area.y + area.h / 2, w: area.w },
+    bossBar: { x: area.x, y: area.y, w: area.w, h: Math.min(44, Math.max(30, 38 * u)) },
     garage: { x: (W - gw) / 2, y: pad, w: gw, h: Math.max(0, UH - 2 * pad) },
   };
 }
@@ -128,4 +131,16 @@ export function fieldClearsHud(view: FieldView, shape: readonly HudOcclusion[], 
       return dx * dx + dy * dy >= radius * radius;
     });
   });
+}
+
+/** Peak scale of the boss name card's slam-in. */
+export const BOSS_CARD_SLAM = 1.35;
+/**
+ * Boss name card placement: centred on the free area over the field (L.banner), never the full canvas,
+ * so landscape's left status column cannot cover its first letters. `fit` shrinks the text so the
+ * widest line, at the slam-in peak, stays inside 94% of that area.
+ */
+export function bossCard(L: TdLayout, titleW: number, subW: number): { x: number; y: number; fit: number } {
+  const widest = Math.max(1, titleW, subW) * BOSS_CARD_SLAM;
+  return { x: L.banner.x, y: L.banner.y, fit: Math.min(1, (L.banner.w * 0.94) / widest) };
 }

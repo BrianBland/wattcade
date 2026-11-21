@@ -8,7 +8,7 @@ export const module: GameModule = {
   id: 'towerdefense',
   accent: '#00f0ff',
   title: 'Dynamo Defense',
-  blurb: 'Your pedaling powers the base. Each wave is one alien brood and brings the weapon to match; build towers for the rest, sprint for Overdrive.',
+  blurb: 'Your pedaling powers the base. Shift tiers to set the effort, swap weapons to match the aliens on the radar, build towers, and sprint for Overdrive.',
   progressLine, drawCard,
   tags: ['sprint', 'intervals'],
   createSim(ctx, opts) {

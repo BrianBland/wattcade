@@ -9,12 +9,19 @@
 //  - Beavers dam a slow stretch during the still pools; fast water erodes the dam (it is real terrain).
 
 import type { Terrain } from './terrain';
+import type { GoalKind } from './levels';
 
 export type ObjectiveKind = 'grist' | 'saw' | 'village' | 'dam' | 'fields';
 export interface Mill { kind: 'grist' | 'saw'; x: number; y: number; spin: number; fit: number; output: number; fitS: number }
 export interface Field { x: number; y: number; r: number; growth: number; wet: boolean; drowned: boolean; harvests: number }
-export interface Dam { x: number; y: number; build: number; added: Float32Array; base: Float32Array; cells: Int32Array; broken: boolean; health: number }
-export interface Objective { kind: ObjectiveKind; title: string; goal: string; progress: number; state: 'active' | 'done' | 'failed'; target: { x: number; y: number } | null }
+/**
+ * A dam is real terrain raised over `cells`. `beaver` = the free ride's random dam; `gate` = a campaign beaver gate the
+ * rider placed (built at `rate` per second, set by the sim from time in the band); `log` = an old log dam a level starts with.
+ */
+export interface Dam { kind: 'beaver' | 'gate' | 'log'; x: number; y: number; build: number; height: number; rate: number; added: Float32Array; base: Float32Array; cells: Int32Array; broken: boolean; health: number }
+/** Millbrook's levee: a ring of raised earth the villagers build (and patch) up to `build` × its full height. */
+export interface Levee { build: number; height: number; cells: Int32Array; base: Float32Array }
+export interface Objective { kind: ObjectiveKind | GoalKind; title: string; goal: string; progress: number; state: 'active' | 'done' | 'failed'; target: { x: number; y: number } | null }
 export type JobCue = { type: 'objectiveDone'; kind: ObjectiveKind } | { type: 'objectiveFailed'; kind: ObjectiveKind } | { type: 'harvest' }
   | { type: 'beavers' } | { type: 'damBroken' } | { type: 'flooding' } | { type: 'millTurning'; kind: 'grist' | 'saw' };
 
@@ -25,16 +32,25 @@ export class Jobs {
   village: { x: number; y: number; r: number; wet: number; floodS: number; floodBlockS: number };
   fields: Field[];
   dam: Dam | null = null;
+  levee: Levee | null = null;
   objective: Objective | null = null;
   damsBroken = 0; harvests = 0; objectivesDone = 0;
+  /** Field-seconds spent drowned (river phases). */
+  drownedS = 0;
+  /** Count Millbrook's flooding even without a village objective (campaign surges). */
+  watchVillage = false;
   private acc = 0; private wasTurning = { grist: false, saw: false }; private floodCued = false;
 
   constructor(private t: Terrain) {
     const { nx, ny, saddles, ridges, side } = t;
-    const shallowest = (r: number) => saddles.filter((s) => s.ridge === r).reduce((a, s) => (s.depth < a.depth ? s : a));
+    // saddles ranked by crest height (the cross-tilt matters as much as the notch depth). The grist mill sits behind the
+    // second-lowest crest: the river doesn't take it by itself, but the current can tip it over (the highest can be
+    // metres higher, out of reach)
+    const crest = (s: { ridge: number; x: number }) => t.h[s.ridge * nx + s.x];
+    const shallowest = (r: number) => { const q = saddles.filter((s) => s.ridge === r).sort((a, b) => crest(a) - crest(b)); return q[Math.min(1, q.length - 1)]; };
     // the grist mill is a routing puzzle (behind the saddle the river doesn't take by itself); the sawmill sits on the
     // natural route below ridge 2 and is a cadence puzzle (it wants fast water)
-    const deepest = (r: number) => saddles.filter((s) => s.ridge === r).reduce((a, s) => (s.depth > a.depth ? s : a));
+    const deepest = (r: number) => saddles.filter((s) => s.ridge === r).reduce((a, s) => (crest(s) < crest(a) ? s : a));   // the lowest crest: the natural route
     const g = shallowest(ridges[0]), sw = deepest(ridges[1]);
     this.mills = [
       { kind: 'grist', x: g.x, y: ridges[0] + 6, spin: 0, fit: 0, output: 0, fitS: 0 },
@@ -74,7 +90,7 @@ export class Jobs {
     const ok = o.kind === 'village' ? this.village.floodBlockS < 10 : o.progress >= 1;
     o.state = ok ? 'done' : 'failed';
     if (ok) this.objectivesDone++;
-    return [{ type: ok ? 'objectiveDone' : 'objectiveFailed', kind: o.kind }];
+    return [{ type: ok ? 'objectiveDone' : 'objectiveFailed', kind: o.kind as ObjectiveKind }];
   }
 
   /** Beavers move in: dam a deep, gently sloping (slow) stretch of the river below ridge 1. */
@@ -92,8 +108,63 @@ export class Jobs {
     if (best < 0) return [];
     const cells: number[] = [];
     for (let j = by - 1; j <= by + 1; j++) for (let i = bx - 5; i <= bx + 5; i++) if (i >= 0 && i < nx && j >= 0 && j < ny) cells.push(j * nx + i);
-    this.dam = { x: bx, y: by, build: 0, added: new Float32Array(cells.length), base: Float32Array.from(cells, (k) => this.t.h[k]), cells: Int32Array.from(cells), broken: false, health: 1 };
+    this.dam = this.makeDam('beaver', bx, by, 5, 1.3, 1 / 25);
     return [{ type: 'beavers' }];
+  }
+
+  private makeDam(kind: Dam['kind'], x: number, y: number, half: number, height: number, rate: number): Dam {
+    const { nx, ny } = this.t, cells: number[] = [];
+    for (let j = y - 1; j <= y + 1; j++) for (let i = x - half; i <= x + half; i++) if (i >= 0 && i < nx && j >= 0 && j < ny) cells.push(j * nx + i);
+    return { kind, x, y, build: 0, height, rate, added: new Float32Array(cells.length), base: Float32Array.from(cells, (k) => this.t.h[k]), cells: Int32Array.from(cells), broken: false, health: 1 };
+  }
+
+  /** Take the standing dam down (whatever of it the water left), e.g. when the crew moves the gate. */
+  removeDam(): void {
+    const d = this.dam; if (!d) return;
+    const { h } = this.t;
+    d.cells.forEach((k, n) => { h[k] -= Math.max(0, Math.min(d.added[n], h[k] - d.base[n])); });
+    this.dam = null;
+  }
+
+  /** Campaign: the beaver crew gates the saddle at (x, y) (replacing any gate already standing). Built at `rate`/s. */
+  gate(x: number, y: number, height: number, rate: number): Dam {
+    this.removeDam();
+    this.dam = this.makeDam('gate', Math.round(x), Math.round(y), 6, height, rate);
+    return this.dam;
+  }
+
+  /** Campaign: an old log dam, already standing (harder than beaver mud). */
+  logDam(x: number, y: number, height: number, hard: number): Dam {
+    this.removeDam();
+    const d = this.dam = this.makeDam('log', Math.round(x), Math.round(y), 6, height, 0);
+    const { h } = this.t;
+    // it's part of the level's starting valley (h0 too), so it reads as ground, not as fresh deposit
+    d.cells.forEach((k, n) => { h[k] += height; this.t.h0[k] += height; d.added[n] = height; this.t.hard[k] = Math.min(this.t.hard[k], hard); });
+    d.build = 1;
+    return d;
+  }
+
+  /** Campaign: lay out Millbrook's levee ring (nothing raised yet). */
+  planLevee(height: number): Levee {
+    const { nx } = this.t, v = this.village, cells: number[] = [];
+    const r0 = v.r + 1.5, r1 = v.r + 3.2;
+    for (let j = Math.floor(v.y - r1); j <= Math.ceil(v.y + r1); j++) for (let i = Math.floor(v.x - r1); i <= Math.ceil(v.x + r1); i++) {
+      const d = Math.hypot(i - v.x, j - v.y);
+      if (d >= r0 && d <= r1) cells.push(j * nx + i);
+    }
+    this.levee = { build: 0, height, cells: Int32Array.from(cells), base: Float32Array.from(cells, (k) => this.t.h[k]) };
+    return this.levee;
+  }
+
+  /** The villagers raise (and patch) the levee: build grows by `grow`, and every cell is topped up toward its target. */
+  workLevee(grow: number, dt: number): void {
+    const L = this.levee; if (!L) return;
+    L.build = Math.min(1, L.build + grow);
+    const { h, hard } = this.t;
+    L.cells.forEach((k, n) => {
+      const top = L.base[n] + L.height * L.build;
+      if (h[k] < top) { h[k] = Math.min(top, h[k] + dt * 0.8); hard[k] = Math.min(hard[k], 0.5); }
+    });
   }
 
   update(dt: number, p: Particles, w: Float32Array, nearW: (x: number, y: number) => number): JobCue[] {
@@ -102,10 +173,10 @@ export class Jobs {
     // beaver dam: build up (raising terrain), then track how much of it the water has worn away
     const dam = this.dam;
     if (dam && !dam.broken) {
-      if (dam.build < 1) {
-        const step = Math.min(1 - dam.build, dt / 25);
+      if (dam.build < 1 && dam.rate > 0) {
+        const step = Math.min(1 - dam.build, dt * dam.rate);
         dam.build += step;
-        dam.cells.forEach((k, n) => { const add = 1.3 * step; h[k] += add; dam.added[n] += add; hard[k] = Math.min(hard[k], 0.6); });
+        dam.cells.forEach((k, n) => { const add = dam.height * step; h[k] += add; dam.added[n] += add; hard[k] = Math.min(hard[k], dam.kind === 'gate' ? 0.2 : 0.6); });
       }
       let left = 0, total = 0;
       dam.cells.forEach((k, n) => { total += dam.added[n]; left += Math.max(0, Math.min(dam.added[n], h[k] - dam.base[n])); });
@@ -137,7 +208,7 @@ export class Jobs {
     let wet = 0, cnt = 0;
     for (let j = v.y - v.r; j <= v.y + v.r; j++) for (let i = v.x - v.r; i <= v.x + v.r; i++) { wet += w[j * nx + i] ?? 0; cnt++; }
     v.wet = wet / cnt;
-    if (v.wet > 0.12 && this.objective?.kind === 'village') { v.floodS += step; v.floodBlockS += step; if (!this.floodCued) { this.floodCued = true; cues.push({ type: 'flooding' }); } } else this.floodCued = false;
+    if (v.wet > 0.12 && (this.objective?.kind === 'village' || this.watchVillage)) { v.floodS += step; v.floodBlockS += step; if (!this.floodCued) { this.floodCued = true; cues.push({ type: 'flooding' }); } } else this.floodCued = false;
     // fields: grow with water beside them, ruined while drowned
     for (const f of this.fields) {
       let own = 0, c = 0;
@@ -145,7 +216,7 @@ export class Jobs {
       own /= c;
       f.drowned = own > 0.15;
       f.wet = !f.drowned && nearW(f.x, f.y) > 0.08;
-      if (f.drowned) f.growth = Math.max(0, f.growth - step / 20);
+      if (f.drowned) { f.growth = Math.max(0, f.growth - step / 20); this.drownedS += step; }
       else if (f.wet) {
         f.growth += step / 120;
         if (f.growth >= 1) { f.growth = 0; f.harvests++; this.harvests++; cues.push({ type: 'harvest' }); }
@@ -162,7 +233,7 @@ export class Jobs {
     else if (o.kind === 'dam') o.progress = this.dam ? (this.dam.broken ? 1 : 1 - this.dam.health) : 0;
     else if (o.kind === 'fields') o.progress = Math.min(1, (this.harvests - this.fieldsAtStart) / 2 + this.fields.filter((f) => f.wet).length * 0.1);
     else if (o.kind === 'village') o.progress = Math.max(0, 1 - this.village.floodBlockS / 10);
-    if (o.progress >= 1 && o.kind !== 'village') { o.state = 'done'; this.objectivesDone++; cues.push({ type: 'objectiveDone', kind: o.kind }); }
+    if (o.progress >= 1 && o.kind !== 'village') { o.state = 'done'; this.objectivesDone++; cues.push({ type: 'objectiveDone', kind: o.kind as ObjectiveKind }); }
     return cues;
   }
 }

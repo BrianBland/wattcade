@@ -31,4 +31,4 @@
 - Real iPad/Bluefy frame-rate validation remains a hardware check; Chromium timings are not an iPad claim.
 - Merge #141: retain shared HUD actions/radial construction; reserve the fallback dock only without shell controls.
 - Merge #143: adopt DOM status/announcements while retaining painted registration and padded outpost clearance.
-- objectives.ts selects live effort/boss targets, progress and recovery/set cues; the landscape card replaces central calls and shows Auto-crew/queued orders. Compact screens keep transient announcements.
+- objectives.ts picks the ride's current job from the flow stage and the boss (suggested tier, Exposed openings, set progress); the landscape card also holds the upright radar. Compact screens keep transient announcements.

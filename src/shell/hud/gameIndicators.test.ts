@@ -6,7 +6,7 @@ import { synthTimeline } from '../../media/synth/queue';
 import { actionIndicators } from './ActionIndicators';
 
 for (const [gameId, buttons] of [
-  ['warmup', []], ['towerdefense', ['b','y','z']], ['dungeon', ['a','b','y','z']],
+  ['warmup', []], ['towerdefense', ['y','b','z']], ['dungeon', ['a','b','y','z']],
   ['cadenza', []], ['watershed', ['a']], ['starfighter', ['a']], ['hamster', []], ['lighthouse', []],
 ] as const) it(`${gameId} publishes only its real cooldown/trigger statuses`, () => {
   const session = createGameSession({ game: getGame(gameId)!, profile: testProfile(), input: new InputHub(), fake: { script: 'z2' }, seed: 3,

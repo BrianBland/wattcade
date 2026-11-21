@@ -1,99 +1,71 @@
-/** Fresh-save, first-run balance sweep. Never counts auto-restarts or garage investment.
- * npx tsx scripts/td-balance.ts [--seeds=1,2,3,4,5,6,7,8] [--minutes=90] [--level=0|narrow]
- *   [--multipliers=1.1,1.15,1.2] [--riders=z2,responsive,actions,recovery] [--json]
+/** Dynamo Defense balance sweeps (continuous combat). Fresh save, autopilot builds and weapon picks.
+ *
+ * Endless (first fall, never counts auto-restarts):
+ *   npx tsx scripts/td-balance.ts [--seeds=1,2,3,4] [--minutes=120] [--riders=z2,on100] [--level=0|narrow] [--json]
+ * Campaign grid (stars per rider strength × intensity × level):
+ *   npx tsx scripts/td-balance.ts --campaign=0,2,4,12 [--riders=on70,on85,on100,on115] [--intensities=easy,steady,hard] [--seeds=1,2]
+ *
+ * Riders: `z2` holds 0.65 FTP and never shifts; `onNN` rides `follow-power` (the suggested tier's power) at NN %.
  */
 import { FIXED_DT } from '../src/contracts';
-import { createGameSession, SCRIPTS, testProfile, TimelineInput, TuningRegistry, type GameSession } from '../src/core';
+import { createGameSession, SCRIPTS, testProfile, TimelineInput, TuningRegistry } from '../src/core';
 import { module } from '../src/games/towerdefense';
-import type { TdSnapshot } from '../src/games/towerdefense/sim/types';
-import { waveRole } from '../src/games/towerdefense/sim/waves';
+import { CAMPAIGN } from '../src/games/towerdefense/sim/campaign';
 import { LEVEL_0, narrowed } from '../src/games/towerdefense/sim/level';
 
 const arg = (name: string, fallback: string) => process.argv.find(a => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
-const seeds = arg('seeds', '1,2,3,4,5,6,7,8').split(',').map(Number);
-const multipliers = arg('multipliers', 'default').split(',').map(n => n === 'default' ? undefined : Number(n));
-const minutes = Number(arg('minutes', '90'));
+const list = (s: string) => s.split(',').filter(Boolean);
+const campaign = list(arg('campaign', '')).map(Number);
+const seeds = list(arg('seeds', campaign.length ? '1,2' : '1,2,3,4')).map(Number);
+const riders = list(arg('riders', campaign.length ? 'on70,on85,on100,on115' : 'z2,on100'));
+const intensities = list(arg('intensities', campaign.length ? 'easy,steady,hard' : 'steady'));
+const minutes = Number(arg('minutes', '120'));
 const level = arg('level', '0') === 'narrow' ? narrowed(LEVEL_0) : LEVEL_0;
-const riders = {
-  z2: { script: 'z2', actionBot: false },
-  responsive: { script: 'hook-responsive', actionBot: false },
-  actions: { script: 'hook-responsive', actionBot: true },
-  recovery: { script: 'hook-responsive', actionBot: true, recover: true },
-};
-const selected = arg('riders', 'z2,responsive,actions').split(',');
-if (selected.some(r => !(r in riders)) || [...seeds, ...multipliers.filter(n => n !== undefined), minutes].some(n => !Number.isFinite(n) || n <= 0)) {
-  throw new Error('Use positive seeds, multipliers and minutes, and riders z2,responsive,actions,recovery.');
-}
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
-function measure(seed: number, rider: keyof typeof riders, multiplier?: number) {
-  const { script, actionBot } = riders[rider];
-  let recovering = true;
-  const runScript = rider === 'recovery' ? 'td-balance-recovery' : script;
-  if (rider === 'recovery') SCRIPTS[runScript] = { ...SCRIPTS[script],
-    name: runScript, powerFtp: (t, env) => recovering ? 0.5 : SCRIPTS[script].powerFtp?.(t, env) };
-  const profile = testProfile();
-  let session: GameSession;
-  let ended = false, elapsedS = 0, wave = 0;
-  let finalField: TdSnapshot | undefined;
-  const waves: Array<{ wave: number; role: string; startS: number; durationS?: number; leak: number; heal?: number; hp?: number; scrap?: number; towers?: number; levels?: number; damageByKind: Record<string, number> }> = [];
-  session = createGameSession({
-    game: module, profile, input: new TimelineInput(SCRIPTS[runScript].input), seed, fake: { script: runScript },
+function scriptFor(rider: string): string {
+  if (rider === 'z2') return 'z2';
+  const k = Number(rider.replace(/^on/, '')) / 100;
+  if (!/^on\d+$/.test(rider) || !(k > 0)) throw new Error(`Unknown rider ${rider}: use z2 or onNN.`);
+  const base = SCRIPTS['follow-power'];
+  SCRIPTS[rider] ??= { ...base, name: rider, powerFtp: (t, env) => k * (base.powerFtp?.(t, env) ?? 0) };
+  return rider;
+}
+
+function measure(rider: string, seed: number, intensity: string, c?: number) {
+  const script = scriptFor(rider), profile = testProfile();
+  const play = c === undefined ? undefined : { campaign: c };
+  const cap = play ? CAMPAIGN[c!].minutes + 12 : minutes;
+  let end: { type: string; t: number; stars?: number } | undefined;
+  let lost = 0, escaped = 0, killed = 0;
+  const session = createGameSession({
+    game: module, profile, input: new TimelineInput(SCRIPTS[script].input), seed, fake: { script },
     tuningRegistry: new TuningRegistry({ profileId: profile.id, storage: null }),
-    simOpts: { autopilot: true, actionBot, level },
+    simOpts: { autopilot: true, stars: 99, intensity, ...(play ? { play } : { level }) },
     onEmit(e) {
-      if (e.type === 'broodAnnounced') recovering = true;
-      if (e.type === 'waveStart') {
-        wave = Number(e.data?.wave);
-        recovering = waveRole(wave) === 'easy';
-        waves.push({ wave, role: waveRole(wave), startS: round(e.t), leak: 0, damageByKind: {} });
-      }
-      const w = waves.at(-1);
-      if (e.type === 'baseHit' && w) {
-        const kind = String(e.data?.kind), damage = Number(e.data?.dmg);
-        w.leak += damage; w.damageByKind[kind] = (w.damageByKind[kind] ?? 0) + damage;
-      }
-      if (e.type === 'waveCleared' && w) {
-        const field = session.sim.snapshot() as TdSnapshot;
-        Object.assign(w, { durationS: round(e.t - w.startS), heal: Number(e.data?.heal), hp: field.baseHp, scrap: field.scrap,
-          towers: field.towers.length, levels: field.towers.reduce((n, t) => n + t.level, 0) });
-      }
-      if (e.type === 'runEnded') {
-        ended = true; elapsedS = e.t;
-        // endRun emits before removing the towers and returning to the Garage.
-        finalField = session.sim.snapshot() as TdSnapshot;
-      }
+      if (end) return;
+      if (e.type === 'baseHit') lost += Number(e.data?.dmg);
+      if (e.type === 'bossEscaped') escaped++;
+      if (e.type === 'bossKilled') killed++;
+      if (e.type === 'levelCleared') end = { type: 'cleared', t: e.t, stars: Number(e.data?.stars) };
+      if (e.type === 'levelFailed' || (!play && e.type === 'runEnded')) end = { type: 'fell', t: e.t, stars: 0 };
     },
   });
-  if (multiplier !== undefined) session.tuning.set('towerdefense.towerDamageMult', multiplier);
-  const effectiveMultiplier = Number(session.tuning.get('towerdefense.towerDamageMult'));
-  for (let tick = 0; tick < Math.round(minutes * 60 / FIXED_DT) && !ended; tick++) session.step(1);
-  finalField ??= session.sim.snapshot() as TdSnapshot;
-  if (!ended) elapsedS = session.clock.now();
+  for (let tick = 0; tick < Math.round(cap * 60 / FIXED_DT) && !end; tick++) session.step(1);
   const summary = session.sim.summary();
-  const totalDamage = Number(summary.turretDamage) + Number(summary.towerDamage) + Number(summary.empDamage);
-  const events = session.finish().events;
-  if (rider === 'recovery') delete SCRIPTS[runScript];
-  const easy = waves.filter(w => w.role === 'easy');
+  const total = Number(summary.turretDamage) + Number(summary.towerDamage);
+  session.finish();
   return {
-    seed, rider, multiplier: effectiveMultiplier, fell: ended, minutes: round(elapsedS / 60), wave, fallingWave: finalField.wave,
-    turretShare: round(Number(summary.turretDamage) / Math.max(1, totalDamage)),
-    towerShare: round(Number(summary.towerDamage) / Math.max(1, totalDamage)),
-    callWinRate: round(Number(summary.callsWon) / Math.max(1, Number(summary.callsWon) + Number(summary.callsFailed))),
-    bossesEscaped: events.filter(e => e.type === 'bossEscaped').length,
-    easyWaves: easy.length, easyDamage: easy.reduce((n, w) => n + w.leak, 0),
-    scrapLeft: finalField.scrap, levels: finalField.towers.reduce((n, t) => n + t.level, 0),
-    towers: finalField.towers.map(t => ({ pad: t.pad, kind: t.kind, level: t.level })),
-    summary, waves,
+    rider, seed, intensity, level: play ? CAMPAIGN[c!].id : 'endless', end: end?.type ?? 'timeout',
+    minutes: round((end?.t ?? session.clock.now()) / 60), stars: end?.stars, lost: Math.round(lost),
+    bossesKilled: killed, bossesEscaped: escaped, turretShare: round(Number(summary.turretDamage) / Math.max(1, total)),
   };
 }
 
 const results = [];
-for (const multiplier of multipliers) for (const rider of selected) for (const seed of seeds) {
-  const r = measure(seed, rider as keyof typeof riders, multiplier);
+for (const rider of riders) for (const intensity of intensities) for (const c of campaign.length ? campaign : [undefined]) for (const seed of seeds) {
+  const r = measure(rider, seed, intensity, c);
   results.push(r);
-  if (!process.argv.includes('--json')) console.log(JSON.stringify({ ...r, towers: undefined, summary: undefined, waves: undefined,
-    wavesCleared: r.summary.wavesCleared, towersBuilt: r.summary.towersBuilt, towerUpgrades: r.summary.towerUpgrades,
-    bossesKilled: r.summary.bossesKilled, scrapEarned: r.summary.scrapEarned }));
+  if (!process.argv.includes('--json')) console.log(JSON.stringify(r));
 }
-if (process.argv.includes('--json')) console.log(JSON.stringify({ maxMinutes: minutes, ftp: 200, results }, null, 2));
+if (process.argv.includes('--json')) console.log(JSON.stringify({ ftp: 200, results }, null, 2));

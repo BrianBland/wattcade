@@ -171,7 +171,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 3. `npm run sim:all` runs every game headless under all of its scenario scripts at max speed and prints one JSON line per run. Each game's scenario assertions pass (defined in its section).
 4. On the iPad with Bluefy over HTTPS, the three devices connect from the Connect screen. The debug overlay then shows live raw trainer data, paddle bars, the button grid, and the mixer's commands and results.
 5. Profiles, XP, levels, and achievements persist across reloads, and the session summary shows XP gained.
-6. `npm run deploy` (Cloudflare Pages via wrangler) is ready. The human runs it and sets up the domain.
+6. `npm run deploy` (a Worker with static assets, via wrangler) is ready. The human runs it and sets up the domain.
 7. `HARDWARE_TEST.md` gives a 15-minute manual checklist for the first real ride.
 
 ---
@@ -201,7 +201,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 - `ZwiftRideController implements ControllerDevice`: connect, find characteristics (with fallback), handshake, read firmware/battery, ≥1.3 warning, reconnect.
 - `InputHub`:
   - merges the Ride, keyboard, gamepad (polled each frame), touch (an on-screen D-pad/ABYZ overlay, hidden by default), and scripted input
-  - applies deadzone/invert from profile settings
+  - applies the profile deadzone; the left Ride paddle is always inverted (no invert setting)
   - computes per-tick edges via `beginTick()` (called by the core loop before each sim step), so a press that lasts shorter than a tick is never missed
   - tracks `paddleIdleS`
   - detects system combos and exposes `onSystem(cb)`
@@ -272,7 +272,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 - **Style:** an arcade-cabinet look (dark, neon accents, big type readable from the saddle about 1 m from an iPad). Everything navigable by Ride D-pad + A (select) / B (back), keyboard, and touch.
 - **Screens:**
   - **Profile picker:** cards, "+ New", edit.
-  - **Profile editor:** name, color swatches, FTP, max HR, weight, zone source, aim mode, paddle deadzone/invert, max grade; plus Backup export/import.
+  - **Profile editor:** name, color swatches, units, FTP, max HR, weight, zone source, paddle deadzone, debug stats, max grade; plus Backup export/import. There is no aim-mode or paddle-invert row: the left Ride paddle is always inverted, and Crank Crawler aims itself.
   - **Connect:** three big buttons (Trainer / Controller / Heart rate), each with a status, a "Fake bike" toggle, notes ("Close Zwift on this iPad first", "Enable Broadcast Heart Rate on your Garmin", "Record an Indoor Bike activity on your watch; it's your Garmin/Strava record for now"), and a firmware warning display.
   - **Arcade menu:** top bar (rider, level/XP, road, devices, achievements, switch rider, 📽) over one row of games: a looping carousel (wraps both ways) with the selection centred and enlarged (recorded clip of the real game from `public/cards/`, recorded in CI on deploy from the shots in `shell/cards/shots.ts`; `drawCard` art when there's none, tags, blurb, progress line, time/kJ ridden, last played); the rest show a title and a still. Sorted by the rider's most recent plays, ties in registry order (most polished first). While the Drive-In is on, the row is replaced by its toggle alone.
   - **Game host:** full-screen container. Mounts the renderer from `loadRenderer()`, runs `GameLoop`, and keeps the screen awake with `navigator.wakeLock` if available.
@@ -358,21 +358,15 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - **Brute:** tanky.
 
   Doors lock until the room is cleared.
-- **Movement:** D-pad, 8 directions. Speed = `base × curve(cadence3s)`: 0 rpm → 0.35, 60 → 0.8, 90 → 1.0, 110+ → 1.15. All curve points are tunables.
-- **Aiming:** `aimMode`.
-  - **rotate** (default): paddleL rotates the aim CCW and paddleR rotates it CW, at a rate ∝ deflection.
-  - **axes:** L = x, R = y.
-  - **buttons:** A/B/Y/Z fire in 4 directions, with diagonals from combos.
-  - **auto:** nearest enemy. Also used whenever `paddleIdleS` > 1.5.
-
-  Draw an aim reticle.
+- **Movement:** the hero AI moves. Speed = `base × curve(cadence3s)`: flat from 60–90 rpm; above 90 only pays during a called spin-up. The D-pad cycles stances, not direction.
+- **Aiming:** the hero aims itself. `ProfileSettings.aimMode` remains on the profile for old saves and is unused.
 - **Firing:** automatic, one shot every `tuning 'revsPerShot'` crank revs (default 0.5). Damage = `base × clamp(ftpFraction, 0.3, 2.5)`.
-- **Survival:** HP regen only while effortZone == 2 (×2 out of combat). Hands-off: the hero AI moves, aims and fights. Rider actions on the right-hood diamond: A Strike, B Ward, Y Rally (only when a spin-up is called), Z Potion (3 per run, short cooldown). All four shifters are virtual gears.
+- **Survival:** HP regen only while effortZone == 2 (out of combat from floor 2). Hands-off: the hero AI moves, aims and fights. Rider actions on the right-hood diamond: A Strike, B Ward, Y Rally (only when a spin-up is called), Z Potion. All four shifters are virtual gears. The D-pad cycles stances.
 - **Resistance** (sim mode, virtual gears enabled):
-  - base effect `terrain` 1 %
+  - base effect `terrain` 1 %, plus the pacing segment's grade
   - on swamp tiles, `swamp` +4 %
   - HP < 40 %: `wounded` +2 %
-  - **boss:** every 45 s the boss "shields up" for 20 s. During that window it takes damage only while `bike.sprinting` (×3 damage), and `boss-surge` +5 % is applied.
+  - **boss:** a telegraphed big attack, then an Exposed window (×2 damage, and a further ×`bossSprintDamageMult` while sprinting; default 2). `boss-surge` grade runs during the windup and the window. There is no timed shield that blocks all damage.
 - **Events:** `kill`, `roomCleared`, `death`, `bossStart`, `bossDefeated`. Summary: roomsCleared, kills, deaths, damageDealt, bossDefeated (0/1), timeS.
 - **Scenarios** (autopilot input: the sim exposes an optional `autopilot` flag in opts, used only by tests, that steers toward the nearest enemy/door with auto-aim):
   - `sprints`, 20 min → bossDefeated = 1
@@ -417,31 +411,26 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
 ### §6.3 Agent H — "Dynamo Defense" (tower defense, 2D Canvas) · owns `src/games/towerdefense/`
 
-- **Map:** a base at the bottom center, 3 lanes (left, center, right) converging on it, and a turret on the base. Enemies use a strong/neutral/resisted matrix: Gatling/Tesla vs blue/red/purple = ×1.5/×1/×0.5; Flamer/Mortar = ×0.5/×1.5/×1; Rail/Prism = ×1/×0.5/×1.5. All nine cells are tunable.
-  - **Blue swarm minis:** many, low HP, crystalline bioluminescent chitin. Strong: Gatling; resisted: fire.
-  - **Red brutes:** fuel-blooded; fire bursts their volatile bladders and can ignite nearby reds in a capped chain. Strong: Flamer; resisted: Rail.
-  - **Purple armored:** slow, high HP, sealed plates. Strong: Rail; resisted: Gatling.
-  - **Boss** every 5 waves, one per brood colour, taking turns: it keeps its colour, weapon and trainer mode all fight. 2–3 HP-gated phases (announced countdown, stagger) escalate its trick: blue Swarm Tyrant births swarm packs, red Ram Tyrant warns then charges, purple Bulwark Tyrant raises shield plates that rail shots break fast. Telegraphed Exposed windows give ×2 damage, with a further ×1.5 for sprinting. Hold D-pad Up or the touch Sprint boost target during a Rail opening to raise its ERG target for a power sprint, preserving the mode; A stays construction. Keeps the Goliath art.
+Continuous combat (owner, 2026-11-18; design doc https://claude.ai/artifact/YQ8rHrAopkk4YWDhvCzf4E). Levels, campaign, stars and unlocks: `docs/towerdefense/LEVELS-DESIGN.md`; balance: `docs/towerdefense/BALANCE.md`.
 
-  The stream of minis is continuous; heavier enemies arrive in waves.
-- **Weapons** (follow the announced brood automatically; 1.5 s mount; each weapon owns a resistance effect, so all three trainer modes are exercised):
-  - **Gatling** (blue): sim mode, effect `weapon` +1 % grade (low, spinny). Fires one bullet per `tuning 'gatlingRevsPerShot'` (default 0.25) crank revs.
-  - **Flamethrower** (red): **resistance mode**, `levelPct` 35. A short cone with damage per second ∝ power3s.
-  - **Railgun** (purple): **ERG mode**, `ftpFraction` 0.95. Charge accumulates while ftpFraction ≥ 0.75, one charge per ~20 s at 0.95 FTP (tunable). It **stores up to 3 charges** (tunable). **Z fires manually**: one charge per press, a piercing beam. Holding Z for 0.5 s dumps all stored charges in a spread (event `railFired` with `charges`).
-- **Aim:** the turret always aims itself (no `aimMode`): the lead alien of the wave's colour on the most threatened lane. Paddles or D-pad left/right nudge it toward a lane for a few seconds (optional). All four shifters are virtual gears. Draw the aim line and a target marker.
-- **Construction:** A accepts the lull's quoted build/upgrade work order, otherwise opens the workshop; D-pad Down also opens it. Touch pads/base open the same menu. Left/right chooses pad/base, up/down chooses an option, A confirms and B closes. Build, upgrade, sell, scrap-funded repair and the saved Auto-crew toggle are available to both inputs. Auto-crew defaults on and accepts one order per lull; a successful manual purchase consumes that order.
-- **Combat actions:** B Overcharge (tower fire rate ×1.5 for 10 s), Y Slow field (most threatened lane moves 40% slower for 8 s), Z Rail. The two cooldowns refill faster with power-zone effort; a sprint edge finishes them without granting rail stock. All parameters are tunable. Combat actions are disabled in construction, and menu/pause/cancel discards held gestures.
-- **Action display:** the shell owns action controls in its HUD band. With the controller legend on, its keys show cooldown/stock fills; with it off, compact blocks flank the ride stats in the same band. No separate game dock is reserved in either layout. The lull card retains the quoted construction cost; touch and controller share purchases and held-action cancellation. A bare renderer without a shell HUD retains the standalone dock.
-- **Summary:** wavesSurvived, kills per element, weaponSeconds per weapon, railChargesFired, baseHpLeft.
-- **Levels and Endless runs:** no reactor cores. When the base falls, return to the ride select; `isOver()` remains false. Pause → **End the run · back to the ride select** bails mid-wave (`runEnded{reason:'bail'|'fell', wave, wavesSurvived, endless}`). Campaign stars unlock options (slow field, Overcharge, tower Lv 4/5, Hard), never stat upgrades (docs/towerdefense/LEVELS-DESIGN.md). The ride select starts after 30 pedalling seconds, and gives a 6-second breather before this countdown after returning. Its trainer effect is neutral. A new run resets towers, enemies, scrap, weapon/rail state and effort challenges; ride stats accumulate. Default base HP remains 100; an idle rider falls by wave 2.
-- **Save:** v3 at `gameData.towerdefense`, with bank, upgrades, best wave, run count, auto-invest and lifetime totals (including `runsFallen`/`runsBailed`). `readSave` reads legacy and v2 saves without losing progress; core fields are retired. Parts bank as earned, never twice on fall, bail or dispose. `wavesSurvived` in the summary is the best single run; `wavesCleared`, `runs`, outcome counts and `partsEarned` accumulate across the ride.
-- **Workout rhythm:** optional spin, grind-at-power and ERG hold calls follow Gatling, Flamer and Rail waves. Calls arrive every 2–3 waves with a countdown, after recovery ends; targets adapt to recent riding. Spin rewards Overclock, grind/hold reward EMP, with scrap bonuses. Bosses use their own Exposed sprint calls.
-- **Scenarios** (`Auto-crew` develops towers; combat actions require explicit `actionBot`, independently of `autopilot`):
-  - `sprints`, 20 min → wavesSurvived ≥ 8
-  - `idle-falls`, 5 min → base falls by wave 2, remains in the Garage, ride stays open
-  - `endless-restart`, 45 min Z2 → a fallen run returns to the Garage and auto-starts another run
-  - `intervals`, 20 min → all three weapons used ≥ 60 s and mixer commands include all of sim, erg, and resistance
-  - a unit test: charges cap at 3 and a hold-Z dump emits `railFired{charges:3}`
+- **Map:** a generated road (or two-route fork) from the hive to a base with a turret, build pads along it, and Glider flight paths straight to the turret. Enemies use a strong/neutral/resisted matrix: Gatling/Tesla vs blue/red/purple = ×1.5/×1/×0.5; Fireball/Flame Tower = ×0.5/×1.5/×1; Railgun/Lens = ×1/×0.5/×1.5; the Mortar is neutral. All nine cells are tunable.
+  - **Blue swarm minis:** many, low HP, crystalline chitin. Strong: Gatling; resisted: fire.
+  - **Red brutes:** fuel-blooded; fire bursts them and can ignite nearby reds in a capped chain. Strong: fire; resisted: Rail.
+  - **Purple armored:** slow, high HP, sealed plates. Strong: Rail; resisted: Gatling.
+  - **Stalkers** cycle colours; **Gliders** fly.
+- **Flow:** one continuous stream in segments with no lulls: sets of build segments (pressure ramps to the set's peak), a peak or boss peak, then a trough (half-rate drones; a clean trough heals). The flow suggests a tier per stage. A **radar** shows the next 90 s as fuzzy blips (one per spawn group, sized by HP, enemy colour, by road or air), measured as time until the group reaches the turret.
+- **Bosses** are the big peaks: one per brood colour (Swarm, Ram and Bulwark Tyrant), 1.5× size, `bossHpMult` (80) × the old boss HP (a 2–3 min fight at tier IV–V with the counter weapon), a thin escort of the other two colours, and a full-width health bar. HP-gated phases escalate the trick (swarm packs, warned charges, shield plates). Telegraphed Exposed openings give ×2, and a further ×1.5 at tier V or while sprinting. It crawls once in turret reach; a boss still alive after `bossPeakMaxS` (300 s) breaks through for 30 base damage. A kill pays `bossScrap`.
+- **Effort = tiers:** the shifters (and HUD − / +) pick tier I–V, rated at 0.45/0.6/0.75/0.9/1.05 FTP at 85 rpm on Steady (Easy/Hard scale them). The trainer stays in **resistance mode** all run: the game is the gearbox, choosing the level that makes the tier's power from the trainer response it learns from live watts. Output is the tier's shape × effort (watts / rated, capped). Sprinting is **Overdrive** (×1.5 damage and tower speed). Towers answer to grid power (watts / their nominal).
+- **Weapons** (Y / B / Z mount Gatling / Fireball / Railgun; a 3 s swap with the turret silent; the rider keeps the pick):
+  - **Gatling:** cadence sets the fire rate; tier sets pellet damage, pierce and splash.
+  - **Fireball:** cadence sets the lob beat; tier sets burst radius, burn time and burning-ground share. Tier IV+ burns slow a Ram charge.
+  - **Railgun:** banks watts while mounted and fires a pulse per bank; tier sets damage, width and pierce. Light aliens get a quick snap that spends only what it needs.
+- **Aim:** automatic: the soonest-arriving target the mounted weapon is strong against. Paddles step a decaying lock along the queue; ▲ releases it.
+- **Construction:** manual and any time. The D-pad moves a pad cursor, A opens the build menu there (2-column options with Exit; tap pads/base on touch). Build, upgrade, sell and scrap-funded repair; touch and controller share selection and purchase state. Towers: Tesla, Flame, Lens, and the Mortar (4★; long-range splash that concusses). The headless build bot (`botBuild`, on with autopilot) stands in for the rider.
+- **Summary:** wavesSurvived, kills per element, weaponSeconds per weapon, turret/tower damage, bosses, weaponSwitches, highTierSeconds, campaign totals.
+- **Runs:** Campaign, Quick Ride and Endless. When the base falls, return to the ride select (Retry on a level); `isOver()` stays false. Pause → **End the run** bails (`runEnded{reason:'bail'|'fell', wave, wavesSurvived, endless}`). Campaign stars unlock options (Mortar, tower Lv 4/5, Hard), never stat upgrades.
+- **Save:** v4 at `gameData.towerdefense`: campaign stars, intensity, Quick Ride choice, `endlessBest` and lifetime totals; older saves read without losing progress.
+- **Scenarios:** `sprints`, `brood-z2`, `idle-falls` (base falls early, ride stays open), `endless-restart` (90 min z2: a fallen run auto-starts another), `intervals`, `z2-economy`, `continuous-flow` (no called efforts), the `workout-*` set and `surge-ready-deep`.
 
 ### §6.4 "Watershed" (ERG, **3D** Three.js, particle water + erosion) · owns `src/games/watershed/`
 
@@ -563,7 +552,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   8. Check the summary and XP.
 
   Add that "Trainer test" button (Agent E owns the UI, the orchestrator wires it).
-- Write `README.md`: quick start, fake mode keys, iPad/Bluefy setup, Cloudflare deploy (`npx wrangler login`, `npm run deploy`, then add a custom domain like `wattcade.brianb.land` to the Pages project; optionally protect it with Cloudflare Access for two emails, which is free), and a "make a new game" guide (copy a game folder, implement GameModule, add scenarios, register).
+- Write `README.md`: quick start, fake mode keys, iPad/Bluefy setup, Cloudflare deploy (`npx wrangler login`, `npm run deploy`, then add a custom domain like `wattcade.brianb.land` in `wrangler.jsonc` `routes`; optionally protect it with Cloudflare Access for two emails, which is free), and a "make a new game" guide (copy a game folder, implement GameModule, add scenarios, register).
 
 ## §8 Out of scope for this demo (don't build)
 

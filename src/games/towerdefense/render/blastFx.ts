@@ -233,8 +233,8 @@ export class Blasts {
     if (on <= 0) return;
     const R = fire?.range ?? this.jetRange.get(key) ?? 0;
     if (fire) this.jetRange.set(key, fire.range);
-    // The painted stream's flame ends 85% along the sprite (smoke beyond); keep the sprite's aspect so its cel pixels stay square.
-    const len = R / 0.85, ux = ax * R, uy = ay * R;
+    // The painted fire cloud reaches the sprite's far edge; keep the sprite's aspect so its pixels stay square.
+    const len = R / 0.97, ux = ax * R, uy = ay * R;
     this.jets.push({ x, y, a, len, wide: len * JET_H / JET_W, reach: fire ? 0.3 + 0.7 * on : 1, alpha: fire ? 1 : on, glow: 0.06 + 0.03 * L, frame: Math.floor(this.clock * 20 + key * 3.7) % JET_FRAMES });
     // Black smoke rolls off the head while it burns, and the whole stream leaves a smoky trail when it cuts off.
     const soot = (f: number) => {

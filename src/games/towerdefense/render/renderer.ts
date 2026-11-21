@@ -352,6 +352,19 @@ export class TdRenderer implements GameRenderer {
     }
     for (const pad of this.drops.keys()) if (!live.has(pad)) this.drops.delete(pad);
   }
+  /**
+   * World-space UI, above the actors, the bridge decks and their effects: pad markers, the selected pad's range ring,
+   * the D-pad cursor and its 'A · Build' tag, tower level pips, and enemy markers (reticles, boss shield/charge, daze).
+   */
+  private drawWorldUi(g: CanvasRenderingContext2D, s: TdSnapshot, t: number, marks: ReadonlyArray<() => void>) {
+    for (const m of marks) m();
+    const k = this.k;
+    for (const tw of s.towers) {
+      const p = this.P(this.geo.pads[tw.pad].x, this.geo.pads[tw.pad].y), d = this.drops.get(tw.pad)!;
+      this.levelPips(g, tw.level, p.x, p.y + 5.1 * k, d.built ? 0 : pipFlash(s.t - d.at));
+    }
+    this.drawPads(g, s, t);
+  }
   /** Five small diamonds under a tower, filled to its level; the newest flashes after an upgrade. */
   private levelPips(g: CanvasRenderingContext2D, level: number, x: number, y: number, flash: number) {
     const k = this.k, r = 0.58 * k, gap = 1.45 * k;
@@ -583,14 +596,12 @@ export class TdRenderer implements GameRenderer {
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
       this.aliens?.drawGround(g, this.view, t);
       this.odBlend = stepBlend(this.odBlend, s.overdrive && !s.over, realDt);
-      this.drawPads(g, s, t);
       this.trackDrops(s, firstFrame);
       for (const tw of s.towers) {
         const p = this.P(this.geo.pads[tw.pad].x, this.geo.pads[tw.pad].y), d = this.drops.get(tw.pad)!, age = s.t - d.at;
         const drop = dropDone(age, d.built ? HEAD_DELAY_S : 0) ? undefined : { level: d.level, from: d.from, built: d.built, age };
         this.contactShadow(g, p.x, p.y, k);
         if (!this.machinery.tower(g, tw, this.view, s, drop)) drawTower(g, { ...tw, angle: tw.angle + rot }, p.x, p.y, k, t, s.grid);
-        this.levelPips(g, tw.level, p.x, p.y + 5.1 * k, d.built ? 0 : pipFlash(age));
       }
       this.drawTowerFlames(g, s, t, dt);
       // aim line, from the muzzle along the turret's screen heading
@@ -602,7 +613,7 @@ export class TdRenderer implements GameRenderer {
       const puppets = this.aliens?.ready ? this.aliens : null;
       if (puppets) puppets.draw(g, s, this.view, t, (e, h) => { const q = this.P(e.x, e.y); drawEnemy(g, e, q.x, q.y, k, h + rot, t); });
       puppets?.drawGibs(g, this.view, t);
-      const live = new Set<number>();
+      const live = new Set<number>(), marks: Array<() => void> = [];
       for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
         live.add(e.id);
         const { x, y } = this.P(e.x, e.y);
@@ -611,15 +622,17 @@ export class TdRenderer implements GameRenderer {
         if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.3) { const nh = Math.atan2(y - prev.y, x - prev.x); h = prev.h + angleLerp(prev.h, nh, 0.3); }
         this.heading.set(e.id, { x, y, h });
         if (!puppets) drawEnemy(g, e, x, y, k, h, t);
-        if (e.kind === 'boss') this.bossTrick(g, e, s, x, y, h, t);
-        if (e.id === s.targetId || e.id === s.lock?.id) this.reticle(g, e, x, y, t, e.id === s.lock?.id);
-        if (e.dazed) this.daze(g, e, x, y, t);
+        // Markers wait for the world-UI pass, so a bridge deck never hides them.
+        if (e.kind === 'boss') marks.push(() => this.bossTrick(g, e, s, x, y, h, t));
+        if (e.id === s.targetId || e.id === s.lock?.id) marks.push(() => this.reticle(g, e, x, y, t, e.id === s.lock?.id));
+        if (e.dazed) marks.push(() => this.daze(g, e, x, y, t));
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
       drawBurnFlames(g, this.patches, this.view.P, k, s.t);
       this.drawDecks(g, s, t, puppets);
       this.drawFx(g, s, muzzle, t);
       this.drawParticles(g);
+      this.drawWorldUi(g, s, t, marks);
       this.contactShadow(g, bx, by, k * 2.4);
       if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, {
         x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: s.grid, color: this.color, hpFrac: s.baseHp / s.baseMaxHp, hurt: s.baseHurt,

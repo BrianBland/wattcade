@@ -37,8 +37,6 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .tag { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: 1px; padding: 2px 9px; margin-right: 5px; border-radius: 99px; border: 1px solid currentColor; text-transform: uppercase; }
 .tag.zone2 { color: var(--z2); } .tag.sprint { color: var(--z5); } .tag.intervals { color: var(--z4); } .tag.erg { color: #5fd6ff; }
 .progress-line.needs { color: #ffb08a; }
-.avatar { width: 52px; height: 52px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 14px currentColor; border: 3px solid #ffffffcc; }
-.avatar.big { width: 76px; height: 76px; }
 .bar { height: 12px; border-radius: 8px; background: #ffffff1a; overflow: hidden; display: flex; }
 .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--neon), var(--pink)); transition: width 1s cubic-bezier(.2, .8, .2, 1); }
 .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #555; margin-right: 6px; flex: none; }

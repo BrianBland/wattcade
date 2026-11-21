@@ -13,6 +13,17 @@ export function bossHudLayout(W: number, H: number, insetBottom: number, hu: num
   return { x, y, w: Math.max(0, Math.min(w, W - pad - x)), h };
 }
 
+/** Shrine then curse. Compact widths drop both below the status/toast band, clear of the top-right minimap. */
+export function shrineBannerLayout(W: number, H: number, insetBottom: number, u: number, hu: number, n: 1 | 2): Rect[] {
+  const pad = 14 * hu, compact = W < 700 * hu, gap = 50 * hu, h = 14 * u;
+  const bw = compact ? W - 2 * pad : Math.min(W * 0.4, 420 * u);
+  const x = compact ? pad : W / 2 - bw / 2;
+  // 8*hu below the reserved minimap (top L, height 80*u) so the bar does not sit on its bottom edge.
+  const y0 = Math.max(0, Math.min(compact ? pad + 88 * hu : pad + 28 * hu, H - insetBottom - h));
+  const w = Math.max(0, Math.min(bw, W - pad - x));
+  return Array.from({ length: n }, (_, i) => ({ x, y: Math.min(y0 + i * gap, H - insetBottom - h), w, h }));
+}
+
 export function runLayout(W: number, H: number, insetBottom: number, u: number, nChips = 2, occlusions?: readonly Rect[]): RunLayout {
   const pad = 8 * u, base = H - insetBottom, h = 24 * u, chip = 30 * u, gap = 3 * u;
   const chipsW = nChips > 0 ? nChips * chip + (nChips - 1) * gap : 0;

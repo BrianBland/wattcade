@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runLayout, bossHudLayout } from '../render/layout';
+import { runLayout, bossHudLayout, shrineBannerLayout } from '../render/layout';
 
 describe('run layout', () => {
   it('shares the bottom row with right-aligned actions at either pixel density', () => {
@@ -39,4 +39,31 @@ describe('boss HUD readability',()=>{
       if(W<700*hu)expect(r.y).toBeGreaterThanOrEqual(50*hu);
     });
   }
+});
+
+describe('shrine and curse banners', () => {
+  it('390px phone: label clears the toast line and the bar misses the minimap', () => {
+    const W = 390, H = 844, inset = 100, u = 1, hu = 1, L = 14 * u;
+    const [shrine, curse] = shrineBannerLayout(W, H, inset, u, hu, 2);
+    const toastY = L + 52 * hu;
+    const mini = { x: W - 130 * u, y: L, w: 120 * u, h: 80 * u };
+    const hits = (r: { x: number; y: number; w: number; h: number }) =>
+      r.x < mini.x + mini.w && r.x + r.w > mini.x && r.y < mini.y + mini.h && r.y + r.h > mini.y;
+    for (const r of [shrine, curse]) {
+      expect(r.y - 6 * u).toBeGreaterThan(toastY);
+      expect(hits(r)).toBe(false);
+      expect(r.y + r.h).toBeLessThanOrEqual(H - inset);
+      expect(r.x).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.w).toBeLessThanOrEqual(W);
+    }
+    expect(curse.y).toBeGreaterThanOrEqual(shrine.y + shrine.h);
+  });
+  it('wide screens keep the banner centered under the status row', () => {
+    const W = 1280, H = 800, inset = 100, u = 1.25, hu = 1.25;
+    const [r] = shrineBannerLayout(W, H, inset, u, hu, 1);
+    expect(r.w).toBe(Math.min(W * 0.4, 420 * u));
+    expect(r.x).toBeCloseTo(W / 2 - r.w / 2);
+    expect(r.y).toBe(14 * hu + 28 * hu);
+    expect(r.y + r.h).toBeLessThanOrEqual(H - inset);
+  });
 });

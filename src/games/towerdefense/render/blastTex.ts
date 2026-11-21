@@ -1,5 +1,5 @@
 // Painted sprites for shells and blasts: the Fireball's molten ball and fire burst, the Mortar's iron shell, its
-// flash, dust, gravel/shrapnel chunks and crater, and the flame puffs of trails and the Flamethrower's spray.
+// flash, dust, gravel/shrapnel chunks and crater, and the flame puffs of trails and the Flamethrower's jet.
 // Painted from noise at the same pixel density as the tower and alien art (baked large, drawn at or below 1:1 with
 // smoothing), in the Fireball launcher's molten heat ramp (fireTex) and the road's earth tones, never as flat
 // vector gradients. Pure: every generator fills an RGBA byte array (straight alpha), so it runs and tests in Node.
@@ -85,6 +85,35 @@ export function puffSprite(heat: number, seed = 7, S = PUFF_S): Sprite {
     const h = clamp01(heat * (0.55 + 0.6 * body) + (n - 0.5) * 0.2), [r, g, b] = heatColor(Math.max(h, 0.3));
     const c = mix([r, g, b], [56, 42, 36], sootK);
     put(out, x, y, c[0], c[1], c[2], edge(body, 0.09) * (sootK ? 0.75 : smooth(0.05, 0.3, h + 0.1)));
+  }
+  return out;
+}
+
+/** Frames of the Flamethrower's jet (a seamless flow loop) and its size: long along x, mouth at the left. */
+export const JET_FRAMES = 10, JET_W = 160, JET_H = 56;
+/**
+ * One frame of the Flamethrower's jet: a single continuous tongue of flame from the mouth (left edge, white-hot and
+ * narrow) widening and cooling to a ragged orange tip (right), its streaks flowing outward as `phase` goes 0 → 1
+ * (seamless: two noise fields slide by one period and cross-fade).
+ */
+export function jetFrame(phase: number, seed = 3, W = JET_W, H = JET_H): Sprite {
+  const out = sprite(W, H), D = 1.6;
+  const field = (u: number, v: number) => {
+    const a = fbm(u * 3.2 - phase * D, v * 2.2, seed, 4), b = fbm(u * 3.2 - (phase - 1) * D, v * 2.2, seed, 4);
+    return a * (1 - phase) + b * phase;
+  };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const s = (x + 0.5) / W, v = ((y + 0.5) / H) * 2 - 1;
+    // streaks run along the jet: stretch the noise along u
+    const n = field(s * 1.1, v * (1.2 + s)), n2 = field(s * 2.3 + 5, v * 2.6);
+    // width profile: narrow at the bill, flaring to the cone, a ragged rounded tip
+    const tip = 0.8 + (n - 0.5) * 0.35, hw = (0.2 + 0.72 * Math.pow(s, 0.75)) * (s > tip - 0.2 ? Math.sqrt(clamp01((tip - s) / 0.2)) : 1);
+    const edgeN = hw * (0.85 + (n2 - 0.5) * 0.5), body = 1 - Math.abs(v) / Math.max(edgeN, 1e-3);
+    if (body <= -0.08 || s > tip) continue;
+    const core = Math.pow(clamp01(body), 0.7);
+    const h = clamp01(core * (1.05 - 0.6 * s) + (n - 0.5) * 0.45 + (n2 - 0.5) * 0.2 + 0.18 - 0.25 * s);
+    const [r, g, b] = heatColor(Math.max(h, 0.28));
+    put(out, x, y, r, g, b, edge(body, 2 / H) * smooth(0, 0.06, s + 0.02) * smooth(0, 0.1, tip - s) * smooth(0.12, 0.42, h + 0.05 * core));
   }
   return out;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BALL_FRAMES, BALL_S, BURST_FRAMES, BURST_S, PUFF_HEATS, ballFrame, burstFrame, chunkSprite, craterSprite, dustSprite, flashFrame, puffSprite, shellSprite } from '../render/blastTex';
+import { BALL_FRAMES, BALL_S, BURST_FRAMES, BURST_S, JET_FRAMES, JET_H, JET_W, PUFF_HEATS, ballFrame, burstFrame, chunkSprite, craterSprite, jetFrame, dustSprite, flashFrame, puffSprite, shellSprite } from '../render/blastTex';
 import { CHUNK_UNIT, puffIndex, stepChunk, type Chunk } from '../render/blastFx';
 
 const alphas = (d: Uint8ClampedArray) => { const s = new Set<number>(); for (let i = 3; i < d.length; i += 4) s.add(d[i]); return s; };
@@ -22,6 +22,17 @@ describe('painted blast sprites', () => {
     const centre = (i: number) => { const s = burstFrame(i), c = ((s.h >> 1) * s.w + (s.w >> 1)) * 4; return s.data[c + 1]; };
     expect(centre(0)).toBeGreaterThan(centre(BURST_FRAMES - 1)); // white-hot heart cools to soot
   });
+  it('paints the Flamethrower as one continuous jet: unbroken along its axis, hottest at the bill, looping seamlessly', () => {
+    const f = jetFrame(0.3), mid = Math.floor(JET_H / 2), at = (x: number) => (mid * JET_W + x) * 4;
+    for (let x = Math.ceil(JET_W * 0.04); x < JET_W * 0.6; x++) expect(f.data[at(x) + 3]).toBeGreaterThan(100);
+    const lum = (x: number) => f.data[at(x)] + f.data[at(x) + 1] + f.data[at(x) + 2];
+    expect(lum(Math.floor(JET_W * 0.1))).toBeGreaterThan(lum(Math.floor(JET_W * 0.6)));
+    const a = jetFrame(0), b = jetFrame(1); let diff = 0;
+    for (let i = 0; i < a.data.length; i++) diff = Math.max(diff, Math.abs(a.data[i] - b.data[i]));
+    expect(diff).toBeLessThanOrEqual(1);
+    expect(JET_FRAMES).toBeGreaterThanOrEqual(8);
+  });
+
   it('picks a hotter puff for a hotter flame', () => {
     expect(puffIndex(0)).toBe(0); expect(puffIndex(1)).toBe(PUFF_HEATS - 1); expect(puffIndex(0.6)).toBeGreaterThan(puffIndex(0.3));
   });

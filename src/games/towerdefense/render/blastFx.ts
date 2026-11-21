@@ -1,11 +1,11 @@
 // Shells and blasts as painted sprites (blastTex.ts), at the tower and alien art's pixel density: the Fireball's
 // rolling molten ball and its flame burst, the Mortar's iron shell, its detonation flash, thrown gravel and hot
 // shrapnel that arc, bounce and settle, dust puffs, a crater that fades from the road, and the flame puffs of trails
-// and the Flamethrower's spray. Debris lives in screen space (like the renderer's particles); craters keep field
+// and the Flamethrower's jet. Debris lives in screen space (like the renderer's particles); craters keep field
 // coordinates. Sizes are in field units times `k` (px per unit).
 import { heatColor } from './fireTex';
 import {
-  BALL_FRAMES, BURST_FRAMES, FLASH_FRAMES, PUFF_HEATS, ballFrame, burstFrame, chunkSprite,
+  BALL_FRAMES, BURST_FRAMES, FLASH_FRAMES, JET_FRAMES, PUFF_HEATS, ballFrame, burstFrame, chunkSprite, jetFrame,
   craterSprite, dustSprite, flashFrame, puffSprite, shellSprite, type Sprite,
 } from './blastTex';
 
@@ -45,9 +45,10 @@ export function stepChunk(c: Chunk, dt: number, gravity: number) {
 interface Puff { x: number; y: number; vx: number; vy: number; age: number; life: number; spr: number; size: number }
 interface Seq { x: number; y: number; age: number; size: number }
 interface Crater { x: number; y: number; bornT: number; r: number; spr: number }
+interface Jet { x: number; y: number; a: number; len: number; wide: number; alpha: number; glow: number; frame: number }
 interface Ember { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; heat: number; /** Size multiplier reached at the end of its life (a spray's flames billow as they travel). */ grow?: number; /** Upward drift, px/s² (flames rise). */ rise?: number }
 
-interface Sprites { ball: HTMLCanvasElement[]; burst: HTMLCanvasElement[]; flash: HTMLCanvasElement[]; shell: HTMLCanvasElement; dust: HTMLCanvasElement[]; gravel: HTMLCanvasElement[]; metal: HTMLCanvasElement[]; crater: HTMLCanvasElement[]; puff: HTMLCanvasElement[] }
+interface Sprites { ball: HTMLCanvasElement[]; burst: HTMLCanvasElement[]; flash: HTMLCanvasElement[]; shell: HTMLCanvasElement; dust: HTMLCanvasElement[]; gravel: HTMLCanvasElement[]; metal: HTMLCanvasElement[]; crater: HTMLCanvasElement[]; puff: HTMLCanvasElement[]; jet: HTMLCanvasElement[] }
 let sprites: Sprites | null = null;
 function toCanvas(s: Sprite): HTMLCanvasElement {
   const c = document.createElement('canvas'); c.width = s.w; c.height = s.h;
@@ -61,6 +62,7 @@ function bake(): Sprites {
     flash: n(FLASH_FRAMES, (i) => flashFrame(i)), shell: toCanvas(shellSprite()), dust: n(4, (i) => dustSprite(i * 7 + 1)),
     gravel: n(14, (i) => chunkSprite(i + 1, 'gravel')), metal: n(8, (i) => chunkSprite(i + 101, 'shrapnel')), crater: n(3, (i) => craterSprite(i * 5 + 2)),
     puff: n(PUFF_HEATS, (i) => puffSprite(i / (PUFF_HEATS - 1), 7 + i)),
+    jet: n(JET_FRAMES, (i) => jetFrame(i / JET_FRAMES)),
   };
 }
 /** Bakes the sprites (tens of ms) during the level's loading hold; drawing bakes on demand if this never ran. */
@@ -75,6 +77,11 @@ export class Blasts {
   private bursts: Seq[] = [];
   private craters: Crater[] = [];
   private embers: Ember[] = [];
+  private jets: Jet[] = [];
+  /** Each Flamethrower's jet, 0 (off) → 1 (full), so it shoots out and dies back instead of popping. */
+  private jetOn = new Map<number, number>();
+  private clock = 0;
+  private jetRange = new Map<number, number>();
 
   /** A Mortar shell lands at screen (x, y): flash, a crater, gravel and shrapnel thrown out, dust rolling up. */
   mortar(x: number, y: number, fieldX: number, fieldY: number, r: number, k: number, t: number) {
@@ -111,6 +118,7 @@ export class Blasts {
     this.flashes = this.flashes.filter((f) => f.age < FLASH_FRAMES * FLASH_DT);
     for (const b of this.bursts) b.age += dt;
     this.bursts = this.bursts.filter((b) => b.age < BURST_FRAMES * BURST_DT);
+    this.clock += dt;
     for (const e of this.embers) { e.age += dt; e.x += e.vx * dt; e.y += e.vy * dt; e.vy -= (e.rise ?? k * 6) * dt; e.vx *= 1 - (e.grow ? 2.2 : 0) * dt; e.vy *= 1 - (e.grow ? 2.2 : 0) * dt; }
     this.embers = this.embers.filter((e) => e.age < e.life);
   }
@@ -156,6 +164,16 @@ export class Blasts {
       const i = Math.min(BURST_FRAMES - 1, Math.floor(b.age / BURST_DT)), w = b.size;
       g.globalAlpha = 1; g.drawImage(s.burst[i], b.x - w / 2, b.y - w / 2, w, w);
     }
+    // Flamethrower jets: one continuous painted tongue of flame each, with a light pass on top.
+    for (const j of this.jets) {
+      const img = s.jet[j.frame];
+      g.save(); g.translate(j.x, j.y); g.rotate(j.a - Math.PI / 2);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 0.92 * j.alpha; g.drawImage(img, -j.len * 0.03, -j.wide / 2, j.len, j.wide);
+      g.globalCompositeOperation = 'lighter'; g.globalAlpha = j.glow * j.alpha; g.drawImage(img, -j.len * 0.03, -j.wide / 2, j.len, j.wide);
+      g.restore();
+    }
+    this.jets.length = 0;
+    g.globalCompositeOperation = 'source-over';
     for (const e of this.embers) {
       const f = e.age / e.life, h = e.heat * (1 - f), w = e.size * (e.grow ? 1 + (e.grow - 1) * f : 1 - 0.5 * f);
       if (h <= 0.22 && f > 0.92) continue;
@@ -197,24 +215,36 @@ export class Blasts {
 
   /**
    * The Flamethrower's duckbill burner at screen (x, y), aimed `a` (0 = up the screen), `w` px across: idle, flame licks
-   * curl off the mouth, more and hotter every level (L1 a banked ember, L5 white-hot); firing, it sprays a fan of
-   * flame puffs `range` px long across `half` radians either side.
+   * curl off the mouth, more and hotter every level (L1 a banked ember, L5 white-hot); firing, it throws one
+   * continuous jet of flame `range` px long that widens toward the cone's `half` angle, shooting out and dying back
+   * smoothly (`key` tells towers apart), with a few licks streaming along it.
    */
-  burner(x: number, y: number, a: number, w: number, level: number, k: number, dt: number, fire?: { range: number; half: number }) {
+  burner(x: number, y: number, a: number, w: number, level: number, k: number, dt: number, fire?: { range: number; half: number }, key = 0) {
     const u = PUFF_UNIT * k, L = Math.max(1, Math.min(5, level)), ax = Math.sin(a), ay = -Math.cos(a);
     const idle = [5, 9, 14, 20, 28][L - 1], heat = [0.55, 0.64, 0.74, 0.86, 1][L - 1];
     for (let n = idle * dt + Math.random(); n >= 1 && this.embers.length < MAX_EMBERS; n--) {
-      const u = (Math.random() - 0.5) * w * 0.8, v = k * (1.5 + Math.random() * 2.5) * (0.8 + 0.1 * L);
-      this.embers.push({ x: x + ay * -u, y: y + ax * u, vx: ax * v, vy: ay * v, age: 0, life: 0.22 + Math.random() * 0.12 * L, size: u * (0.5 + Math.random() * (L >= 4 ? 0.8 : 0.5)), heat: heat * (0.85 + Math.random() * 0.15), rise: k * 14 });
+      const off = (Math.random() - 0.5) * w * 0.8, v = k * (1.5 + Math.random() * 2.5) * (0.8 + 0.1 * L);
+      this.embers.push({ x: x + ay * -off, y: y + ax * off, vx: ax * v, vy: ay * v, age: 0, life: 0.22 + Math.random() * 0.12 * L, size: u * (0.5 + Math.random() * (L >= 4 ? 0.8 : 0.5)), heat: heat * (0.85 + Math.random() * 0.15), rise: k * 14 });
     }
+    const was = this.jetOn.get(key) ?? 0, on = fire ? Math.min(1, was + dt / 0.08) : Math.max(0, was - dt / 0.14);
+    this.jetOn.set(key, on);
+    if (on <= 0) return;
+    const R = fire?.range ?? this.jetRange.get(key) ?? 0, half = fire?.half ?? 0.5;
+    if (fire) this.jetRange.set(key, fire.range);
+    const reach = fire ? 0.35 + 0.65 * on : 1;
+    this.jets.push({
+      x, y, a, len: (R / 0.8) * reach, wide: Math.max(w * 1.1, R * Math.tan(half) * 1.5) * (0.75 + 0.25 * reach),
+      alpha: fire ? 1 : on, glow: 0.18 + 0.06 * L, frame: Math.floor(this.clock * 26 + key * 3.7) % JET_FRAMES,
+    });
     if (!fire) return;
-    for (let n = (110 + 30 * L) * dt + Math.random(); n >= 1 && this.embers.length < MAX_EMBERS; n--) {
-      const sa = a + (Math.random() - 0.5) * 2 * fire.half * 0.85, life = 0.32 + Math.random() * 0.14, v = fire.range / life * (1.1 + Math.random() * 0.5);
-      const u = (Math.random() - 0.5) * w * 0.7;
-      this.embers.push({ x: x + ay * -u, y: y + ax * u, vx: Math.sin(sa) * v, vy: -Math.cos(sa) * v, age: 0, life, size: u * (0.7 + Math.random() * 0.6), heat: Math.min(1, heat + 0.12), grow: 1.8 + Math.random() * 1.0, rise: k * 10 });
+    // A few licks stream along the jet and curl off past its tip, so it churns instead of looking pasted on.
+    for (let n = (22 + 5 * L) * dt + Math.random(); n >= 1 && this.embers.length < MAX_EMBERS; n--) {
+      const sa = a + (Math.random() - 0.5) * fire.half * 0.5, life = 0.22 + Math.random() * 0.1, v = R / life * (0.9 + Math.random() * 0.3);
+      const off = (Math.random() - 0.5) * w * 0.3;
+      this.embers.push({ x: x + ay * -off, y: y + ax * off, vx: Math.sin(sa) * v, vy: -Math.cos(sa) * v, age: 0, life, size: u * (0.6 + Math.random() * 0.4), heat: Math.min(1, heat + 0.1), grow: 1.6 + Math.random() * 0.6, rise: k * 10 });
     }
   }
 
   get busy() { return this.chunks.length + this.puffs.length + this.flashes.length + this.bursts.length + this.embers.length; }
-  clear() { this.chunks = []; this.puffs = []; this.flashes = []; this.bursts = []; this.craters = []; this.embers = []; }
+  clear() { this.chunks = []; this.puffs = []; this.flashes = []; this.bursts = []; this.craters = []; this.embers = []; this.jets = []; this.jetOn.clear(); }
 }

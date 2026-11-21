@@ -804,14 +804,14 @@ export class TdRenderer implements GameRenderer {
       const fl = 0.85 + 0.15 * Math.sin(t * 13 + tw.pad) * Math.sin(t * 7.3 + tw.pad * 2);
       g.save(); g.globalCompositeOperation = 'lighter';
       glowAt(g, L >= 5 ? '#ffd27a' : '#ff8a3a', m.x, m.y, (1.6 + 0.45 * L + (firing ? 2 : 0)) * k, (0.12 + 0.07 * L + (firing ? 0.2 : 0)) * fl * Math.min(1, s.grid));
-      if (firing) { // a faint light under the spray; the flames themselves are painted puffs (blastFx)
+      if (firing) { // a faint light under the jet; the flame itself is painted (blastFx)
         const gr = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, range);
         gr.addColorStop(0, 'rgba(255,150,60,0.14)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
         g.fillStyle = gr; g.beginPath(); g.moveTo(m.x, m.y); g.arc(m.x, m.y, range, a - Math.PI / 2 - half, a - Math.PI / 2 + half); g.closePath(); g.fill();
       }
       g.restore();
       // The duckbill mouth is about 80 px of the 224 px rig, drawn at 8.4k per 136 px.
-      this.blasts.burner(m.x, m.y, a, 80 * 8.4 * k / 136, L, k, dt > 0 ? Math.min(dt, 0.05) : 0, firing ? { range, half } : undefined);
+      this.blasts.burner(m.x, m.y, a, 80 * 8.4 * k / 136, L, k, dt > 0 ? Math.min(dt, 0.05) : 0, firing ? { range, half } : undefined, tw.pad);
     }
   }
 

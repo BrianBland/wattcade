@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
 import type { FullSendSnapshot } from '../sim/sim';
-import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage } from '../render/signs';
+import { countdown, distantSignLayer, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage } from '../render/signs';
 
 const ride = () => {
   const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'quick' }, seed: 3 });
@@ -36,6 +36,10 @@ describe('road signs and countdowns', () => {
     const end = r.until((q) => q.phase === 'effort' && q.phaseS - q.phaseT < 0.5);
     expect(countdown(end)!.m).toBeLessThan(60);
     expect(countdown(end)!.label).toBe('WALL');
+  });
+  it('the board is drawn after the scene; the legs stay behind it', () => {
+    expect(distantSignLayer('legs')).toBe('behind');
+    expect(distantSignLayer('board')).toBe('over');
   });
   it('the distant sign starts fully on screen, drifts left slowly, and the next one comes in from the right', () => {
     const W = 1024, UH = 650;

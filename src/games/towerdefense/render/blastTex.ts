@@ -5,6 +5,7 @@
 // vector gradients. Pure: every generator fills an RGBA byte array (straight alpha), so it runs and tests in Node.
 import { cells, fbm, heatColor } from './fireTex';
 
+const TAU = Math.PI * 2;
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const smooth = (a: number, b: number, v: number) => { const x = clamp01((v - a) / (b - a)); return x * x * (3 - 2 * x); };
 
@@ -90,30 +91,56 @@ export function puffSprite(heat: number, seed = 7, S = PUFF_S): Sprite {
 }
 
 /** Frames of the Flamethrower's jet (a seamless flow loop) and its size: long along x, mouth at the left. */
-export const JET_FRAMES = 10, JET_W = 160, JET_H = 56;
+export const JET_FRAMES = 12, JET_W = 200, JET_H = 100;
+/** The jet's cel bands, coolest to hottest: a dark ember rim, then orange to a pale cream core (owner reference). */
+export const JET_BANDS: number[][] = [[132, 38, 14], [212, 82, 20], [246, 138, 28], [255, 196, 64], [255, 240, 186]];
+const SMOKE_DARK = [44, 40, 40], SMOKE_LIT = [86, 80, 78];
 /**
- * One frame of the Flamethrower's jet: a single continuous tongue of flame from the mouth (left edge, white-hot and
- * narrow) widening and cooling to a ragged orange tip (right), its streaks flowing outward as `phase` goes 0 → 1
- * (seamless: two noise fields slide by one period and cross-fade).
+ * One frame of the Flamethrower's jet, after the owner's reference: a thin pale stream at the mouth (left edge)
+ * thickening into a whipping ribbon of liquid flame, shaded in crisp cel bands with pale swirl highlights and a dark
+ * ember rim, its end rolling over and breaking into flame scraps and black smoke. The ribbon's whip and its swirls
+ * travel outward as `phase` goes 0 → 1 (seamless loop: the whip moves one wavelength, the noise fields cross-fade).
  */
 export function jetFrame(phase: number, seed = 3, W = JET_W, H = JET_H): Sprite {
-  const out = sprite(W, H), D = 1.6;
-  const field = (u: number, v: number) => {
-    const a = fbm(u * 3.2 - phase * D, v * 2.2, seed, 4), b = fbm(u * 3.2 - (phase - 1) * D, v * 2.2, seed, 4);
+  const out = sprite(W, H), D = 1.4;
+  const field = (u: number, v: number, sd: number, oct = 3) => {
+    const a = fbm(u - phase * D, v, sd, oct), b = fbm(u - (phase - 1) * D, v, sd, oct);
     return a * (1 - phase) + b * phase;
   };
+  const bandAt = (h: number) => JET_BANDS[Math.max(0, Math.min(JET_BANDS.length - 1, Math.floor(h * JET_BANDS.length)))];
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const s = (x + 0.5) / W, v = ((y + 0.5) / H) * 2 - 1;
-    // streaks run along the jet: stretch the noise along u
-    const n = field(s * 1.1, v * (1.2 + s)), n2 = field(s * 2.3 + 5, v * 2.6);
-    // width profile: narrow at the bill, flaring to the cone, a ragged rounded tip
-    const tip = 0.8 + (n - 0.5) * 0.35, hw = (0.2 + 0.72 * Math.pow(s, 0.75)) * (s > tip - 0.2 ? Math.sqrt(clamp01((tip - s) / 0.2)) : 1);
-    const edgeN = hw * (0.85 + (n2 - 0.5) * 0.5), body = 1 - Math.abs(v) / Math.max(edgeN, 1e-3);
-    if (body <= -0.08 || s > tip) continue;
-    const core = Math.pow(clamp01(body), 0.7);
-    const h = clamp01(core * (1.05 - 0.6 * s) + (n - 0.5) * 0.45 + (n2 - 0.5) * 0.2 + 0.18 - 0.25 * s);
-    const [r, g, b] = heatColor(Math.max(h, 0.28));
-    put(out, x, y, r, g, b, edge(body, 2 / H) * smooth(0, 0.06, s + 0.02) * smooth(0, 0.1, tip - s) * smooth(0.12, 0.42, h + 0.05 * core));
+    // The ribbon whips: a wave along it that grows toward the end and travels outward.
+    const c = 0.2 * Math.pow(s, 1.6) * Math.sin(TAU * (s * 1.1 - phase)) - 0.04 * s * s;
+    // noise fields roughly isotropic in pixels (the sprite is W/H = 2.5 wide)
+    const n = field(s * 3.4, (v - c) * 3, seed), sw = field(s * 6.5, (v - c) * 3.2, seed + 9, 2), n3 = field(s * 11, (v - c) * 5.5, seed + 5, 2);
+    // thin at the mouth, thickening, then billowing into a rounded rolling head
+    const tip = 0.85 + (n - 0.5) * 0.08, capS = smooth(tip - 0.13, tip, s);
+    const hw = (0.06 + 0.55 * Math.pow(s, 1.2)) * (1 + 0.5 * smooth(0.5, 0.76, s)) * (0.82 + 0.5 * (n - 0.5) * (0.4 + s)) * Math.sqrt(Math.max(0, 1 - capS * capS));
+    // the head tears at its edge into scraps
+    const tear = s > 0.55 ? smooth(0.55, 0.85, s) * (0.55 - n3) * 1.4 : 0;
+    const body = 1 - Math.abs(v - c) / Math.max(hw, 1e-3) + Math.min(0, tear * 2) + Math.max(0, tear) * 0.3;
+    // loose scraps of flame flung past the head
+    const scrap = s > tip - 0.04 && s < 0.97 ? n3 - 0.64 - Math.abs(v - c) * 0.5 - (s - tip) * 1.5 : -1;
+    // black smoke rolling off the head, to the outside of the whip
+    const sv = v - c + 0.3 * s, sm = field(s * 9 + 11, sv * 4.5, seed + 23, 3);
+    const smoke = s > 0.6 && s < 0.98 ? sm - 0.53 + smooth(0.6, 0.85, s) * 0.14 - Math.abs(sv) * 0.55 - smooth(0.9, 0.98, s) * 0.3 : -1;
+    if ((body > -0.12 || scrap > -0.02) && s > 0.004) {
+      const inScrap = body <= 0;
+      const core = inScrap ? 0.3 : clamp01(body);
+      let h = inScrap ? 0.3 + (n3 - 0.64) * 2 : core * 0.75 + (1 - s) * 0.45 + (n - 0.5) * 0.5 - 0.05;
+      // swirl contours: pale curling highlight lines inside the ribbon
+      if (!inScrap && Math.abs(((sw * 7) % 1) - 0.5) < 0.06 && core > 0.25) h += 0.3;
+      if (!inScrap && body < 0.16) h = Math.min(h, 0.15); // the dark ember rim
+      const col = bandAt(clamp01(h));
+      const a = inScrap ? edge(scrap, 0.03) : edge(body, 2.4 / (Math.max(hw, 0.02) * H)) * smooth(0, 0.03, s);
+      if (a > 0.01) { put(out, x, y, col[0], col[1], col[2], a); continue; }
+    }
+    if (smoke > 0) {
+      const lit = smooth(0.02, 0.08, smoke) * smooth(0.25, -0.25, sv); // lit on the side away from the flame
+      const col = mix(SMOKE_DARK, SMOKE_LIT, lit * 0.7);
+      put(out, x, y, col[0], col[1], col[2], edge(smoke, 0.015) * 0.95);
+    }
   }
   return out;
 }

@@ -5,7 +5,7 @@
 // coordinates. Sizes are in field units times `k` (px per unit).
 import { heatColor } from './fireTex';
 import {
-  BALL_FRAMES, BURST_FRAMES, FLASH_FRAMES, JET_FRAMES, PUFF_HEATS, ballFrame, burstFrame, chunkSprite, jetFrame,
+  BALL_FRAMES, BURST_FRAMES, FLASH_FRAMES, JET_FRAMES, JET_H, JET_W, PUFF_HEATS, ballFrame, burstFrame, chunkSprite, jetFrame,
   craterSprite, dustSprite, flashFrame, puffSprite, shellSprite, type Sprite,
 } from './blastTex';
 
@@ -45,7 +45,7 @@ export function stepChunk(c: Chunk, dt: number, gravity: number) {
 interface Puff { x: number; y: number; vx: number; vy: number; age: number; life: number; spr: number; size: number }
 interface Seq { x: number; y: number; age: number; size: number }
 interface Crater { x: number; y: number; bornT: number; r: number; spr: number }
-interface Jet { x: number; y: number; a: number; len: number; wide: number; alpha: number; glow: number; frame: number }
+interface Jet { x: number; y: number; a: number; len: number; wide: number; reach: number; alpha: number; glow: number; frame: number }
 interface Ember { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; heat: number; /** Size multiplier reached at the end of its life (a spray's flames billow as they travel). */ grow?: number; /** Upward drift, px/s² (flames rise). */ rise?: number }
 
 interface Sprites { ball: HTMLCanvasElement[]; burst: HTMLCanvasElement[]; flash: HTMLCanvasElement[]; shell: HTMLCanvasElement; dust: HTMLCanvasElement[]; gravel: HTMLCanvasElement[]; metal: HTMLCanvasElement[]; crater: HTMLCanvasElement[]; puff: HTMLCanvasElement[]; jet: HTMLCanvasElement[] }
@@ -168,8 +168,10 @@ export class Blasts {
     for (const j of this.jets) {
       const img = s.jet[j.frame];
       g.save(); g.translate(j.x, j.y); g.rotate(j.a - Math.PI / 2);
-      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 0.92 * j.alpha; g.drawImage(img, -j.len * 0.03, -j.wide / 2, j.len, j.wide);
-      g.globalCompositeOperation = 'lighter'; g.globalAlpha = j.glow * j.alpha; g.drawImage(img, -j.len * 0.03, -j.wide / 2, j.len, j.wide);
+      // While it shoots out, only the first `reach` of the stream is drawn (it unrolls from the mouth).
+      const sw = img.width * j.reach, dl = j.len * j.reach;
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = j.alpha; g.drawImage(img, 0, 0, sw, img.height, -j.len * 0.02, -j.wide / 2, dl, j.wide);
+      g.globalCompositeOperation = 'lighter'; g.globalAlpha = j.glow * j.alpha; g.drawImage(img, 0, 0, sw, img.height, -j.len * 0.02, -j.wide / 2, dl, j.wide);
       g.restore();
     }
     this.jets.length = 0;
@@ -229,20 +231,18 @@ export class Blasts {
     const was = this.jetOn.get(key) ?? 0, on = fire ? Math.min(1, was + dt / 0.08) : Math.max(0, was - dt / 0.14);
     this.jetOn.set(key, on);
     if (on <= 0) return;
-    const R = fire?.range ?? this.jetRange.get(key) ?? 0, half = fire?.half ?? 0.5;
+    const R = fire?.range ?? this.jetRange.get(key) ?? 0;
     if (fire) this.jetRange.set(key, fire.range);
-    const reach = fire ? 0.35 + 0.65 * on : 1;
-    this.jets.push({
-      x, y, a, len: (R / 0.8) * reach, wide: Math.max(w * 1.1, R * Math.tan(half) * 1.5) * (0.75 + 0.25 * reach),
-      alpha: fire ? 1 : on, glow: 0.18 + 0.06 * L, frame: Math.floor(this.clock * 26 + key * 3.7) % JET_FRAMES,
-    });
-    if (!fire) return;
-    // A few licks stream along the jet and curl off past its tip, so it churns instead of looking pasted on.
-    for (let n = (22 + 5 * L) * dt + Math.random(); n >= 1 && this.embers.length < MAX_EMBERS; n--) {
-      const sa = a + (Math.random() - 0.5) * fire.half * 0.5, life = 0.22 + Math.random() * 0.1, v = R / life * (0.9 + Math.random() * 0.3);
-      const off = (Math.random() - 0.5) * w * 0.3;
-      this.embers.push({ x: x + ay * -off, y: y + ax * off, vx: Math.sin(sa) * v, vy: -Math.cos(sa) * v, age: 0, life, size: u * (0.6 + Math.random() * 0.4), heat: Math.min(1, heat + 0.1), grow: 1.6 + Math.random() * 0.6, rise: k * 10 });
-    }
+    // The painted stream's flame ends 85% along the sprite (smoke beyond); keep the sprite's aspect so its cel pixels stay square.
+    const len = R / 0.85, ux = ax * R, uy = ay * R;
+    this.jets.push({ x, y, a, len, wide: len * JET_H / JET_W, reach: fire ? 0.3 + 0.7 * on : 1, alpha: fire ? 1 : on, glow: 0.06 + 0.03 * L, frame: Math.floor(this.clock * 20 + key * 3.7) % JET_FRAMES });
+    // Black smoke rolls off the head while it burns, and the whole stream leaves a smoky trail when it cuts off.
+    const soot = (f: number) => {
+      const off = (Math.random() - 0.5) * R * 0.25, v = k * (2 + Math.random() * 3);
+      this.embers.push({ x: x + ux * f + ay * -off, y: y + uy * f + ax * off, vx: ax * v, vy: ay * v, age: 0, life: 0.5 + Math.random() * 0.4, size: u * (1.6 + Math.random() * 1.4) * (0.6 + f), heat: 0.15, rise: k * 6 });
+    };
+    if (fire) for (let n = 7 * dt + Math.random(); n >= 1 && this.embers.length < MAX_EMBERS; n--) soot(0.8 + Math.random() * 0.15);
+    else if (was >= 0.99) for (let i = 0; i < 7 && this.embers.length < MAX_EMBERS; i++) soot(0.35 + i * 0.09);
   }
 
   get busy() { return this.chunks.length + this.puffs.length + this.flashes.length + this.bursts.length + this.embers.length; }

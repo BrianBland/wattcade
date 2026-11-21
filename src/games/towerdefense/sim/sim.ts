@@ -900,8 +900,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     for (const s of shells) {
       s.t += dt;
       if (s.t < s.flight) continue;
-      addFx({ kind: 'boom', life: 0.5, x: s.x1, y: s.y1, r: s.r });
-      const mortar = s.tower != null, el = mortar ? null : 'red', src = mortar ? 'tower' : 'player';
+      const mortar = s.tower != null;
+      addFx({ kind: 'boom', life: 0.5, x: s.x1, y: s.y1, r: s.r, ...(mortar ? { mortar } : {}) });
+      const el = mortar ? null : 'red', src = mortar ? 'tower' : 'player';
       for (const e of enemies) if (!e.dead && e.route < 0 && Math.hypot(e.x - s.x1, e.y - s.y1) <= s.r + radiusOf(e)) {
         hit(e, s.dmg, el, src);
         if (mortar && !e.boss) e.dazed = Math.max(e.dazed, mortarDazeS()); // the Tyrant shrugs it off

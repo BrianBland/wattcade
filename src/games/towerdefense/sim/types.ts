@@ -28,7 +28,7 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'beam'; angle: number; spread: boolean; width?: number }
   | { id: number; t0: number; life: number; kind: 'zap'; pts: Array<{ x: number; y: number }>; /** firing tower's pad: the renderer starts the arc at its art's muzzle */ pad?: number }
   | { id: number; t0: number; life: number; kind: 'lens'; x0: number; y0: number; x1: number; y1: number; /** firing tower's pad: the renderer starts the beam at its crystal */ pad?: number }
-  | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number }
+  | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number; /** A Mortar shell (gravel and shrapnel), not a Fireball. */ mortar?: boolean }
   /** an ignition burst; `chain` groups bursts from one fire kill, `ordinal` counts them (1, 2, …) */
   | { id: number; t0: number; life: number; kind: 'burst'; x: number; y: number; r: number; chain: number; ordinal: number }
   | { id: number; t0: number; life: number; kind: 'hitStop'; seconds: number }

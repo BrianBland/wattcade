@@ -4,20 +4,21 @@ import outpost from '../../../../public/td/outpost/manifest.json';
 import { levelPosition, partPose, posedPoint } from '../render/puppetPose';
 
 describe('machinery attachment poses', () => {
-  it('keeps the flame origin and tier flare on each upgraded nozzle through aim and pulse', () => {
+  it('keeps the flame origin and mouth flare on each tier duckbill burner through aim and recoil', () => {
     const anchor = flamer.anchors.muzzle;
-    for (const [level, y] of [[1, 64], [2, 64], [3, 51], [4, 51], [5, 44]]) {
+    for (const [level, y] of [[1, 56], [2, 56], [3, 42], [4, 42], [5, 42]]) {
       const tip = levelPosition(anchor.position, anchor.positionsByLevel, level);
       expect(tip).toEqual([112, y]);
       for (const animation of Object.values(flamer.animations)) {
-        const e = animation.effect, offset = levelPosition(e.offset, e.offsetsByLevel, level);
-        // The four flare frames share a local hot-tip registration at [12,14].
-        expect([offset[0] + 12, offset[1] + 14]).toEqual(tip);
+        const e = animation.effect, offset = levelPosition(e.offset, e.offsetsByLevel, level), first = levelPosition(e.offset, e.offsetsByLevel, 1);
+        // Every tier's flare shares one local registration: the mouth's top edge sits at the muzzle.
+        const local = [anchor.positionsByLevel['1'][0] - first[0], anchor.positionsByLevel['1'][1] - first[1]];
+        expect([offset[0] + local[0], offset[1] + local[1]]).toEqual(tip);
         for (const turn of [0, Math.PI / 2]) for (const aim of [-1.2, 0, 0.8]) for (const age of [0, 0.15, 0.3, 1]) {
           const angle = aim + turn, motion = { angle, age, revs: 0 };
           const muzzle = posedPoint(partPose(flamer.parts, anchor.parent, motion), tip);
-          const flare = posedPoint(partPose(flamer.parts, e.parent, motion), [offset[0] + 12, offset[1] + 14]);
-          const reach = 112 - y - 2.5 * Math.max(0, 1 - age / 0.3);
+          const flare = posedPoint(partPose(flamer.parts, e.parent, motion), [offset[0] + local[0], offset[1] + local[1]]);
+          const reach = 112 - y - 1.5 * Math.max(0, 1 - age / 0.3);
           expect(muzzle.x).toBeCloseTo(112 + Math.sin(angle) * reach);
           expect(muzzle.y).toBeCloseTo(112 - Math.cos(angle) * reach);
           expect(flare).toEqual(muzzle);
@@ -26,6 +27,18 @@ describe('machinery attachment poses', () => {
         }
       }
     }
+  });
+  it('shows exactly one duckbill head and burner per level, each level glowing hotter than the last', async () => {
+    const { levelGain } = await import('../render/machinery');
+    let last = 0;
+    for (let level = 1; level <= 5; level++) {
+      const shown = flamer.parts.filter((p) => (p.minLevel ?? 1) <= level && level <= ((p as { maxLevel?: number }).maxLevel ?? 99)).map((p) => p.name);
+      expect(shown.filter((n) => n.startsWith('head'))).toHaveLength(1);
+      expect(shown.filter((n) => n.startsWith('nozzle'))).toHaveLength(1);
+      const gain = levelGain(flamer.glowByLevel, level);
+      expect(gain).toBeGreaterThan(last); last = gain;
+    }
+    expect(levelGain(undefined, 3)).toBe(1);
   });
   it('keeps sockets and the cab fixed while the flywheel spins and weapon aims', () => {
     for (const angle of [0, 1.4, Math.PI]) for (const revs of [0, 0.25, 2.1]) {

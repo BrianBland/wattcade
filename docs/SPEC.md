@@ -171,7 +171,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 3. `npm run sim:all` runs every game headless under all of its scenario scripts at max speed and prints one JSON line per run. Each game's scenario assertions pass (defined in its section).
 4. On the iPad with Bluefy over HTTPS, the three devices connect from the Connect screen. The debug overlay then shows live raw trainer data, paddle bars, the button grid, and the mixer's commands and results.
 5. Profiles, XP, levels, and achievements persist across reloads, and the session summary shows XP gained.
-6. `npm run deploy` (Cloudflare Pages via wrangler) is ready. The human runs it and sets up the domain.
+6. `npm run deploy` (a Worker with static assets, via wrangler) is ready. The human runs it and sets up the domain.
 7. `HARDWARE_TEST.md` gives a 15-minute manual checklist for the first real ride.
 
 ---
@@ -201,7 +201,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 - `ZwiftRideController implements ControllerDevice`: connect, find characteristics (with fallback), handshake, read firmware/battery, ≥1.3 warning, reconnect.
 - `InputHub`:
   - merges the Ride, keyboard, gamepad (polled each frame), touch (an on-screen D-pad/ABYZ overlay, hidden by default), and scripted input
-  - applies deadzone/invert from profile settings
+  - applies the profile deadzone; the left Ride paddle is always inverted (no invert setting)
   - computes per-tick edges via `beginTick()` (called by the core loop before each sim step), so a press that lasts shorter than a tick is never missed
   - tracks `paddleIdleS`
   - detects system combos and exposes `onSystem(cb)`
@@ -272,7 +272,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 - **Style:** an arcade-cabinet look (dark, neon accents, big type readable from the saddle about 1 m from an iPad). Everything navigable by Ride D-pad + A (select) / B (back), keyboard, and touch.
 - **Screens:**
   - **Profile picker:** cards, "+ New", edit.
-  - **Profile editor:** name, color swatches, FTP, max HR, weight, zone source, aim mode, paddle deadzone/invert, max grade; plus Backup export/import.
+  - **Profile editor:** name, color swatches, units, FTP, max HR, weight, zone source, paddle deadzone, debug stats, max grade; plus Backup export/import. There is no aim-mode or paddle-invert row: the left Ride paddle is always inverted, and Crank Crawler aims itself.
   - **Connect:** three big buttons (Trainer / Controller / Heart rate), each with a status, a "Fake bike" toggle, notes ("Close Zwift on this iPad first", "Enable Broadcast Heart Rate on your Garmin", "Record an Indoor Bike activity on your watch; it's your Garmin/Strava record for now"), and a firmware warning display.
   - **Arcade menu:** top bar (rider, level/XP, road, devices, achievements, switch rider, 📽) over one row of games: a looping carousel (wraps both ways) with the selection centred and enlarged (recorded clip of the real game from `public/cards/`, recorded in CI on deploy from the shots in `shell/cards/shots.ts`; `drawCard` art when there's none, tags, blurb, progress line, time/kJ ridden, last played); the rest show a title and a still. Sorted by the rider's most recent plays, ties in registry order (most polished first). While the Drive-In is on, the row is replaced by its toggle alone.
   - **Game host:** full-screen container. Mounts the renderer from `loadRenderer()`, runs `GameLoop`, and keeps the screen awake with `navigator.wakeLock` if available.
@@ -358,21 +358,15 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - **Brute:** tanky.
 
   Doors lock until the room is cleared.
-- **Movement:** D-pad, 8 directions. Speed = `base × curve(cadence3s)`: 0 rpm → 0.35, 60 → 0.8, 90 → 1.0, 110+ → 1.15. All curve points are tunables.
-- **Aiming:** `aimMode`.
-  - **rotate** (default): paddleL rotates the aim CCW and paddleR rotates it CW, at a rate ∝ deflection.
-  - **axes:** L = x, R = y.
-  - **buttons:** A/B/Y/Z fire in 4 directions, with diagonals from combos.
-  - **auto:** nearest enemy. Also used whenever `paddleIdleS` > 1.5.
-
-  Draw an aim reticle.
+- **Movement:** the hero AI moves. Speed = `base × curve(cadence3s)`: flat from 60–90 rpm; above 90 only pays during a called spin-up. The D-pad cycles stances, not direction.
+- **Aiming:** the hero aims itself. `ProfileSettings.aimMode` remains on the profile for old saves and is unused.
 - **Firing:** automatic, one shot every `tuning 'revsPerShot'` crank revs (default 0.5). Damage = `base × clamp(ftpFraction, 0.3, 2.5)`.
-- **Survival:** HP regen only while effortZone == 2 (×2 out of combat). Hands-off: the hero AI moves, aims and fights. Rider actions on the right-hood diamond: A Strike, B Ward, Y Rally (only when a spin-up is called), Z Potion (3 per run, short cooldown). All four shifters are virtual gears.
+- **Survival:** HP regen only while effortZone == 2 (out of combat from floor 2). Hands-off: the hero AI moves, aims and fights. Rider actions on the right-hood diamond: A Strike, B Ward, Y Rally (only when a spin-up is called), Z Potion. All four shifters are virtual gears. The D-pad cycles stances.
 - **Resistance** (sim mode, virtual gears enabled):
-  - base effect `terrain` 1 %
+  - base effect `terrain` 1 %, plus the pacing segment's grade
   - on swamp tiles, `swamp` +4 %
   - HP < 40 %: `wounded` +2 %
-  - **boss:** every 45 s the boss "shields up" for 20 s. During that window it takes damage only while `bike.sprinting` (×3 damage), and `boss-surge` +5 % is applied.
+  - **boss:** a telegraphed big attack, then an Exposed window (×2 damage, and a further ×`bossSprintDamageMult` while sprinting; default 2). `boss-surge` grade runs during the windup and the window. There is no timed shield that blocks all damage.
 - **Events:** `kill`, `roomCleared`, `death`, `bossStart`, `bossDefeated`. Summary: roomsCleared, kills, deaths, damageDealt, bossDefeated (0/1), timeS.
 - **Scenarios** (autopilot input: the sim exposes an optional `autopilot` flag in opts, used only by tests, that steers toward the nearest enemy/door with auto-aim):
   - `sprints`, 20 min → bossDefeated = 1
@@ -558,7 +552,7 @@ Continuous combat (owner, 2026-11-18; design doc https://claude.ai/artifact/YQ8r
   8. Check the summary and XP.
 
   Add that "Trainer test" button (Agent E owns the UI, the orchestrator wires it).
-- Write `README.md`: quick start, fake mode keys, iPad/Bluefy setup, Cloudflare deploy (`npx wrangler login`, `npm run deploy`, then add a custom domain like `wattcade.brianb.land` to the Pages project; optionally protect it with Cloudflare Access for two emails, which is free), and a "make a new game" guide (copy a game folder, implement GameModule, add scenarios, register).
+- Write `README.md`: quick start, fake mode keys, iPad/Bluefy setup, Cloudflare deploy (`npx wrangler login`, `npm run deploy`, then add a custom domain like `wattcade.brianb.land` in `wrangler.jsonc` `routes`; optionally protect it with Cloudflare Access for two emails, which is free), and a "make a new game" guide (copy a game folder, implement GameModule, add scenarios, register).
 
 ## §8 Out of scope for this demo (don't build)
 

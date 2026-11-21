@@ -24,4 +24,4 @@ CONTRACT-REQUESTs: none.
 `npx vitest run src/input src/devices/zwiftRide src/probe` (touch test uses jsdom). Web Bluetooth glue (`controller.ts`, `probe/main.ts`) is untested; needs real hardware.
 
 ## Known gaps
-Real paddle rest values/direction unknown (settings + probe exist for this). Touch overlay layout is basic.
+Real paddle rest values/direction unknown (deadzone + probe exist for this; the left paddle is always inverted, no setting). Touch overlay layout is basic.

@@ -39,7 +39,6 @@ const ENEMY_DEF: Record<EnemyKind, { hp: number; speed: number; r: number; conta
 const ELITES: EliteMod[] = ['undying', 'splitting', 'shielded', 'swift', 'volatile'];
 const SEG_BANNER: Partial<Record<string, string>> = { warmup: 'WARM UP', explore: 'EXPLORE · ZONE 2', recover: 'RECOVER', cooldown: 'COOL DOWN' };
 const BOSS_NAMES = ['Slime Monarch', 'Bone Lord', 'Ogre Warchief', 'The Lich', 'Bone King', 'Frost Wyrm'];
-export const BOSS_COUNT = BOSS_NAMES.length;
 const SHRINES: Record<ShrineKind, { label: string; window: number; color: string }> = {
   fury: { label: 'Shrine of Fury: ride power Z3+ for 20s', window: 50, color: '#ff8c2a' },
   endurance: { label: 'Shrine of Patience: hold Z2, treasure grows', window: 90, color: '#5aa9ff' },

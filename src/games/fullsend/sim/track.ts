@@ -102,5 +102,3 @@ export function megaSlope(lip: number | null, x: number): number {
   const u = x - (lip - MEGA.len);
   return u / Math.sqrt(MEGA.R * MEGA.R - u * u);
 }
-/** Is x on the booster pad before the ramp? */
-export const onBooster = (lip: number | null, x: number) => lip !== null && x >= lip - MEGA.len - MEGA.padFrom && x <= lip - MEGA.len - MEGA.padTo;

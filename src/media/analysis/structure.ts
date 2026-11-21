@@ -248,8 +248,7 @@ export function previewSpectrogram(f: Frames, durationS: number, hz = 4, bands =
   return { hz, bands, data: btoa(bin) };
 }
 
-/** Compact per-beat features: all rolling structure analysis needs once the audio is gone (26 floats per beat). */
-export const BEAT_FEATURE_DIMS = { timbre: 12, chroma: 12 } as const;
+/** Compact per-beat features: all rolling structure analysis needs once the audio is gone (26 floats per beat: 12 timbre + 12 chroma, plus energy). */
 export interface BeatFeature { t: number; /** low-band flux at the beat */ low: number; /** peak log10 energy over the beat */ energy: number; /** mean loudness (10·log10 power) over the beat */ loud: number; /** mean total spectral flux over the beat */ act: number; timbre: Float32Array; chroma: Float32Array }
 
 /** Per-beat features from frames: timbre (MFCC-lite over the beat), unnormalised chroma sum, low-band flux at the beat. */

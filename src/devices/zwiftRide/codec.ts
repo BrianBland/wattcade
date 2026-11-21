@@ -8,7 +8,6 @@ export const RIDE_BUTTON_BITS: Record<Button, number> = {
   shiftUpR: 0x1000, shiftDnR: 0x2000, powerUpR: 0x4000, onOffR: 0x8000,
 };
 const ALL_BUTTONS = Object.keys(RIDE_BUTTON_BITS) as Button[];
-export const ALL_RELEASED_MAP = 0xffff;
 
 export type RideMessage =
   | { kind: 'status'; buttonMapRaw: number | null; paddles: { 0?: number; 1?: number } }

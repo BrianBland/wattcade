@@ -25,9 +25,6 @@ export function loopExit(v0: number, R: number, g: number): { angle: number; sli
   return { angle: Math.acos(clamp((2 * g * R - v0 * v0) / (3 * g * R), -1, 1)), slide: false };
 }
 
-/** Speed on a loop at angle φ from the bottom (energy conservation, never negative). */
-export const loopSpeed = (v0: number, R: number, g: number, phi: number) => Math.sqrt(Math.max(0, v0 * v0 - 2 * g * R * (1 - Math.cos(phi))));
-
 export type Medal = 0 | 1 | 2 | 3; // none, bronze, silver, gold
 export function medalFor(ftpFrac: number, th: readonly [number, number, number]): Medal {
   return ftpFrac >= th[2] ? 3 : ftpFrac >= th[1] ? 2 : ftpFrac >= th[0] ? 1 : 0;

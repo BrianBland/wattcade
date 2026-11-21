@@ -1,12 +1,7 @@
 // Shell adapters: shared flat widgets plus controller hints and animated progression.
-import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { UiPanel, UiField, UiStepper, UiChoice, UiToggle, UiSpinner, clampStep, UI } from '../../ui';
+import { UiField, UiStepper, UiChoice, UiToggle, UiSpinner, UI } from '../../ui';
 import { play } from '../../audio/sfx';
-
-export function Panel({ children, class: cls = '', focused }: { children: ComponentChildren; class?: string; focused?: boolean }) {
-  return <UiPanel class={`panel ${cls}`} focused={focused}>{children}</UiPanel>;
-}
 
 const KEY_STYLE: Record<string, { glyph: string; color: string }> = {
   a: { glyph: 'A', color: UI.controller.a }, b: { glyph: 'B', color: UI.controller.b }, y: { glyph: 'Y', color: UI.controller.y }, z: { glyph: 'Z', color: UI.controller.z },
@@ -22,18 +17,7 @@ export function KeyHints({ hints }: { hints: Array<[string, string]> }) {
   return <div class="key-hints">{hints.map(([k, label]) => <span><Key k={k} />{label}</span>)}</div>;
 }
 
-export function ScreenHeader({ title, sub, children }: { title: string; sub?: ComponentChildren; children?: ComponentChildren }) {
-  return (
-    <div class="screen-head">
-      <div><h1>{title}</h1>{sub && <div class="sub">{sub}</div>}</div>
-      <span class="spacer" />
-      {children}
-    </div>
-  );
-}
-
 export const Field = UiField;
-export { clampStep };
 export function Stepper(p: Parameters<typeof UiStepper>[0]) { return <UiStepper {...p} onChange={v=>{play('uiTick');p.onChange(v);}}/>; }
 export function Choice<T extends string>(p: {value:T; options:ReadonlyArray<{value:T;label:string}>;onChange:(v:T)=>void}) { return <UiChoice {...p} onChange={v=>{play('uiTick');p.onChange(v);}}/>; }
 export function Toggle(p: Parameters<typeof UiToggle>[0]) { return <UiToggle {...p} onChange={v=>{play('uiTick');p.onChange(v);}}/>; }

@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { WatershedSnapshot } from '../sim/sim';
 import { SEA, fbm, hash2, sample } from '../sim/terrain';
-import { pineGeometry, broadleafGeometry, swayMaterial } from './models';
+import { broadleafGeometry2, foliageMaterial, pineGeometry2 } from './flora';
 import { terrainMaterial } from './terrainView';
 import { encodeH, heightTexture } from './sea';
 
@@ -111,9 +111,9 @@ export class OuterLand {
       spots.push([X, y, Z, hash2(n, 3, 61)]);
     }
     const wind = { value: 0 };
-    const kinds = [pineGeometry(), broadleafGeometry()].map((geo, k) => {
+    const kinds = [pineGeometry2(1), broadleafGeometry2(1)].map((geo, k) => {
       const mine = spots.filter((p) => (p[3] < 0.6 ? 0 : 1) === k);
-      const m = new THREE.InstancedMesh(geo, swayMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), wind, 0.04), Math.max(1, mine.length));
+      const m = new THREE.InstancedMesh(geo, foliageMaterial(wind, { amount: 0.04, freq: k ? 2.6 : 3.4, stretch: k ? [1, 1, 1] : [1, 1.7, 1], bump: 0.8 }), Math.max(1, mine.length));
       const mat = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
       mine.forEach(([X, y, Z, r], n) => { q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r * 6.28); m.setMatrixAt(n, mat.compose(new THREE.Vector3(X, y - 0.1, Z), q, sc.setScalar(1.1 + r))); });
       m.count = mine.length; m.castShadow = false;

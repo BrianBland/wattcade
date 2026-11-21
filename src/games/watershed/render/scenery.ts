@@ -1,7 +1,7 @@
 // Watershed scenery: sky gradient, forest that dies where the river erodes/floods/buries it, drifting clouds, a wavy sea.
 import * as THREE from 'three';
 import { SEA, hash2, sample } from '../sim/terrain';
-import { boulderGeometry, broadleafGeometry, pineGeometry, swayMaterial, trunkGeometry } from './models';
+import { broadleafGeometry2, foliageMaterial, pineGeometry2, rockGeometry, rockMaterial, trunkGeometry2 } from './flora';
 import type { WatershedSnapshot } from '../sim/sim';
 
 /** The sky palette (linear colours): deep zenith, pale hazy horizon; fog and the sea's reflection use the same. */
@@ -49,15 +49,14 @@ export class Forest {
       if (kind === -1) continue;
       this.trees.push({ i: fi, j: fj, s: 0.75 + hash2(i, j, 13) * 0.75, life: 1, kind, slot: counts[kind]++, rot: hash2(i, j, 31) * Math.PI * 2 });
     }
-    const pineMat = swayMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), this.wind);
-    const leafMat = swayMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }), this.wind, 0.05);
-    const rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+    const pineMat = foliageMaterial(this.wind, { freq: 4.2, stretch: [1, 1.7, 1], bump: 0.7 });
+    const leafMat = foliageMaterial(this.wind, { amount: 0.05, freq: 3.0, bump: 1.0 });
     this.meshes = [
-      new THREE.InstancedMesh(pineGeometry(), pineMat, Math.max(1, counts[0])),
-      new THREE.InstancedMesh(broadleafGeometry(), leafMat, Math.max(1, counts[1])),
-      new THREE.InstancedMesh(boulderGeometry(), rockMat, Math.max(1, counts[2])),
+      new THREE.InstancedMesh(pineGeometry2(), pineMat, Math.max(1, counts[0])),
+      new THREE.InstancedMesh(broadleafGeometry2(), leafMat, Math.max(1, counts[1])),
+      new THREE.InstancedMesh(rockGeometry(), rockMaterial(), Math.max(1, counts[2])),
     ];
-    this.trunks = new THREE.InstancedMesh(trunkGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), Math.max(1, counts[0] + counts[1]));
+    this.trunks = new THREE.InstancedMesh(trunkGeometry2(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), Math.max(1, counts[0] + counts[1]));
     const tint = new THREE.Color();
     // per-tree tint (multiplies the baked gradient): brightness plus a hue drift, so a forest isn't one green;
     // a few broadleaf trees run yellow-green or turn early to gold

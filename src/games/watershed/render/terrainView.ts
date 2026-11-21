@@ -25,23 +25,23 @@ const C = {
  * Per pixel on top: macro/micro mottling, rock on steep faces (strata, lichen), drifting cloud shadows, and under the
  * river (normal-map alpha = water depth) a darker wet bed with dancing caustics.
  */
-export function terrainMaterial(maps?: { color: THREE.Texture; normal: THREE.Texture }, time: { value: number } = { value: 0 }): THREE.MeshStandardMaterial {
+export function terrainMaterial(maps?: { color: THREE.Texture; normal: THREE.Texture; rock: THREE.Texture }, time: { value: number } = { value: 0 }): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: !maps, roughness: 0.93, metalness: 0 });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = time;
-    if (maps) { sh.uniforms.uTCol = { value: maps.color }; sh.uniforms.uTNor = { value: maps.normal }; }
+    if (maps) { sh.uniforms.uTCol = { value: maps.color }; sh.uniforms.uTNor = { value: maps.normal }; sh.uniforms.uTRock = { value: maps.rock }; }
     const M = !!maps;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>\nvarying vec3 vWPos; varying vec3 vWN;${M ? '\nattribute vec2 tuv; varying vec2 vTUv;' : ''}`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);${M ? ' vTUv = tuv;' : ''}`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vWPos; varying vec3 vWN; uniform float uTime;\n${M ? 'varying vec2 vTUv; uniform sampler2D uTCol; uniform sampler2D uTNor;' : ''}\n${NOISE_GLSL}\n${CLOUD_SHADOW_GLSL}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vWPos; varying vec3 vWN; uniform float uTime;\n${M ? 'varying vec2 vTUv; uniform sampler2D uTCol; uniform sampler2D uTNor; uniform sampler2D uTRock;' : ''}\n${NOISE_GLSL}\n${CLOUD_SHADOW_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
       ${M ? `vec4 tc = texture2D(uTCol, vTUv); diffuseColor.rgb = tc.rgb;
       vec4 tnr = texture2D(uTNor, vTUv);
       vec3 tn = normalize(tnr.xyz * 2.0 - 1.0);
-      float fresh = tc.a, wdep = tnr.a * 4.0;` : 'vec3 tn = normalize(vWN); float fresh = 0.0, wdep = 0.0;'}
-      float wsShade = 0.0;
+      float fresh = tc.a, wdep = tnr.a * 4.0, rockM = texture2D(uTRock, vTUv).r;` : 'vec3 tn = normalize(vWN); float fresh = 0.0, wdep = 0.0, rockM = 0.0;'}
+      float wsShade = 0.0, wsCliff = 0.0, wsNear = 0.0;
       {
         float n1 = wsFbm(vWPos.xz * 0.32);
         float n2 = wsNoise(vWPos.xz * 3.1);
@@ -62,12 +62,26 @@ export function terrainMaterial(maps?: { color: THREE.Texture; normal: THREE.Tex
           float g1 = wsNoise(vWPos.xz * 9.0), g2 = wsNoise(vWPos.xz * 23.0 + 7.0);
           c *= 1.0 + nearK * ((g1 - 0.5) * 0.24 + (g2 - 0.5) * 0.16);
           c = mix(c, c * 1.35 + 0.04, nearK * smoothstep(0.8, 0.9, g2) * 0.6);
+          // grass tufts: clumps with darker roots between them
+          float tuft = wsNoise(vWPos.xz * 5.2 + 3.7);
+          c *= 1.0 + nearK * green * (smoothstep(0.35, 0.75, tuft) * 0.22 - 0.12);
         }
+        wsNear = nearK;
         // steep faces turn to rock: warm grey with strata bands and a little lichen, whatever the coarse colour said
-        float cliff = smoothstep(0.42, 0.72, slope + (n1 - 0.5) * 0.25) * (1.0 - smoothstep(0.0, 0.3, wdep));
+        // crisp outcrops: a narrow threshold broken up by noise, not a soft fade from grass to grey
+        float cliff = smoothstep(0.47, 0.55, slope + (n1 - 0.5) * 0.38 + (n2 - 0.5) * 0.12);
+        // bedrock (hard ridges, high ground: the rock map) breaks through the turf as slabs with crisp edges
+        cliff = max(cliff, smoothstep(0.42, 0.5, rockM * 0.85 + (n1 - 0.5) * 0.55 + (n2 - 0.5) * 0.18 + slope * 0.25));
+        cliff *= 1.0 - smoothstep(0.0, 0.3, wdep);
+        wsCliff = cliff;
         float strata = 0.5 + 0.5 * sin(vWPos.y * 2.6 + n1 * 4.0);
         vec3 rock = mix(vec3(0.30, 0.26, 0.22), vec3(0.47, 0.41, 0.34), strata) * (0.85 + 0.3 * n2);
         rock = mix(rock, vec3(0.36, 0.42, 0.26), smoothstep(0.62, 0.8, n1) * 0.35);
+        // ledges: thin dark lines under each rock step, light lips on top
+        float ledge = fract(vWPos.y * 0.9 + n1 * 1.6 + wsNoise(vWPos.xz * 0.6) * 0.5);
+        rock *= 1.0 - 0.38 * smoothstep(0.82, 0.97, ledge) + 0.14 * (1.0 - smoothstep(0.0, 0.08, ledge));
+        // a grassy lip where rock meets meadow
+        c = mix(c, c * 0.78, smoothstep(0.38, 0.47, slope + (n1 - 0.5) * 0.38) * (1.0 - cliff) * green);
         c = mix(c, mix(rock, c, 0.25 * smoothstep(0.85, 0.4, lum)), cliff * ${M ? '0.85' : '0.7'});
         // freshly cut ground (alpha of the colour map): dark, wet, glistening earth with crumbs that trickle downhill
         ${M ? `float crumb = wsNoise(vWPos.xz * 4.0 + vec2(0.0, uTime * 0.9)) * wsNoise(vWPos.xz * 7.3 - vec2(uTime * 0.6, 0.0));
@@ -90,7 +104,11 @@ export function terrainMaterial(maps?: { color: THREE.Texture; normal: THREE.Tex
       {
         vec2 p = vWPos.xz * 1.4; float e = 0.06;
         vec2 g = vec2(wsNoise(p + vec2(e, 0.0)) - wsNoise(p - vec2(e, 0.0)), wsNoise(p + vec2(0.0, e)) - wsNoise(p - vec2(0.0, e))) / (2.0 * e);
-        vec3 dn = vec3(-g.x, 0.0, -g.y) * 0.08;
+        vec3 dn = vec3(-g.x, 0.0, -g.y) * (0.08 + 0.3 * wsCliff);
+        // rock faces: chunky facets; meadows close up: small tussock bumps
+        vec2 q = vWPos.xz * 2.4; float qe = 0.05;
+        vec2 gq = vec2(wsNoise(q + vec2(qe, 0.0)) - wsNoise(q - vec2(qe, 0.0)), wsNoise(q + vec2(0.0, qe)) - wsNoise(q - vec2(0.0, qe))) / (2.0 * qe);
+        dn += vec3(-gq.x, 0.0, -gq.y) * (0.22 * wsCliff + 0.07 * wsNear * (1.0 - wsCliff));
         normal = normalize(normal + (viewMatrix * vec4(dn, 0.0)).xyz);
       }`)
       // cloud shadows dim the direct sun only (the sky fill stays), so shade reads as weather, not dirt
@@ -110,6 +128,8 @@ export class TerrainView {
   private ring: Array<[number, number]> = [];
   /** Per-pixel colour (sRGB, alpha = freshly cut ground) and normal maps at the fine resolution. */
   private colTex: THREE.DataTexture; private norTex: THREE.DataTexture;
+  /** Bedrock showing through (0..1), coarse and fine; drawn as rock slabs by the shader. */
+  private rockTex: THREE.DataTexture; private crock: Float32Array; private frock: Float32Array;
   /** Drawn heights as a byte texture (sea.ts encoding), so the sea can shade by depth over the live coast. */
   readonly hTex: THREE.DataTexture;
   /** Coarse heights at the last update, and how freshly each cell has been cut (0..1, decays over a few seconds). */
@@ -133,7 +153,8 @@ export class TerrainView {
       t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       return t;
     };
-    this.colTex = tex(true); this.norTex = tex(false); this.hTex = heightTexture(FX, FY);
+    this.colTex = tex(true); this.norTex = tex(false); this.hTex = heightTexture(FX, FY); this.rockTex = heightTexture(FX, FY);
+    this.crock = new Float32Array(nx * ny); this.frock = new Float32Array(FX * FY);
     const g = new THREE.BufferGeometry();
     const pos = new Float32Array(FX * FY * 3);
     for (let J = 0; J < FY; J++) for (let I = 0; I < FX; I++) { const k = (J * FX + I) * 3; pos[k] = wx(J / 2); pos[k + 2] = wz(I / 2); }
@@ -143,7 +164,7 @@ export class TerrainView {
     for (let J = 0; J < FY; J++) for (let I = 0; I < FX; I++) { const k = (J * FX + I) * 2; tuv[k] = (I + 0.5) / FX; tuv[k + 1] = (J + 0.5) / FY; }
     g.setAttribute('tuv', new THREE.BufferAttribute(tuv, 2));
     g.setIndex(gridIndex(FX, FY));
-    this.mesh = new THREE.Mesh(g, terrainMaterial({ color: this.colTex, normal: this.norTex }, this.time));
+    this.mesh = new THREE.Mesh(g, terrainMaterial({ color: this.colTex, normal: this.norTex, rock: this.rockTex }, this.time));
     this.mesh.receiveShadow = true; this.mesh.castShadow = true;
 
     // skirt around the fine edge, from the terrain down to BASE (lighter at the top, dark at the base)
@@ -168,7 +189,7 @@ export class TerrainView {
     this.skirt = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
   }
 
-  dispose(): void { this.colTex.dispose(); this.norTex.dispose(); this.hTex.dispose(); }
+  dispose(): void { this.colTex.dispose(); this.norTex.dispose(); this.hTex.dispose(); this.rockTex.dispose(); }
 
   /** Height of the drawn surface at sim-grid coords (x across, y downstream). */
   heightAt(x: number, y: number): number {
@@ -219,12 +240,15 @@ export class TerrainView {
       else if (mat === 3) c.lerp(C.debris, 0.7);
       // baked relief: hollows and gullies darken, crests catch a little light (cheap ambient occlusion)
       const o = this.occ[k], lit = mat === 1 && lavaAge < 30 ? 1 : o > 0 ? 1 - Math.min(0.36, o) : 1 + Math.min(0.12, -o * 0.5);
+      this.crock[k] = z < 0.7 || d < -0.15 || d > 0.1 || mat ? 0 : Math.min(1, Math.max(0, (0.8 - hard[k]) * 2.4, (z - 30) / 10));
       cc[k * 4] = c.r * lit; cc[k * 4 + 1] = c.g * lit; cc[k * 4 + 2] = c.b * lit; cc[k * 4 + 3] = z >= SEA ? fr[k] : 0;
     }
     const { FX, FY, fh, fcol } = this;
     upsample2(h, nx, ny, fh, this.tmp1, true);
     upsample2(cc, nx, ny, fcol, this.tmp3, false, 4);
     upsample2(wet, nx, ny, this.fwet, this.tmp1, false);
+    upsample2(this.crock, nx, ny, this.frock, this.tmp1, false);
+    const RT = this.rockTex.image.data as Uint8Array, fk = this.frock;
     const fw = this.fwet;
     const g = this.mesh.geometry;
     const P = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
@@ -237,7 +261,7 @@ export class TerrainView {
         const im = I > 0 ? I - 1 : I, ip = I < FX - 1 ? I + 1 : I;
         const dx = (fh[jp * FX + I] - fh[jm * FX + I]) / ((jp - jm) * 0.5), dz = (fh[J * FX + ip] - fh[J * FX + im]) / ((ip - im) * 0.5);
         const inv = 1 / Math.hypot(dx, 1, dz);
-        P[o + 1] = fh[k]; HT[k] = encodeH(fh[k]);
+        P[o + 1] = fh[k]; HT[k] = encodeH(fh[k]); RT[k] = Math.min(255, Math.max(0, fk[k] * 255));
         const nx_ = -dx * inv, ny_ = inv, nz_ = -dz * inv;
         N[o] = nx_; N[o + 1] = ny_; N[o + 2] = nz_;
         const q = k * 4;
@@ -247,7 +271,7 @@ export class TerrainView {
       }
     }
     for (const n of ['position', 'normal']) (g.getAttribute(n) as THREE.BufferAttribute).needsUpdate = true;
-    this.colTex.needsUpdate = true; this.norTex.needsUpdate = true; this.hTex.needsUpdate = true;
+    this.colTex.needsUpdate = true; this.norTex.needsUpdate = true; this.hTex.needsUpdate = true; this.rockTex.needsUpdate = true;
     g.computeBoundingSphere();
     const sp = this.skirt.geometry.getAttribute('position') as THREE.BufferAttribute, SP = sp.array as Float32Array;
     this.ring.forEach(([I, J], n) => { SP[n * 6 + 1] = Math.max(fh[J * FX + I], BASE + 0.5); });

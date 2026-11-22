@@ -25,8 +25,8 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - Save `HamsterSave` v1 via ctx.save: every 30 s, 3 s after a purchase, and on dispose.
 
 ## Balance (autopilot greedy buyer, z2 = 0.65 FTP of 200 W, no sprints/peptides)
-- Era 1 at 10 min, era 2 at 1.03 h, era 3 at 2.26 h, era 4 at 3.39 h, era 5 at 4.79 h, era 6 (Star) at 6.32 h, Dyson Swarm Wheel at 7.98 h, galaxy at 8.91 h, Kardashev 2 at 12.01 h.
-- After Middle Manager was removed, the same run reached Kardashev 2 in 5.24 h because autopilot no longer wasted spare energy on cheap generators. To restore a ~10 h climb without bringing back an autobuyer, the generator ladder was tightened: `outStep` 11 → 10.3 (later tiers produce a bit less relative to the last) and `growth` 1.15 → 1.20 (extra copies of a generator get more expensive). Era 1 stays at 10 min. Wholesale Seed Contract is unchanged in price (still 6× Ferret Turbine base cost); the 10% ×10 discount is a little more valuable with the higher growth rate, and it still does not affect this autopilot run (one-at-a-time buys).
+- Era 1 at 12 min, era 2 at 1.15 h, era 3 at 2.49 h, era 4 at 3.63 h, era 5 at 5.08 h, era 6 (Star) at 6.94 h, Dyson Swarm Wheel at 8.59 h, galaxy at 9.56 h, Kardashev 2 at 11.45 h.
+- After Middle Manager was removed, the same run reached Kardashev 2 in 5.24 h because autopilot no longer wasted spare energy on cheap generators. To restore a ~10–11 h climb without an autobuyer, the ladder was retuned: `cost0` 400 → 450, `costStep` 13 → 13.8, `growth` 1.15 → 1.22 (`outStep` stays 11). Era 1 is allowed to run to 12 min (up to 15 min was acceptable) so mid and late eras can stay close to the old `main` curve. Wholesale Seed Contract is still priced at 6× Ferret Turbine base cost; with the new `cost0`/`costStep` that is 97.9 MJ (was 68.5 MJ). The 10% ×10 discount is a little more valuable with the higher growth rate, and it still does not affect this autopilot run (one-at-a-time buys).
 - Re-run: `npx tsx src/games/hamster/test/balance.ts 14 z2` (about 30 s).
 
 ## Testing

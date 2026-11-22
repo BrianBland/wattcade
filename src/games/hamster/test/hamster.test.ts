@@ -32,7 +32,7 @@ describe('hamster econ', () => {
     expect(kardashev(1e6)).toBeCloseTo(0);
     expect(kardashev(1e26)).toBeCloseTo(2);
     expect(equivalence(2000)).toBe('≈ 2.0 toasters');
-    expect(genCost(DEFAULT_ECON, 0, 0, 10)).toBeCloseTo(400 * (1.20 ** 10 - 1) / 0.20);
+    expect(genCost(DEFAULT_ECON, 0, 0, 10)).toBeCloseTo(450 * (1.22 ** 10 - 1) / 0.22);
   });
 });
 

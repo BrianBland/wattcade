@@ -4,9 +4,9 @@ import { UNITS } from './data';
 export interface EconParams {
   out0: number; outStep: number;    // generator i base output = out0 × outStep^i (W)
   cost0: number; costStep: number;  // generator i base cost = cost0 × costStep^i (J)
-  growth: number;                   // per-owned cost growth (classic 1.15)
+  growth: number;                   // per-owned cost growth
 }
-export const DEFAULT_ECON: EconParams = { out0: 1.5, outStep: 11, cost0: 400, costStep: 13, growth: 1.15 };
+export const DEFAULT_ECON: EconParams = { out0: 1.5, outStep: 10.3, cost0: 400, costStep: 13, growth: 1.20 };
 
 export const genOut = (e: EconParams, i: number) => e.out0 * Math.pow(e.outStep, i);
 export const genBaseCost = (e: EconParams, i: number) => e.cost0 * Math.pow(e.costStep, i);

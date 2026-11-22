@@ -25,8 +25,8 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - Save `HamsterSave` v1 via ctx.save: every 30 s, 3 s after a purchase, and on dispose.
 
 ## Balance (autopilot greedy buyer, z2 = 0.65 FTP of 200 W, no sprints/peptides)
-- Era 1 at 10 min, era 2 at 0.84 h, era 3 at 1.61 h, era 4 at 2.27 h, era 5 at 3.00 h, era 6 (Star) at 3.58 h, Dyson Swarm Wheel at 4.12 h, galaxy at 4.49 h, Kardashev 2 at 5.24 h.
-- These are faster than the previous table (era 2 at 1.1 h through Kardashev 2 at 10.4 h) because autopilot no longer buys the retired Middle Manager, which spent spare energy on cheap generators and slowed later eras. Wholesale Seed Contract does not affect this run: autopilot buys one generator at a time, so the ×10 discount never applies.
+- Era 1 at 10 min, era 2 at 1.03 h, era 3 at 2.26 h, era 4 at 3.39 h, era 5 at 4.79 h, era 6 (Star) at 6.32 h, Dyson Swarm Wheel at 7.98 h, galaxy at 8.91 h, Kardashev 2 at 12.01 h.
+- After Middle Manager was removed, the same run reached Kardashev 2 in 5.24 h because autopilot no longer wasted spare energy on cheap generators. To restore a ~10 h climb without bringing back an autobuyer, the generator ladder was tightened: `outStep` 11 → 10.3 (later tiers produce a bit less relative to the last) and `growth` 1.15 → 1.20 (extra copies of a generator get more expensive). Era 1 stays at 10 min. Wholesale Seed Contract is unchanged in price (still 6× Ferret Turbine base cost); the 10% ×10 discount is a little more valuable with the higher growth rate, and it still does not affect this autopilot run (one-at-a-time buys).
 - Re-run: `npx tsx src/games/hamster/test/balance.ts 14 z2` (about 30 s).
 
 ## Testing

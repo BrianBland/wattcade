@@ -49,10 +49,10 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
   const T = ctx.tuning;
   const tun = {
     out0: T.num('out0', 1.5, 0.1, 100, 0.1, 'Hamster base output (W)'),
-    outStep: T.num('outStep', 11, 2, 30, 0.5, 'Output ratio between generator tiers'),
+    outStep: T.num('outStep', 10.3, 2, 30, 0.1, 'Output ratio between generator tiers'),
     cost0: T.num('cost0', 400, 10, 1e5, 10, 'Hamster base cost (J)'),
     costStep: T.num('costStep', 13, 2, 40, 0.5, 'Cost ratio between generator tiers'),
-    growth: T.num('growth', 1.15, 1.01, 1.5, 0.01, 'Per-owned cost growth'),
+    growth: T.num('growth', 1.20, 1.01, 1.5, 0.01, 'Per-owned cost growth'),
     unionCadence: T.num('unionCadence', 35, 0, 90, 1, 'Hamsters only run while your cadence is at least this (rpm)'),
     zone1Eff: T.num('zone1Eff', 0.5, 0, 1, 0.05, 'Hamster efficiency in Zone 1'),
     monoBase: T.num('monoBase', 2, 1, 10, 0.5, 'Base Mind-Numbing cap'),

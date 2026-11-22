@@ -20,12 +20,13 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - Peptides: costs scale with the current rate. Tolerance (+1 per use, −1 per 8 min) shrinks the bonus. Trenbalone has a 30% chance of roid rage (hamsters at −25%; sprint Z4+ for 8 s).
 - Resistance: sim mode, `inertia` effect adds +0.15% grade per era, virtual gears on both hoods.
 - Reincarnation: seeds = floor(cbrt(lifeEnergy / 1e27)). Requires a double press. Keeps vibes, milestones and unlocks.
-- Autobuyers (specials): Middle Manager buys generators and HR buys upgrades, each spending ≤ 25% of the bank.
+- Autobuyers (specials): HR buys upgrades, spending ≤ 25% of the bank. Wholesale Seed Contract (era 1) makes B (×10) generator buys 10% cheaper; single buys stay full price. Legacy saves may still contain `sp:manager` (the retired Middle Manager autobuyer); it is dropped on load with no refund.
 - Controls: ◀▶ tab, ▲▼ row, A buy/toggle, B buy ×10, Y re-dose the last peptide, Z accept trial; shifters are gears. Tap a tab or row (tap again to buy).
 - Save `HamsterSave` v1 via ctx.save: every 30 s, 3 s after a purchase, and on dispose.
 
 ## Balance (autopilot greedy buyer, z2 = 0.65 FTP of 200 W, no sprints/peptides)
-- Era 1 at 10 min, era 2 at 1.1 h, era 3 at 2.9 h, era 4 at 4 h, era 5 at 5.3 h, era 6 (Star) at 7.2 h, Dyson Swarm Wheel at 8.6 h, galaxy at 9 h, Kardashev 2 at 10.4 h.
+- Era 1 at 10 min, era 2 at 0.84 h, era 3 at 1.61 h, era 4 at 2.27 h, era 5 at 3.00 h, era 6 (Star) at 3.58 h, Dyson Swarm Wheel at 4.12 h, galaxy at 4.49 h, Kardashev 2 at 5.24 h.
+- These are faster than the previous table (era 2 at 1.1 h through Kardashev 2 at 10.4 h) because autopilot no longer buys the retired Middle Manager, which spent spare energy on cheap generators and slowed later eras. Wholesale Seed Contract does not affect this run: autopilot buys one generator at a time, so the ×10 discount never applies.
 - Re-run: `npx tsx src/games/hamster/test/balance.ts 14 z2` (about 30 s).
 
 ## Testing

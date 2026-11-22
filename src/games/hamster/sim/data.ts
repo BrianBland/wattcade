@@ -84,16 +84,16 @@ export const MONOS = [
   'Airport Layover', 'DMV Waiting Room', 'The Tax Code, Read Aloud',
 ];
 
-/** One-off special upgrades (QoL + mechanics). `costSec`: priced as N seconds of output at unlock, with floor `min`. */
+/** One-off special upgrades (QoL + mechanics). Cost is 6× the base cost of generator index `era * 3 + 1`. */
 export const SPECIALS = [
-  { id: 'manager', name: 'Middle Manager Hamster', desc: 'Auto-buys generators with spare energy (≤25% of bank).', era: 1, min: 4e5 },
-  { id: 'hr', name: 'Hamster HR Department', desc: 'Auto-buys upgrades too. Nobody likes HR.', era: 3, min: 5e10 },
-  { id: 'union', name: 'Union Recognition', desc: 'Broken strikes pay ×2. Solidarity, comrade.', era: 3, min: 2e11 },
-  { id: 'seedsub', name: 'Seed Subscription Box', desc: 'Golden hamsters appear 30% more often.', era: 2, min: 2e8 },
-  { id: 'dealer', name: 'A Guy Named Dmitri', desc: 'Black market prices -40%. His loading dock has no address.', era: 4, min: 5e14 },
-  { id: 'zen', name: 'Hamster Zen Master', desc: 'Mind-Numbing decays 50% slower.', era: 2, min: 5e7 },
-  { id: 'trialpro', name: 'Professional Lab Rat', desc: 'Clinical trials pay ×3.', era: 4, min: 2e15 },
-  { id: 'cloning', name: 'Hamster Cloning Vat', desc: 'All generators +50%. The clones are also named Gerald.', era: 5, min: 1e19 },
+  { id: 'wholesale', name: 'Wholesale Seed Contract', desc: 'B (×10) generator buys are 10% off. The sack is heavy. The price is not.', era: 1 },
+  { id: 'hr', name: 'Hamster HR Department', desc: 'Auto-buys upgrades with spare energy (≤25% of bank). Nobody likes HR.', era: 3 },
+  { id: 'union', name: 'Union Recognition', desc: 'Broken strikes pay ×2. Solidarity, comrade.', era: 3 },
+  { id: 'seedsub', name: 'Seed Subscription Box', desc: 'Golden hamsters appear 30% more often.', era: 2 },
+  { id: 'dealer', name: 'A Guy Named Dmitri', desc: 'Black market prices -40%. His loading dock has no address.', era: 4 },
+  { id: 'zen', name: 'Hamster Zen Master', desc: 'Mind-Numbing decays 50% slower.', era: 2 },
+  { id: 'trialpro', name: 'Professional Lab Rat', desc: 'Clinical trials pay ×3.', era: 4 },
+  { id: 'cloning', name: 'Hamster Cloning Vat', desc: 'All generators +50%. The clones are also named Gerald.', era: 5 },
 ] as const;
 export type SpecialId = typeof SPECIALS[number]['id'];
 

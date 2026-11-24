@@ -1,54 +1,55 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { BALL_FRAMES, BALL_S, BURST_FRAMES, BURST_S, JET_FRAMES, JET_H, JET_W, PUFF_HEATS, ballFrame, burstFrame, chunkSprite, craterSprite, jetFrame, dustSprite, flashFrame, puffSprite, shellSprite } from '../render/blastTex';
-import { CHUNK_UNIT, FLAME_REACH_S, FLAME_RECEDE_S, flameSpan, puffIndex, stepChunk, type Chunk } from '../render/blastFx';
+import { PUFF_HEATS, puffSprite } from '../render/blastTex';
+import { CHUNK_UNIT, FLAME_REACH_S, FLAME_RECEDE_S, flameFrame, puffIndex, stepChunk, type Chunk } from '../render/blastFx';
+import { oneShot, type FxName } from '../render/fxArt';
 
 const alphas = (d: Uint8ClampedArray) => { const s = new Set<number>(); for (let i = 3; i < d.length; i += 4) s.add(d[i]); return s; };
-const opaque = (d: Uint8ClampedArray) => { let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; };
 const colours = (d: Uint8ClampedArray) => { const s = new Set<string>(); for (let i = 0; i < d.length; i += 4) if (d[i + 3]) s.add(`${d[i]},${d[i + 1]},${d[i + 2]}`); return s; };
 
-describe('painted blast sprites', () => {
-  it('are painted at sprite resolution: smooth shading and anti-aliased edges, not a few posterised blocks', () => {
-    const all = [ballFrame(0.3), burstFrame(2), flashFrame(1), shellSprite(), dustSprite(3), chunkSprite(4, 'gravel'), chunkSprite(5, 'shrapnel'), craterSprite(2), puffSprite(0.8)];
-    for (const s of all) expect(opaque(s.data)).toBeGreaterThan(0);
-    expect(colours(ballFrame(0.5).data).size).toBeGreaterThan(200); // continuous heat, not a handful of steps
-    expect([...alphas(ballFrame(0.5).data)].some((a) => a > 0 && a < 255)).toBe(true); // soft rim
-    expect(BALL_S).toBeGreaterThanOrEqual(32); expect(BURST_S).toBeGreaterThanOrEqual(96);
+describe('painted flame puffs', () => {
+  it('are painted at sprite resolution: smooth shading and anti-aliased edges', () => {
+    const p = puffSprite(0.8);
+    expect(colours(p.data).size).toBeGreaterThan(40);
+    expect([...alphas(p.data)].some((a) => a > 0 && a < 255)).toBe(true);
   });
-  it('rolls the Fireball seamlessly and grows then hollows out its burst', () => {
-    expect(Array.from(ballFrame(0).data)).toEqual(Array.from(ballFrame(1).data)); // phase 1 wraps to 0
-    expect(Array.from(ballFrame(0).data)).not.toEqual(Array.from(ballFrame(1 / BALL_FRAMES).data));
-    const size = Array.from({ length: BURST_FRAMES }, (_, i) => opaque(burstFrame(i).data));
-    expect(size[2]).toBeGreaterThan(size[0]);
-    const centre = (i: number) => { const s = burstFrame(i), c = ((s.h >> 1) * s.w + (s.w >> 1)) * 4; return s.data[c + 1]; };
-    expect(centre(0)).toBeGreaterThan(centre(BURST_FRAMES - 1)); // white-hot heart cools to soot
-  });
-  it('paints the Flamethrower as one fire fanning from the mouth: unbroken, pale near the mouth, cooler at its front, looping seamlessly', () => {
-    const f = jetFrame(0.3), mid = Math.floor(JET_H / 2), at = (x: number) => (mid * JET_W + x) * 4;
-    for (let x = Math.ceil(JET_W * 0.04); x < JET_W * 0.6; x++) expect(f.data[at(x) + 3]).toBeGreaterThan(100);
-    // mean brightness of the flame in a column: the stream is pale near the bill, orange in its rolling head
-    const lum = (x: number) => { let sum = 0, n = 0; for (let y = 0; y < JET_H; y++) { const i = (y * JET_W + x) * 4; if (f.data[i + 3] > 128) { sum += f.data[i] + f.data[i + 1] + f.data[i + 2]; n++; } } return sum / Math.max(1, n); };
-    expect(lum(Math.floor(JET_W * 0.1))).toBeGreaterThan(lum(Math.floor(JET_W * 0.72)) + 40);
-    const a = jetFrame(0), b = jetFrame(1); let diff = 0;
-    for (let i = 0; i < a.data.length; i++) diff = Math.max(diff, Math.abs(a.data[i] - b.data[i]));
-    expect(diff).toBeLessThanOrEqual(1);
-    expect(JET_FRAMES).toBeGreaterThanOrEqual(8);
-  });
-
   it('picks a hotter puff for a hotter flame', () => {
     expect(puffIndex(0)).toBe(0); expect(puffIndex(1)).toBe(PUFF_HEATS - 1); expect(puffIndex(0.6)).toBeGreaterThan(puffIndex(0.3));
   });
 });
 
+describe('painted fx strips', () => {
+  const root = new URL('../../../../public/td/fx/', import.meta.url);
+  const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8')) as Record<string, { w: number; h: number; n: number }>;
+  it('ships every strip the renderer draws, with its frames', () => {
+    const used: FxName[] = ['flame-start', 'flame-sustain', 'flame-out', 'fireball-ball', 'fireball-trail', 'fireball-impact', 'mortar-shell',
+      'mortar-impact', 'mortar-crater', 'mortar-gravel', 'mortar-shrapnel', 'ignite-burst', 'ember', 'ground-flare',
+      'ground-tuft-0', 'ground-tuft-1', 'ground-tuft-2', 'ground-tuft-3', 'ground-dying-0', 'ground-dying-1', 'ground-dying-2', 'ground-dying-3'];
+    for (const n of used) {
+      expect(manifest[n], n).toBeDefined();
+      expect(manifest[n].n).toBeGreaterThan(0);
+      expect(existsSync(new URL(`${n}.webp`, root)), n).toBe(true);
+    }
+    expect(manifest['flame-start'].n).toBe(6); expect(manifest['flame-out'].n).toBe(6);
+    expect(manifest['flame-sustain']).toMatchObject({ w: 224, h: 300 }); // mouth at the left edge's middle
+  });
+  it('plays a one-shot through once at its frame rate', () => {
+    expect(oneShot(0, 20, 10)).toBe(0); expect(oneShot(0.26, 20, 10)).toBe(5);
+    expect(oneShot(0.5, 20, 10)).toBeNull(); expect(oneShot(-0.1, 20, 10)).toBeNull();
+  });
+});
+
 describe('Flamethrower bursts', () => {
-  it('travel out from the mouth, hold while firing, then recede back into the mouth', () => {
-    expect(flameSpan(0, 1.4)!.head).toBe(0);
-    expect(flameSpan(FLAME_REACH_S / 2, 1.4)!.head).toBeCloseTo(0.5);
-    expect(flameSpan(1, 1.4)).toEqual({ tail: 0, head: 1, drift: 0, alpha: 1 });
-    const a = flameSpan(1.4 + FLAME_RECEDE_S * 0.25, 1.4)!, b = flameSpan(1.4 + FLAME_RECEDE_S * 0.75, 1.4)!;
-    expect(a.tail).toBe(0); expect(b.tail).toBe(0); expect(a.drift).toBe(0);
-    expect(b.head).toBeLessThan(a.head); expect(a.head).toBeLessThan(1);
-    expect(flameSpan(1.4 + FLAME_RECEDE_S + 0.01, 1.4)).toBeNull();
-    expect(flameSpan(-0.1, 1.4)).toBeNull();
+  it('race out from the mouth, hold on the sustain loop while firing, then recede back into the mouth', () => {
+    expect(flameFrame(0, 1.4)).toEqual({ name: 'flame-start', i: 0 });
+    expect(flameFrame(FLAME_REACH_S * 0.6, 1.4)!.name).toBe('flame-start');
+    const hold = [0.5, 0.8, 1.1].map((t) => flameFrame(t, 1.4)!);
+    for (const h of hold) expect(h.name).toBe('flame-sustain');
+    expect(new Set(hold.map((h) => h.i)).size).toBeGreaterThan(1); // the loop animates
+    expect(flameFrame(1.4 + FLAME_RECEDE_S * 0.25, 1.4)).toEqual({ name: 'flame-out', i: 1 });
+    expect(flameFrame(1.4 + FLAME_RECEDE_S + 0.01, 1.4)).toBeNull();
+    expect(flameFrame(-0.1, 1.4)).toBeNull();
+    for (let t = 0; t < 1.4; t += 0.013) expect(flameFrame(t, 1.4)!.i).toBeLessThan(12);
   });
 });
 
@@ -63,7 +64,7 @@ describe('thrown debris', () => {
     expect(c.hot).toBe(0); // shrapnel cools from hot orange
     const x = c.x; stepChunk(c, 1 / 60, 90); expect(c.x).toBe(x);
   });
-  it('sizes debris in field units: a stone is about half to one unit across', () => {
-    for (let i = 1; i < 30; i++) { const c = chunkSprite(i, 'gravel'); expect(c.w * CHUNK_UNIT).toBeGreaterThan(0.4); expect(c.w * CHUNK_UNIT).toBeLessThan(1.2); }
+  it('sizes debris in field units: a painted stone (about 24 px of its 40 px frame) is about one unit across', () => {
+    expect(24 * CHUNK_UNIT).toBeGreaterThan(0.5); expect(32 * CHUNK_UNIT).toBeLessThan(1.3);
   });
 });

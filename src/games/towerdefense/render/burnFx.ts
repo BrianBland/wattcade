@@ -1,8 +1,10 @@
-// Burning ground left by fireballs: a charred scorch decal, a bed of glowing coals, layered flame tongues and
-// rising embers/smoke, then a scar that cools after the fire dies. Pure timing/layout math is exported for tests;
-// sprites are pre-rendered once (cached canvases) so a frame is only drawImage calls, cheap enough for iPad.
+// Burning ground left by fireballs: a charred scorch decal, a bed of glowing coals, painted flame tufts (fxArt) that
+// flare up as the patch catches and burn down to embers as it dies, rising embers/smoke, then a scar that cools.
+// Pure timing/layout math is exported for tests; the ground textures are pre-rendered once (cached canvases) so a
+// frame is only drawImage calls, cheap enough for iPad.
 import type { BurnView } from '../sim/types';
-import { FLAME_FRAMES, FLAME_H, FLAME_W, GROUND_S, crustTex, flameFrame, veinTex } from './fireTex';
+import { GROUND_S, crustTex, veinTex } from './fireTex';
+import { FX_FPS, drawFx, oneShot, type FxName } from './fxArt';
 
 const TAU = Math.PI * 2;
 /** Seconds a scorch scar keeps cooling on the road after its fire is out. */
@@ -10,8 +12,10 @@ export const SCAR_S = 5;
 /** Flame tongues per patch (back layer); the white-hot cores are a subset. */
 export const TONGUES = 7;
 export const CORES = 3;
-/** Flame sprite variants (each bends its tip differently). */
-export const SHAPES = 3;
+/** Painted flame-tuft variants (each leans and forks differently). */
+export const SHAPES = 4;
+/** Frames in each tuft's loop, and in its burn-out. */
+const TUFT_FRAMES = 16, DYING_FRAMES = 8;
 /** Patches tracked at once (sim caps live burns at 24; the rest are cooling scars). */
 export const MAX_PATCHES = 40;
 /** The road is seen slightly from above: ground footprints squash vertically. */
@@ -119,12 +123,10 @@ export function fireShares(patches: readonly Patch[]): number[] {
 
 // ---------- sprites (browser only) ----------
 
-interface Sprites { crust: HTMLCanvasElement[]; veins: HTMLCanvasElement[]; flames: HTMLCanvasElement[][]; glow: HTMLCanvasElement }
+interface Sprites { crust: HTMLCanvasElement[]; veins: HTMLCanvasElement[]; glow: HTMLCanvasElement }
 let sprites: Sprites | null = null;
-/** Painted-texture variants: ground (crust + its molten veins) and flame loops. */
-const VARIANTS = 3, FLAME_SEQS = 2;
-/** Flame loop playback rate, frames per second. */
-const FLAME_FPS = 18;
+/** Painted ground-texture variants (crust + its molten veins). */
+const VARIANTS = 3;
 
 function canvas(w: number, h: number) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 function fromPixels(px: Uint8ClampedArray, w: number, h: number): HTMLCanvasElement {
@@ -145,15 +147,9 @@ function jobs(out: Sprites): Array<() => void> {
     list.push(() => { out.crust[v] = fromPixels(crustTex(seed), GROUND_S, GROUND_S); });
     list.push(() => { out.veins[v] = fromPixels(veinTex(seed), GROUND_S, GROUND_S); });
   }
-  for (let q = 0; q < FLAME_SEQS; q++) {
-    out.flames[q] = [];
-    for (let f = 0; f < FLAME_FRAMES; f += 4) list.push(() => {
-      for (let i = f; i < f + 4; i++) out.flames[q][i] = fromPixels(flameFrame(i / FLAME_FRAMES, 3 + q * 57), FLAME_W, FLAME_H);
-    });
-  }
   return list;
 }
-const empty = (): Sprites => ({ crust: [], veins: [], flames: [], glow: null as unknown as HTMLCanvasElement });
+const empty = (): Sprites => ({ crust: [], veins: [], glow: null as unknown as HTMLCanvasElement });
 /** Paints the fire textures a slice at a time (yielding between slices), during the level's loading hold. */
 export async function prepareBurnSprites(cancelled: () => boolean = () => false): Promise<void> {
   if (sprites) return;
@@ -192,25 +188,39 @@ export function drawBurnGround(g: CanvasRenderingContext2D, patches: readonly Pa
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
 }
 
-/** Flame layer (over the ground actors): painted flame loops, back to front, then a little added light. */
+/** A tuft's box: 64×128 frames with the flame's base at (32, 120). */
+function drawTuft(g: CanvasRenderingContext2D, name: FxName, frame: number, bx: number, by: number, h: number, lean: number) {
+  const w = h / 2;
+  g.translate(bx, by); g.rotate(lean);
+  drawFx(g, name, frame, -w / 2, -h * 120 / 128, w, h);
+  g.rotate(-lean); g.translate(-bx, -by);
+}
+/**
+ * Flame layer (over the ground actors), back to front: the flare as a patch catches, its tufts while it burns, and
+ * each tuft burning down to embers when the fire goes out.
+ */
 export function drawBurnFlames(g: CanvasRenderingContext2D, patches: readonly Patch[], P: P, k: number, t: number) {
   if (!patches.length) return;
-  const sp = getSprites(), shares = fireShares(patches);
+  const shares = fireShares(patches);
+  g.globalAlpha = 1;
   for (const [i, p] of patches.entries()) {
-    const heat = p.outT == null ? flameHeat(p.k) * shares[i] : 0;
-    if (heat <= 0.01) continue;
-    const { x, y } = P(p.x, p.y), r = p.r * k, ts = tongues(p.seed, t, heat, 0.1 * Math.sin(t * 0.7 + p.seed));
-    for (let pass = 0; pass < 2; pass++) {
-      g.globalCompositeOperation = pass ? 'lighter' : 'source-over';
-      g.globalAlpha = pass ? 0.22 * Math.min(1, heat) : 0.95;
-      for (const q of ts) {
-        const seq = sp.flames[q.shape % FLAME_SEQS], frame = seq[Math.floor(t * FLAME_FPS + q.phase * FLAME_FRAMES) % FLAME_FRAMES];
-        const bx = x + q.dx * r, by = y + q.dy * r - q.rise * r, h = q.h * r * 1.15, w = Math.max(q.w * 2, q.h * 0.5) * r;
-        g.translate(bx, by); g.rotate(q.lean);
-        g.drawImage(frame, -w / 2, -h * 0.94, w, h);
-        g.rotate(-q.lean); g.translate(-bx, -by);
+    const { x, y } = P(p.x, p.y), r = p.r * k;
+    const flare = oneShot(t - p.bornT, FX_FPS.flare, 8);
+    if (flare != null) { const w = r * 2.6; drawFx(g, 'ground-flare', flare, x - w / 2, y - w / 2, w, w); }
+    if (p.outT != null) { // the tufts it had when the fire went out collapse into embers and a wisp of smoke
+      const f = oneShot(t - p.outT, FX_FPS.ground, DYING_FRAMES);
+      if (f != null) for (const q of tongues(p.seed, p.outT, 0.5)) {
+        drawTuft(g, `ground-dying-${q.shape % SHAPES}` as FxName, f, x + q.dx * r, y + q.dy * r, tuftH(q.h, 0.5) * r, q.lean * 0.5);
       }
+      continue;
+    }
+    const heat = flameHeat(p.k) * shares[i];
+    if (heat <= 0.01) continue;
+    for (const q of tongues(p.seed, t, heat, 0.1 * Math.sin(t * 0.7 + p.seed))) {
+      const frame = Math.floor(t * FX_FPS.ground + q.phase * TUFT_FRAMES) % TUFT_FRAMES;
+      drawTuft(g, `ground-tuft-${q.shape % SHAPES}` as FxName, frame, x + q.dx * r, y + q.dy * r, tuftH(q.h, heat) * r, q.lean * 0.5);
     }
   }
-  g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
 }
+/** A painted tuft's drawn height (patch radii) for a tongue `h` tall: the frame has headroom over the flame. */
+export const tuftH = (h: number, heat: number) => Math.max(h, 0.25 * heat) * 1.95;

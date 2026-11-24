@@ -3,6 +3,7 @@ import type { Button, InputState } from '../../../contracts';
 import { createGameSession, runHeadless, testProfile, type InputSource } from '../../../core';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
+import { SPECIALS } from '../sim/data';
 import { equivalence, fmtJ, genCost, kardashev, DEFAULT_ECON } from '../sim/econ';
 import type { HamsterSave, HamsterSnapshot } from '../sim/sim';
 
@@ -31,7 +32,7 @@ describe('hamster econ', () => {
     expect(kardashev(1e6)).toBeCloseTo(0);
     expect(kardashev(1e26)).toBeCloseTo(2);
     expect(equivalence(2000)).toBe('≈ 2.0 toasters');
-    expect(genCost(DEFAULT_ECON, 0, 0, 10)).toBeCloseTo(400 * (1.15 ** 10 - 1) / 0.15);
+    expect(genCost(DEFAULT_ECON, 0, 0, 10)).toBeCloseTo(450 * (1.22 ** 10 - 1) / 0.22);
   });
 });
 
@@ -110,6 +111,66 @@ describe('hamster sim', () => {
     pad.press('a'); s.step(2);
     expect(snap().seeds).toBe(2);
     expect(snap().gens[0].owned).toBe(0);
+  });
+});
+
+describe('wholesale seed contract', () => {
+  it('retires Middle Manager and offers Wholesale Seed Contract in era 1', () => {
+    expect(SPECIALS.map((sp) => sp.id)).not.toContain('manager');
+    expect(SPECIALS.find((sp) => sp.id === 'wholesale')).toMatchObject({ era: 1 });
+    const { s, snap } = session({ script: 'idle', gameData: { v: 1, gens: [1, 0, 0, 1], bank: 1e12, unlocks: ['upgrades'] } });
+    s.step(2);
+    s.sim.receive!({ type: 'tab', i: snap().tabs.findIndex((t) => t.id === 'upgrades') }); s.step(1);
+    const names = snap().items.map((it) => it.name);
+    expect(names).not.toContain('Middle Manager Hamster');
+    expect(names).toContain('Wholesale Seed Contract');
+  });
+
+  it('discounts only ×10 generator buys, not singles', () => {
+    const owned = 10;
+    const { s, pad, snap } = session({
+      script: 'idle',
+      gameData: { v: 1, gens: [owned], bank: 1e7, upg: ['sp:wholesale'] },
+    });
+    s.step(1);
+    // Newest revealed row is not gen 0; select hamsters without buying.
+    if (snap().row !== 0) { s.sim.receive!({ type: 'row', i: 0 }); s.step(1); }
+    expect(snap().row).toBe(0);
+
+    const beforeA = snap().bank;
+    pad.press('a'); s.step(1);
+    expect(snap().gens[0].owned).toBe(owned + 1);
+    expect(beforeA - snap().bank).toBeCloseTo(genCost(DEFAULT_ECON, 0, owned, 1), 6);
+
+    const ownedAfter = snap().gens[0].owned;
+    const beforeB = snap().bank;
+    pad.press('b'); s.step(1);
+    expect(snap().gens[0].owned).toBe(ownedAfter + 10);
+    expect(beforeB - snap().bank).toBeCloseTo(genCost(DEFAULT_ECON, 0, ownedAfter, 10) * 0.9, 6);
+  });
+
+  it('×10 generator buys stay full price without the contract', () => {
+    const owned = 10;
+    const { s, pad, snap } = session({ script: 'idle', gameData: { v: 1, gens: [owned], bank: 1e7 } });
+    s.step(1);
+    if (snap().row !== 0) { s.sim.receive!({ type: 'row', i: 0 }); s.step(1); }
+    const before = snap().bank;
+    pad.press('b'); s.step(1);
+    expect(snap().gens[0].owned).toBe(owned + 10);
+    expect(before - snap().bank).toBeCloseTo(genCost(DEFAULT_ECON, 0, owned, 10), 6);
+  });
+
+  it('loads a legacy sp:manager save, drops the key, and does not autobuy generators', () => {
+    const gens = [20, 5, 2, 1];
+    const { s, snap, saved } = session({
+      script: 'idle',
+      gameData: { v: 1, gens, bank: 1e12, upg: ['sp:manager', 'sp:zen'], unlocks: ['upgrades'] },
+    });
+    s.step(secs(8)); // several autoBuy ticks (every 2 s)
+    expect(snap().gens.slice(0, gens.length).map((g) => g.owned)).toEqual(gens);
+    s.sim.dispose?.();
+    expect(saved().upg).not.toContain('sp:manager');
+    expect(saved().upg).toContain('sp:zen');
   });
 });
 

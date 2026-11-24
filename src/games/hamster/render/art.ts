@@ -1,6 +1,9 @@
 // Small, hand-drawn inventory illustrations. Shared materials with Gerald's world.
 import { satellite } from './orbital';
-import { FONT, FURS, TAU, hamster, hash, rr } from './draw';
+import { gerbil, guineaPig, treadmill } from './critters';
+import { gymStation } from './gym';
+import { ferretRunIcon } from './turbine';
+import { FONT, FURS, STEEL, TAU, hamster, hash, rr, wheelWith } from './draw';
 type G = CanvasRenderingContext2D;
 
 export function inventoryArt(g: G, key: string, x: number, y: number, size: number) {
@@ -16,7 +19,15 @@ export function inventoryArt(g: G, key: string, x: number, y: number, size: numb
     for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); g.stroke(); }
   };
   if (kind === 'gen' || kind === 'g') {
-    if (idx < 6) {
+    if (idx === 1) {
+      wheelWith(g, 28, 27, 23, 0.4, STEEL, 0, (fx, fy) => gerbil(g, fx + 3, fy, 24, 0, { noShadow: true, hardhat: true, vest: true }), false);
+    } else if (idx === 2) {
+      const top = treadmill(g, 28, 52, 44, 0, false); guineaPig(g, 25, top, 31, 0, { noShadow: true, sweatband: true });
+    } else if (idx === 3) {
+      gymStation(g, 28, 53, 31, 'press', 1.6, { mat: false });
+    } else if (idx === 4) {
+      ferretRunIcon(g, 0.9);
+    } else if (idx < 6) {
       wheel(27, 27, 22);
       g.save(); if (idx === 4) { g.translate(-8, 0); g.scale(1.25, .9); }
       hamster(g, 25, 45, idx === 5 ? 40 : 36, 0, { fur: [FURS.gerald, FURS.gerbil, FURS.guinea, FURS.grey, FURS.white, FURS.guinea][idx], noShadow: true, swole: idx === 3 ? .7 : 0 }); g.restore();

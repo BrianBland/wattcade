@@ -35,7 +35,27 @@ export const FURS: Record<string, Fur> = {
   rage: { light: '#ffb08a', mid: '#e8603a', dark: '#a82a10', line: '#5a1000' },
   pink: { light: '#ffe0ff', mid: '#ff9ef0', dark: '#c060b8', line: '#702a6a' },
 };
+/** Shift a #rrggbb colour's hue (degrees) and lightness (−1..1 of the remaining range). */
+export function shiftColor(hex: string, dh: number, dl: number) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, gg = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b); let h = 0, s = 0; const l0 = (mx + mn) / 2;
+  if (mx !== mn) { const dd = mx - mn; s = l0 > 0.5 ? dd / (2 - mx - mn) : dd / (mx + mn); h = mx === r ? (gg - b) / dd + (gg < b ? 6 : 0) : mx === gg ? (b - r) / dd + 2 : (r - gg) / dd + 4; h *= 60; }
+  h = (h + dh + 360) % 360; const l = dl >= 0 ? l0 + (1 - l0) * dl : l0 * (1 + dl);
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  const ch = (t: number) => { t = (t + 1) % 1; const v = t < 1 / 6 ? p + (q - p) * 6 * t : t < 0.5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; return Math.round(Math.max(0, Math.min(1, v)) * 255); };
+  return '#' + ((ch(h / 360 + 1 / 3) << 16) | (ch(h / 360) << 8) | ch(h / 360 - 1 / 3)).toString(16).padStart(6, '0');
+}
+/** Per-animal individuality, deterministic from a slot number: coat shade, size, ear size and a marking. */
+export interface Quirk { hue: number; light: number; size: number; ear: number; mark: number }
+export function quirk(seed: number): Quirk {
+  return { hue: (hash(seed * 1.37 + 4) - 0.5) * 40, light: (hash(seed * 2.11 + 9) - 0.5) * 0.5, size: 0.9 + hash(seed * 3.07 + 1) * 0.2, ear: 0.85 + hash(seed * 5.3 + 2) * 0.35, mark: Math.floor(hash(seed * 7.9 + 3) * 5) };
+}
+export function varyFur(f: Fur, q: Quirk): Fur {
+  return { light: shiftColor(f.light, q.hue, q.light * 0.6), mid: shiftColor(f.mid, q.hue, q.light), dark: shiftColor(f.dark, q.hue, q.light), line: shiftColor(f.line, q.hue, q.light * 0.5) };
+}
 export interface Look {
+  /** 0 none, 1 face blaze, 2 dark back stripe, 3 white collar, 4 eye patch. */
+  mark?: number; ear?: number;
   fur?: Fur; swole?: number; shades?: boolean; rage?: boolean; halo?: boolean; bigHead?: boolean;
   sign?: string; sleep?: boolean; flip?: boolean; noShadow?: boolean; sweat?: boolean;
 }
@@ -57,7 +77,7 @@ export function hamster(g: G, x: number, y: number, s: number, p: number, look: 
   // tail
   g.fillStyle = fur.mid; g.beginPath(); g.ellipse(-s * 0.44, -s * 0.26, s * 0.06, s * 0.035, -0.5, 0, TAU); g.fill();
   // far ear (behind head)
-  g.fillStyle = fur.dark; g.beginPath(); g.arc(s * 0.36, -s * 0.62, s * 0.065, 0, TAU); g.fill();
+  g.fillStyle = fur.dark; g.beginPath(); g.arc(s * 0.36, -s * 0.62, s * 0.065 * (look.ear ?? 1), 0, TAU); g.fill();
   // body
   const bx = -s * 0.03, by = -s * 0.29, brx = s * (0.42 + sw * 0.05), bry = s * (0.27 + sw * 0.06);
   const bg = g.createRadialGradient(bx - brx * 0.3, by - bry * 0.6, s * 0.03, bx, by, brx * 1.1);
@@ -77,6 +97,8 @@ export function hamster(g: G, x: number, y: number, s: number, p: number, look: 
   }
   // belly
   g.save(); g.beginPath(); g.ellipse(bx, by, brx, bry, -0.06, 0, TAU); g.clip();
+  if (look.mark === 2) { g.fillStyle = fur.dark; g.globalAlpha = 0.7; g.beginPath(); g.ellipse(bx - s * 0.02, by - bry * 0.95, brx * 0.9, bry * 0.32, -0.06, 0, TAU); g.fill(); g.globalAlpha = 1; }
+  if (look.mark === 3) { g.fillStyle = 'rgba(255,248,236,0.92)'; g.beginPath(); g.ellipse(s * 0.22, by, s * 0.08, bry * 1.1, 0.15, 0, TAU); g.fill(); }
   g.fillStyle = 'rgba(255,248,236,0.92)'; g.beginPath(); g.ellipse(s * 0.06, -s * 0.07, s * 0.36, s * 0.14, -0.05, 0, TAU); g.fill();
   if (sw > 0.05) { // abs
     g.strokeStyle = 'rgba(160,100,60,0.55)'; g.lineWidth = Math.max(0.8, s * 0.012);
@@ -108,8 +130,11 @@ export function hamster(g: G, x: number, y: number, s: number, p: number, look: 
   g.fillStyle = 'rgba(255,246,234,0.95)'; g.beginPath(); g.ellipse(hx + hr * 0.35, hy + hr * 0.45, hr * 0.5, hr * 0.38, 0.2, 0, TAU); g.fill();
   g.fillStyle = 'rgba(255,120,150,0.35)'; g.beginPath(); g.arc(hx + hr * 0.1, hy + hr * 0.35, hr * 0.18, 0, TAU); g.fill();
   // near ear
-  g.fillStyle = fur.mid; g.beginPath(); g.arc(hx - hr * 0.45, hy - hr * 0.8, hr * 0.36, 0, TAU); g.fill();
-  g.fillStyle = '#f7a8b8'; g.beginPath(); g.arc(hx - hr * 0.42, hy - hr * 0.76, hr * 0.22, 0, TAU); g.fill();
+  const er = look.ear ?? 1;
+  g.fillStyle = fur.mid; g.beginPath(); g.arc(hx - hr * 0.45, hy - hr * 0.8, hr * 0.36 * er, 0, TAU); g.fill();
+  g.fillStyle = '#f7a8b8'; g.beginPath(); g.arc(hx - hr * 0.42, hy - hr * 0.76, hr * 0.22 * er, 0, TAU); g.fill();
+  if (look.mark === 4) { g.fillStyle = fur.dark; g.globalAlpha = 0.75; g.beginPath(); g.ellipse(hx + hr * 0.36, hy - hr * 0.16, hr * 0.42, hr * 0.36, 0.2, 0, TAU); g.fill(); g.globalAlpha = 1; }
+  if (look.mark === 1) { g.fillStyle = 'rgba(255,248,236,0.9)'; g.beginPath(); g.ellipse(hx + hr * 0.55, hy - hr * 0.35, hr * 0.5, hr * 0.13, 0.55, 0, TAU); g.fill(); }
   // eye
   const ex = hx + hr * 0.38, ey = hy - hr * 0.15;
   const blink = !look.rage && time % 5.7 > 5.55;

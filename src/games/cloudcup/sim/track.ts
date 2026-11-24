@@ -1,4 +1,4 @@
-import { passPoint } from './pass';
+import { climbHeight, onClimb, passPoint } from './pass';
 // Closed surveying line, resampled by distance. Handling, camera, scenery and
 // opponents share these frames so the visual bank agrees with cornering load.
 export const LAP = 1080;
@@ -151,11 +151,12 @@ function cableSurvey(cut: boolean) {
   }
   function world(at: number, side: number, lift = 0) {
     const p = track(at);
+    const z = p.z + WIDTH * side * Math.sin(p.yaw);
     return {
       ...p,
       x: p.x + WIDTH * side * Math.cos(p.yaw),
-      z: p.z + WIDTH * side * Math.sin(p.yaw),
-      y: p.y + lift,
+      z,
+      y: (onClimb(at) ? climbHeight(z) : p.y) + lift,
     };
   }
   return { name: 'Cablehead Pass', track, world };

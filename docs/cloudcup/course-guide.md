@@ -6,6 +6,10 @@ Five local races run between the yard siren and the first cable car at dawn. The
 
 This preproduction atlas records the original art direction. The middle three environment plates are in-game captures and their maps follow the surveyed racing centrelines. The two bookends are concept paintings and layout sketches. Each map marks the timing line with a white dot. Map scales vary. All five courses are playable. Press ↓ on the grid to enter the Breaker Cup. Each heat is three laps, with 6, 3, 2 and 1 points for the four finishers. A starts the next heat when the rider is ready. Single races have Rookie, Hotshot and Outlaw pack paces relative to FTP and a choice of 3, 12 or 24 laps.
 
+The comparison below uses the same rider, camera and lap positions in both builds. The home straight shows the Cinder Bowl grandstand and finishing gantry. The two Cablehead views follow the carriage road alongside the schist cutting and the winch cut past the summit drive wheel.
+
+[Compare the chase-camera frames](environment-comparison.webp)
+
 ## Cinder Bowl · playable
 
 **The look.** Late afternoon at a demolition derby built in an old gas holder. Iron uprights frame bottle-green bleachers, hand-lettered cream banners and spectators in patched team colours. Pale chalk sweeps across red cinder. A stripped yellow taxi hangs over the infield with its doors missing. Its slow turn catches the last sunlight, then the floodlights pick it up.

@@ -6,6 +6,8 @@ import * as T from 'three';
 import { NO_INSETS, type GameRenderer, type Insets } from '../../../contracts';
 import { classes, LAP, type RaceView } from '../sim/race';
 import { buildEndCourse } from './endCourses';
+import { venueTextures } from './venueTextures';
+import { districtRelic } from './districtRelic';
 import { valley, saddle, onClimb, passRate } from '../sim/pass';
 import { courses, winchCut } from '../sim/track';
 import { lapAt, LIP, LAUNCH_SPEED, CATCH, DROP, RESCUE, easeBetween } from '../sim/deck';
@@ -78,7 +80,8 @@ export class Renderer implements GameRenderer {
     number,
     { root: T.Group; animate: (time: number, distance: number, state: RaceView) => void }
   >();
-  private yardMaps?: [T.Texture, T.Texture, T.Texture, T.Texture, T.Texture, T.Texture];
+  private yardMaps?: [T.Texture, T.Texture, T.Texture, T.Texture, T.Texture];
+  private venueArt!: ReturnType<typeof venueTextures>;
   private activeCourse = -1;
   private camera = new T.PerspectiveCamera(58, 1, 0.15, 360);
   private gl!: T.WebGLRenderer;
@@ -243,18 +246,18 @@ export class Renderer implements GameRenderer {
     this.routeMap.width = 180;
     this.routeMap.height = 114;
     this.resize(host.clientWidth, host.clientHeight);
+    this.venueArt = venueTextures(loader, this.gl.capabilities.getMaxAnisotropy());
     this.assets = Promise.all(
-      ['slag-road', 'salvage-enamel', 'kiln-plates', 'kiln-bricks', 'stormglass', 'grit'].map((name) =>
+      ['slag-road', 'salvage-enamel', 'kiln-plates', 'kiln-bricks', 'stormglass'].map((name) =>
         loader.loadAsync('/scrapjet/' + name + '.webp'),
       ),
-    ).then(([road, enamel, plates, brick, sky, grit]) => {
+    ).then(([road, enamel, plates, brick, sky]) => {
       if (this.disposed) {
-        [road, enamel, plates, brick, sky, grit].forEach((t) => t.dispose());
+        [road, enamel, plates, brick, sky].forEach((t) => t.dispose());
         return;
       }
       sky.colorSpace = T.SRGBColorSpace;
-      this.yardMaps = [road, enamel, plates, brick, sky, grit];
-      this.setCourse(0);
+      this.yardMaps = [road, enamel, plates, brick, sky];
     });
     this.assets = Promise.all([this.assets, ...skinLoads]).then(() => undefined);
   }
@@ -280,16 +283,17 @@ export class Renderer implements GameRenderer {
     let yard = this.yards.get(id);
     if (!yard) {
       const root = new T.Group();
-      const [road, enamel, plates, brick, sky, grit] = this.yardMaps;
+      const [road, enamel, plates, brick, sky] = this.yardMaps;
       const aniso = this.gl.capabilities.getMaxAnisotropy();
       const animate =
         id >= 3
-          ? buildEndCourse(root, id === 3, grit)
+          ? buildEndCourse(root, id === 3, this.venueArt)
           : storm
             ? buildCauseway(root, courses[id], sky)
             : id === 1
               ? buildFiringWorks(root, courses[id], plates, brick, aniso)
               : buildYard(root, road, enamel, aniso, courses[id]);
+      if (id < 3) districtRelic(root, courses[id], id, this.venueArt);
       timingLine(
         root,
         courses[id],

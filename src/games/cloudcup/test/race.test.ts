@@ -17,7 +17,7 @@ import {
   packPace,
   prize,
 } from '../sim/deck';
-import { LAP, courses, track, world } from '../sim/track';
+import { LAP, courses, track, world, winchCut, WIDTH } from '../sim/track';
 import { valley, saddle, passPoint, passRate } from '../sim/pass';
 import { firebox, firingLine } from '../sim/kiln';
 import { displayRace } from '../render/motion';
@@ -545,4 +545,14 @@ it('scores all four pilots through five heats in a single workout', () => {
   expect(r.snap().cupPoints.reduce((a, b) => a + b, 0)).toBe(60);
   expect(r.session.sim.summary()['Cup heats']).toBe(5);
   expect(r.session.mixer.debug().activeEffects).toHaveLength(0);
+});
+
+it('keeps the overlapping trestle decks level at the same point in the merge', () => {
+  for (const d of [valley + 7, saddle - 13, saddle - 4]) {
+    for (const side of [-1, 0, 1]) {
+      const p = courses[4].world(d, side);
+      const straightStation = valley + 190 - p.z;
+      expect(winchCut.world(straightStation, p.x / WIDTH).y).toBeCloseTo(p.y, 6);
+    }
+  }
 });

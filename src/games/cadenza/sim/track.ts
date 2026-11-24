@@ -28,7 +28,9 @@ export const HELIX_S = 9;
 /** A drop's launch roll (s), and the block-free margin before / after it. */
 export const LAUNCH = { s: 2.6, clearBefore: 0.6, clearAfter: 0.3 } as const;
 
-export interface Block { t: number; lane: number; color: number; zone: number }
+/** The onset's frequency band: 0 low (< 150 Hz), 1 mid, 2 high (> 2 kHz). Always set by buildTrack (optional only for hand-made fixtures); drives the Lancer's band bars and shapes. */
+export type Band = 0 | 1 | 2;
+export interface Block { t: number; lane: number; color: number; zone: number; band?: Band }
 export interface Zone {
   n: number; kind: SectionKind; t0: number; t1: number; energy: number; hue: number; song: number;
   target: ZoneTarget; floorFtp: number;
@@ -63,7 +65,13 @@ export interface Track {
   /** From the music, for the renderer's pulses and skyline (program seconds / curves at hz). */
   beats: number[]; downbeats: number[]; phrases: number[]; bands: [number[], number[], number[]]; intensity: number[];
 }
-export interface TrackOpts { difficulty: Difficulty; mode: Mode; seed: number; vBase?: number; maxGrade?: number }
+export interface TrackOpts {
+  difficulty: Difficulty; mode: Mode; seed: number; vBase?: number; maxGrade?: number;
+  /** Lancer: a minimum gap per band (low/mid/high × PER_BAND_GAP) plus a global floor, so dense highs can't starve the lows. */
+  perBandGap?: boolean;
+}
+/** Per-band minimum gap multipliers (low, mid, high) and the global floor, as multiples of the difficulty's minGap. */
+export const PER_BAND_GAP = { band: [1.0, 1.4, 1.8], floor: 0.6 } as const;
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 export function hexHue(hex: string | undefined): number {
@@ -215,12 +223,16 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
     && !launches.some((l) => s.t > l.t0 - LAUNCH.clearBefore && s.t < l.t1 + LAUNCH.clearAfter)); // launches are block-free: just punch it
   const half = (d.lanes - 1) / 2;
   let lastT = -1, lane = 0;
+  const lastBand = [-Infinity, -Infinity, -Infinity];
   for (const s of onsets) {
-    if (s.t - lastT < d.minGap) continue;
+    if (o.perBandGap) {
+      if (s.t - lastT < d.minGap * PER_BAND_GAP.floor || s.t - lastBand[s.band] < d.minGap * PER_BAND_GAP.band[s.band]) continue;
+      lastBand[s.band] = s.t;
+    } else if (s.t - lastT < d.minGap) continue;
     const target = s.band === 0 ? 0 : s.band === 1 ? (rng() < 0.5 ? -1 : 1) : (rng() < 0.5 ? -half : half);
     lane = Math.round(clamp(lane + (target - lane) * 0.6 + (rng() - 0.5) * 1.4, -half, half));
     const c = Math.floor(clamp(0.45 * s.s + 0.55 * intensity(s.t), 0, 0.999) * 5);
-    blocks.push({ t: Math.round(s.t * 1000) / 1000, lane, color: c, zone: zoneAt(s.t) });
+    blocks.push({ t: Math.round(s.t * 1000) / 1000, lane, color: c, zone: zoneAt(s.t), band: s.band });
     lastT = s.t;
   }
   // greys in dense passages (mono): never two in a row, never in a lane the previous block needs

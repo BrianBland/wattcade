@@ -1,5 +1,5 @@
 // Dev harness: Cadenza on the fake bike with a synth queue (no audio), without the shell.
-//   /dev/cadenza.html?script=target-follow&style=edm&songs=2&sec=40&autopilot=1&inset=120&speed=1&menu=1&diff=pro
+//   /dev/cadenza.html?script=target-follow&style=edm&songs=2&sec=40&autopilot=1&inset=120&speed=1&menu=1&diff=pro&ship=lancer
 import { createGameSession, NullInput, testProfile } from '../src/core';
 import { InputHub } from '../src/input';
 import { synthTimeline } from '../src/media/synth/queue';
@@ -9,7 +9,8 @@ const q = new URLSearchParams(location.search);
 const inset = Number(q.get('inset') ?? 120), speed = Number(q.get('speed') ?? 1);
 const hub = new InputHub(); hub.attachKeyboard(window);
 const timeline = synthTimeline({ style: (q.get('style') ?? 'edm') as 'edm', songs: Number(q.get('songs') ?? 2), seed: Number(q.get('seed') ?? 1), mix: 'automix' });
-const profile=testProfile({achievements:q.has('ships')?['cz_sets','cz_launches']:[]});
+const ship=q.get('ship'); // e.g. ?ship=lancer (unlocks every ship)
+const profile=testProfile({achievements:q.has('ships')||ship?['cz_sets','cz_launches']:[],...(ship?{gameData:{cadenza:{ship}}}:{})});
 const session = createGameSession({
   game: module, profile, input: q.get('autopilot') ? new NullInput() : hub, fake: { script: q.get('script') ?? 'target-follow' },
   media: { timeline }, simOpts: { ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('menu') ? {} : { difficulty: q.get('diff') ?? 'pro' }) },

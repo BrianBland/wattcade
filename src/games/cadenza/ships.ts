@@ -12,3 +12,7 @@ export function selectedShip(p: Pick<Profile, 'achievements' | 'cosmetics' | 'ga
   const saved = (p.gameData?.cadenza as { ship?: string } | undefined)?.ship ?? p.cosmetics?.loadout?.ship;
   return unlockedShips(p).find(s => s.id === saved)?.id ?? 'triad';
 }
+/** Gameplay behaviours. Ships without an entry play the standard game. Lancer: three frequency-band bars (sim/bands.ts). */
+export type ShipBehavior = 'bands';
+export const SHIP_BEHAVIOR: Partial<Record<ShipId, ShipBehavior>> = { lancer: 'bands' };
+export const shipBehavior = (id: ShipId): ShipBehavior | null => SHIP_BEHAVIOR[id] ?? null;

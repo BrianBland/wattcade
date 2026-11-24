@@ -9,11 +9,11 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 const LENS = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
-    uAberr: { value: 0.0015 }, uHurt: { value: 0 }, uGray: { value: 0 }, uTime: { value: 0 }, uVignette: { value: 0.9 }, uScan: { value: 0.05 },
+    uAberr: { value: 0.0015 }, uHurt: { value: 0 }, uGray: { value: 0 }, uSat: { value: 0 }, uDarken: { value: 0 }, uTime: { value: 0 }, uVignette: { value: 0.9 }, uScan: { value: 0.05 },
   },
   vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
-uniform sampler2D tDiffuse; uniform float uAberr; uniform float uHurt; uniform float uGray; uniform float uTime; uniform float uVignette; uniform float uScan;
+uniform sampler2D tDiffuse; uniform float uAberr; uniform float uHurt; uniform float uGray; uniform float uSat; uniform float uDarken; uniform float uTime; uniform float uVignette; uniform float uScan;
 varying vec2 vUv;
 float rnd(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uTime) * 43758.5453); }
 void main() {
@@ -25,6 +25,9 @@ void main() {
   vec2 off = d * (uAberr + 0.006 * uGray) * (1.0 + 4.0 * r);
   vec3 c = vec3(texture2D(tDiffuse, uv + off).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - off).b);
   float luma = dot(c, vec3(0.299, 0.587, 0.114));
+  // in the mix (band ship flow): richer colour, darker shadows so the lit things glow
+  c = max(mix(vec3(luma), c, 1.0 + 0.45 * uSat), vec3(0.0));
+  c *= mix(1.0, 0.55 + 0.45 * smoothstep(0.05, 0.35, luma), uDarken);
   c = mix(c, vec3(luma) * (1.0 - 0.35 * uGray), min(1.0, uGray * 1.1));
   c *= 1.0 - (uScan + 0.25 * uGray) * (0.5 + 0.5 * sin(vUv.y * 900.0));
   c += (rnd(vUv * 731.0) - 0.5) * (0.035 + 0.12 * uGray);
@@ -46,10 +49,10 @@ export class Post {
     this.composer.addPass(new OutputPass());
   }
   setSize(w: number, h: number) { this.composer.setSize(w, h); this.bloom.resolution.set(w / 2, h / 2); }
-  set(o: { bloom: number; aberr: number; hurt: number; time: number; gray?: number }) {
+  set(o: { bloom: number; aberr: number; hurt: number; time: number; gray?: number; sat?: number; darken?: number }) {
     this.bloom.strength = o.bloom;
     const u = this.lens.uniforms as typeof LENS.uniforms;
-    u.uAberr.value = o.aberr; u.uHurt.value = o.hurt; u.uTime.value = o.time; u.uGray.value = o.gray ?? 0;
+    u.uAberr.value = o.aberr; u.uHurt.value = o.hurt; u.uTime.value = o.time; u.uGray.value = o.gray ?? 0; u.uSat.value = o.sat ?? 0; u.uDarken.value = o.darken ?? 0;
   }
   render() { this.composer.render(); }
   dispose() { for (const pass of this.composer.passes) pass.dispose(); this.composer.dispose(); }

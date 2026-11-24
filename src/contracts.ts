@@ -301,7 +301,15 @@ export interface MediaTimeline {
   frozenUntilS?: Seconds;
 }
 /** Effects a music game's renderer may put on the playing music (present in mount ctx only when music is playing). Reset on exit. */
-export interface MusicFx { /** 0..1: muffle, sputter and crunch the music (a failing signal). */ degrade: number }
+export interface MusicFx {
+  /** 0..1: muffle, sputter and crunch the music (a failing signal). */ degrade: number;
+  /** Linear gains for the low / mid / high bands (LR4 split at 150 Hz / 2 kHz on the master). Omitted = flat (no crossover is built). */
+  bands?: [number, number, number];
+  /** 0..1: "in the mix" wet amount (tempo-synced echo on mids + highs, light algorithmic reverb). Omitted = 0. */
+  flow?: number;
+  /** Beat length (s) for the tempo-synced echo. */
+  beatS?: number;
+}
 export interface MediaContext {
   timeline: MediaTimeline;
   /** Program position. Advances with the sim clock once the music is running (not during a pre-game menu). */

@@ -87,6 +87,7 @@ export function createPenroseEngine(dom: EngineDom, hooks: EngineHooks, campaign
     toggle(key) { const m = machineFor(key); if (!m) return false; E.setAutopilot(false); m.set(!m.on); return true; },
     machines() { const L = st().LVL; return L ? L.machines.map((m) => ({ key: m.key, name: m.name, on: m.on })) : []; },
     load01() { const L = st().LVL; return L ? Math.min(1.5, L.load || 0) / 1.5 : 0; },
+    tide() { const t = st().LVL?.props?.tide; return t && Number.isFinite(t.z) ? Math.max(0, Math.min(1, t.z / 1.6)) : null; },
     resize() { E.lvView.resize(); },
     tick(dt) { E.lvView.tick(E.reduce ? dt * 0.5 : dt); },
     simulate(dt) { const v = E.lvView; v.t += dt; for (const u of v.updaters.slice()) u(v.t, dt); },

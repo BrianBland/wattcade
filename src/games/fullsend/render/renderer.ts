@@ -14,6 +14,7 @@ import { boardCentre, drawGateway, GATEWAYS } from '../../warmup/render/gateway'
 import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
+import { medalStamp } from './stamp';
 import { CHASER_REACH, PIECE_VERB } from '../sim/tour';
 import { AIR_CELL, airItemAt, bumpH, DIVE, diveDip, MEGA, megaLift } from '../sim/track';
 import { FullSendSound } from './sound';
@@ -640,17 +641,17 @@ export class FullSendRenderer implements GameRenderer {
       txt(s.phase === 'done' ? 'TOUR COMPLETE!' : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`, cxm, B.y + 22, s.phase === 'done' ? 34 : 20, s.phase === 'done' ? '#ffd23b' : '#ffffff');
     }
 
-    // medal stamp
-    if (s.last && s.last.age < 3.5) {
-      const a = Math.min(1, s.last.age * 4, (3.5 - s.last.age) / 0.6), S = L.stamp;
+    // medal stamp: preview from arrive() (age = phaseT, so it is up during the hay hit / leap), else the finished result
+    const stamp = medalStamp(s);
+    if (stamp) {
+      const a = Math.min(1, stamp.age * 4, (3.5 - stamp.age) / 0.6), S = L.stamp;
       m.globalAlpha = a; m.textAlign = 'center';
-      const sc = 1 + Math.max(0, 0.25 - s.last.age) * 2;
+      const sc = 1 + Math.max(0, 0.25 - stamp.age) * 2;
       m.font = font(900, 54 * sc, true); m.fillStyle = '#000a';
-      const label = s.last.medal ? MEDAL_NAMES[s.last.medal].toUpperCase() : s.last.detail === 'rescued' ? 'RESCUED!' : 'SO CLOSE';
-      m.fillText(label, (S.x + S.w / 2) * d + 3 * d, (S.y + S.h * 0.4) * d + 3 * d);
-      m.fillStyle = MEDAL_COLORS[s.last.medal]; m.fillText(label, (S.x + S.w / 2) * d, (S.y + S.h * 0.4) * d);
+      m.fillText(stamp.label, (S.x + S.w / 2) * d + 3 * d, (S.y + S.h * 0.4) * d + 3 * d);
+      m.fillStyle = MEDAL_COLORS[stamp.medal]; m.fillText(stamp.label, (S.x + S.w / 2) * d, (S.y + S.h * 0.4) * d);
       m.font = font(800, 16); m.fillStyle = '#ffffff';
-      m.fillText(`${s.last.title} · ${s.last.detail}`, (S.x + S.w / 2) * d, (S.y + S.h * 0.85) * d);
+      m.fillText(`${stamp.title} · ${stamp.detail}`, (S.x + S.w / 2) * d, (S.y + S.h * 0.85) * d);
       m.globalAlpha = 1;
     }
     if (s.trick && s.trick.age < 1.4) {

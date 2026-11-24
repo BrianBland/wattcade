@@ -72,6 +72,8 @@ export interface FullSendSnapshot {
   speedPerFtp: number; ftpFrac: number;
   trick: { name: string; age: number } | null; style: number;
   last: (SetResult & { age: number }) | null;
+  /** Medal already decided at arrive() for a smash/leap/loop, shown while the gag plays. Null once finishPiece writes `last`. */
+  pending: { medal: Medal; title: string; detail: string } | null;
   results: SetResult[];
   topKph: number; longestJumpM: number; airS: number; smashed: number; rodeM: number;
   /** 0..1 hay/debris stuck to the rider after a smash. */
@@ -264,6 +266,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let fallFromX = 0, fallFromY = 0, rescueToX = 0;
   let trick: { name: string; t0: number } | null = null, trickCount = 0, style = 0;
   let last: (SetResult & { at: number }) | null = null;
+  /** Stamp preview for a smash/leap/loop, set at arrive() and cleared by finishPiece (the only writer of results/last). */
+  let pending: { medal: Medal; title: string; detail: string } | null = null;
   const results: SetResult[] = [];
   let top = 0, longestJump = 0, airS = 0, smashed = 0, launchX = 0;
   /** 0..1 debris (hay) stuck to the rider after a smash; it drags (trainer grade) until it falls off. */
@@ -436,6 +440,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     piece.medal = medal;
     const r: SetResult = { kind: piece.kind, biome: piece.biome, title: piece.title, medal, detail };
     results.push(r); last = { ...r, at: ctx.clock.now() };
+    pending = null; // the stamp switches to `last`; a second finishPiece must not see a stale preview
     ctx.emit({ type: 'setPiece', data: { kind: piece.kind, biome: piece.biome, medal, caught: piece.caught, finale: piece.finale } });
   }
 
@@ -460,12 +465,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       pendingMedal = medal; leapY = 0; dodge = 0; leapT = 0; spun = 0; pitch = a * 0.5;
       const pit = piece.biome === 'sky' ? 0 : Math.round(tun.leapHazards());
       hazards = leapHazards(pit, piece.x0, piece.len, vx, vy, tun.gravity(), terrainSeed % 1000 + setIndex * 7);
+      pending = { medal, title: piece.title, detail: `${Math.round(piece.len)} m` }; // gap at the lip; finishPiece replaces it with the landed distance
     } else if (piece.kind === 'smash') {
       piece.count = smashCount(live / 0.97, piece.th, piece.n);
       pendingMedal = medal; setMode('smash');
+      pending = { medal, title: piece.title, detail: `${piece.count}/${piece.n}` };
     } else if (piece.kind === 'loop') {
       loopV0 = v; loopV = v; loopPhi = 0; loopDir = 1;
       pendingMedal = medal; setMode('loop');
+      pending = { medal, title: piece.title, detail: 'pedalling' };
     }
   }
   function payoff(dt: Seconds, now: number) {
@@ -944,6 +952,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         next: nextInfo, speedPerFtp: speedPerFtp(), ftpFrac: frac,
         trick: trick ? { name: trick.name, age: now - trick.t0 } : null, style,
         last: last ? { ...last, age: now - last.at } : null,
+        pending: pending && phase === 'payoff' && piece && piece.medal === -1 ? { ...pending } : null,
         results: [...results],
         topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay, landAt, landImpact, hops, flow, landGrade,
         tier, lift, alt: y - roadH(x), toTier, warp, edgeX, mega: megaX,

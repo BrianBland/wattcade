@@ -12,3 +12,15 @@ float wsFbm(vec2 p) {
   return s / 0.9375;
 }
 `;
+
+/**
+ * Soft cloud shadows drifting across the land (and the water): 0 = full sun, 1 = deepest shade. Needs NOISE_GLSL.
+ * Large, slow blobs so the overview reads as a sunny day with weather passing over, never as noise.
+ */
+export const CLOUD_SHADOW_GLSL = /* glsl */ `
+float wsCloudShadow(vec3 wp, float t) {
+  vec2 p = wp.xz * 0.011 + vec2(t * 0.010, t * 0.004);
+  float n = wsFbm(p) * 0.75 + wsNoise(p * 3.7 + 11.0) * 0.25;
+  return smoothstep(0.56, 0.78, n);
+}
+`;

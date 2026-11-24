@@ -6,8 +6,9 @@ import * as THREE from 'three';
 import { play } from '../../../audio/sfx';
 import type { WatershedSnapshot } from '../sim/sim';
 import { SEA, hash2, sample } from '../sim/terrain';
+import { pebbleGeometry2, rockMaterial } from './flora';
 import {
-  butterflyGeometry, flowerGeometry, frogGeometry, grassGeometry, lilyPadGeometry, lotusGeometry, pebbleGeometry, reedGeometry, swayMaterial,
+  butterflyGeometry, flowerGeometry, frogGeometry, grassGeometry, lilyPadGeometry, lotusGeometry, reedGeometry, swayMaterial,
 } from './models';
 
 const GRASS = 0, FLOWER = 1, REED = 2, PEBBLE = 3, LILY = 4;
@@ -50,10 +51,10 @@ export class Riverbank {
       });
     }
     const std = (o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, ...o });
-    const geos = [grassGeometry(), flowerGeometry(), reedGeometry(), pebbleGeometry(), lilyPadGeometry()];
+    const geos = [grassGeometry(), flowerGeometry(), reedGeometry(), pebbleGeometry2(), lilyPadGeometry()];
     const mats = [
       swayMaterial(std({ side: THREE.DoubleSide }), this.wind, 0.22, 0), swayMaterial(std(), this.wind, 0.14, 0),
-      swayMaterial(std(), this.wind, 0.05, 0.2), std({ roughness: 0.95 }), std({ roughness: 0.5, side: THREE.DoubleSide }),
+      swayMaterial(std(), this.wind, 0.05, 0.2), rockMaterial(), std({ roughness: 0.5, side: THREE.DoubleSide }),
     ];
     this.meshes = geos.map((g, k) => {
       const m = new THREE.InstancedMesh(g, mats[k], Math.max(1, counts[k]));

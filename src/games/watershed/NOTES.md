@@ -24,11 +24,11 @@ CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/servi
 `renderer.ts` (drops as spray only, cameras per phase/view, cues → sound/popups), `camFit.ts` (overview fitted to the screen;
 wide = sideways, spring left, HUD strip on top), `freeCam.ts` (pinch/drag/twist/wheel offset on the auto cam; double-tap resets;
 `focusState`/`easeToward` fly to a landmark, close + tilted low), `landmarks.ts` (spring, mills, Millbrook, dam: Z cycles, HUD chips tap),
-`terrainView.ts` (2× mesh, but colour + normal come per pixel from fine-grid textures so triangles don't show; colour alpha = fresh cuts,
-drawn as dark wet crumbling earth), `waterView.ts` (merged liquid surface), `outerLand.ts` (world beyond + boundary fence),
+`terrainView.ts` (2× mesh; colour/normal per pixel from fine textures: colour alpha = fresh cuts, normal alpha = water depth → caustics;
+baked `relief` AO; cliffs, cloud shadows, close-up grain), `waterView.ts`, `sea.ts` (GPU sea shaded by depth from land height textures),
+`flora.ts` (crisp trees/rocks + leaf/rock shaders), `fields.ts`, `outerLand.ts` (hills, ranges, fence); low warm sun, fog scaled to camera distance, CSS vignette,
 `skyLayer.ts` (cloud clears the highest ground under its footprint: `layout.ts#cloudAltitude`), `jobsLayer.ts` (+ `buildings.ts`: cottages, mills, dam sticks; chimney smoke), `eventsLayer.ts`, `creatures.ts` (no target markers;
-bears walk/rear/swipe, eagles spiral/bank/dive with a water shadow; spray), `wildlife.ts` (articulated bear, eagle, beaver + pose fns), `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`,
-`upsample.ts` (tested).
+bears walk/rear/swipe, eagles spiral/bank/dive with a water shadow; spray), `wildlife.ts` (articulated bear, eagle, beaver + pose fns), `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`, `upsample.ts` (tested).
 ## Tools
 - `npm run snap:watershed -- --script spin --minutes 15 --every 5 [--autopilot]` → PNGs in `out/watershed/`.
 - `/dev/watershed.html?script=grind&min=10&autopilot=1&inset=120[&level=dam-buster|&menu=1&progress={"first-spring":3}]`.

@@ -3,7 +3,7 @@ import { afterEach, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
 import type { CadenzaSnapshot } from '../sim/sim';
-import { Hud } from '../render/hud';
+import { Hud, shipLabel } from '../render/hud';
 import { rideTimeline } from './fixtures';
 
 afterEach(() => { document.body.innerHTML = ''; });
@@ -70,4 +70,10 @@ it('preserves touch targets while the countdown fraction and track color change'
   hud.update(snap,'#00f0ff',0);const row=document.querySelector('[data-i="4"]');
   snap.menu!.left-=.01;hud.update(snap,'#ff3080',.01);
   expect(document.querySelector('[data-i="4"]')).toBe(row);hud.dispose();
+});
+
+it('labels the ship row with its lane perk only when it changes the road', () => {
+  expect(shipLabel({ name: 'Manta', lanes: 5 })).toBe('Manta · 5 lanes');
+  expect(shipLabel({ name: 'Lancer', lanes: 3 })).toBe('Lancer');
+  expect(shipLabel(undefined)).toBe('Triad');
 });

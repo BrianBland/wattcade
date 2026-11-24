@@ -1,7 +1,7 @@
 # cadenza — Cadenza (SPEC §6.5)
 Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tuning). Picker first; sim reads `ctx.media.timeline` / `positionS()`. Mono only.
 ## Sim (`sim/`, pure)
-- `track.ts` `buildTrack`: one visual zone per section (hue from the song palette + 47°/zone), speed/distance/height/heading, visual grade, banks, tunnels (breaks + some verses, ≤ 45 s), blocks from onsets (min gap 0.36/0.22/0.11 s, lanes 3/3/5).
+- `track.ts` `buildTrack`: one visual zone per section (hue from the song palette + 47°/zone), speed/distance/height/heading, visual grade, banks, tunnels (breaks + some verses, ≤ 45 s), blocks from onsets (min gap 0.36/0.22/0.11 s; lanes from the ship via `opts.lanes`: Triad/Lancer 3, Manta 5; reachability guard keeps each jump ≤ `maxLaneJump(dt)` at 9 lanes/s).
   `stunts`: builds ≥ 13 s end in a 9 s helix (not during recovery); **sprints open with a launch** (2.6 s corkscrew,
   block-free, then the hard bank); drops without a sprint stay calm.
 - `ride.ts` plans effort separately: smooths brief normal fluctuations toward ≥30 s portions while preserving meaningful
@@ -10,7 +10,7 @@ Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tunin
   are trimmed around sprints, so the 3-2-1 runs at the end of a rest; rests < 8 s / work slivers < 6 s fold away.
   `effortAt`: countdown opens the ceiling to Z5 (floor unchanged); transitions judge old ∪ new band for 5 s, `band` = shown.
 - `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing, ship), controls (paddles = continuous or stepped position; D-pad/Z/A step; nearest lane judges hits),
-  judging, score/chain/Overdrive, shield/dropout/reboot, trainer effect `track`, clean zones, drops held, best scores.
+  judging, score/chain/Overdrive, shield/dropout/reboot, trainer effect `track`, clean zones, drops held, best scores (keyed `…|difficulty|l3/l5`; `migrateBest` maps old `|elite` → `|l5`, others → `|l3`).
   Off target: `effort.under` (eased; after a 6 s start grace) drains the shield after `underGraceS` and drives the grey-out +
   music FX; `effort.over` (above the zone ceiling; never sprints/ERG) overcharges the ship. Launches: avg power ÷ sprint floor
   (rpm ÷ 90 in ERG) over the roll → `rateLaunch` perfect ≥ 1.15 / great ≥ 1 / good ≥ 0.85 / weak; bonus 500 × 3/2/1/0 × zone.
@@ -20,7 +20,7 @@ Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tunin
 Shared uniforms (`look.ts`) drive every shader. `path.ts` (rolled frame), `trackMesh.ts` (ribbon, walls, tunnels, pylons,
 arches), `blocks.ts` (glass cubes in the live track accent, value → brighter / hotter (`blockTier`, `blockColor`); mines = black spiked balls with white-hot tips; absorb-into-ship; misses crumble against a
 viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `city.ts` + `cityPlacement.ts` (grounded towers; horizontal offsets and full road footprint clearance),
-`ships.ts` owns Triad/Lancer/Manta unlocks (Encore/Launch Pad); the game menu previews/selects/saves hulls and reads old shared ship selections. `craft.ts` (triad/lancer/manta, < ¾ lane; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
+`ships.ts` owns Triad/Lancer/Manta unlocks (Encore/Launch Pad) and lanes (`shipLanes`: 3/3/5; same steerRate for all); the game menu previews/selects/saves hulls and reads old shared ship selections. `craft.ts` (triad/lancer/manta, < ¾ lane; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
 white wall target posts 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
 `renderer.ts` + `steering.ts` (display-rate steering interpolation; camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),

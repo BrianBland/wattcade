@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { synthTimeline } from '../../../media/synth/queue';
-import { extendTrack, buildTrack, DIFF, rateTrack, sampleAt, zoneIndexAt, type Difficulty } from '../sim/track';
+import { extendTrack, buildTrack, DIFF, maxLaneJump, rateTrack, sampleAt, zoneIndexAt, type Difficulty, type Track } from '../sim/track';
 import { rideTimeline } from './fixtures';
 
 const tl = synthTimeline({ style: 'edm', songs: 2, seed: 1, mix: 'automix' });
@@ -29,27 +30,69 @@ describe('Cadenza track', () => {
     expect(sampleAt(tr.height, tr.hz, drop.t1 - 1)).toBeLessThan(sampleAt(tr.height, tr.hz, drop.t0 + 1));
   });
 
-  it('blocks follow the hits, respect spacing and lanes; harder means denser', () => {
-    const counts: number[] = [];
-    for (const diff of ['casual', 'pro', 'elite'] as Difficulty[]) {
-      const tr = buildTrack(tl, { difficulty: diff, mode: 'mono', seed: 1 }), d = DIFF[diff], h = (d.lanes - 1) / 2;
-      for (let i = 1; i < tr.blocks.length; i++) expect(tr.blocks[i].t - tr.blocks[i - 1].t).toBeGreaterThanOrEqual(d.minGap - 1e-9);
-      for (const b of tr.blocks) { expect(Math.abs(b.lane)).toBeLessThanOrEqual(h); expect(b.color).toBeGreaterThanOrEqual(-1); expect(b.color).toBeLessThan(5); }
-      counts.push(tr.blocks.length);
+  it('blocks follow the hits, respect spacing and the lanes option at every difficulty; harder means denser', () => {
+    for (const lanes of [3, 5]) {
+      const counts: number[] = [], h = (lanes - 1) / 2;
+      for (const diff of ['casual', 'pro', 'elite'] as Difficulty[]) {
+        const tr = buildTrack(tl, { difficulty: diff, mode: 'mono', seed: 1, lanes }), d = DIFF[diff];
+        expect(tr.lanes).toBe(lanes);
+        for (let i = 1; i < tr.blocks.length; i++) expect(tr.blocks[i].t - tr.blocks[i - 1].t).toBeGreaterThanOrEqual(d.minGap - 1e-9);
+        for (const b of tr.blocks) { expect(Math.abs(b.lane)).toBeLessThanOrEqual(h); expect(b.color).toBeGreaterThanOrEqual(-1); expect(b.color).toBeLessThan(5); }
+        if (lanes === 5) expect(tr.blocks.some((b) => Math.abs(b.lane) === 2)).toBe(true);
+        counts.push(tr.blocks.length);
+      }
+      expect(counts[0]).toBeLessThan(counts[1]); expect(counts[1]).toBeLessThan(counts[2]);
     }
-    expect(counts[0]).toBeLessThan(counts[1]); expect(counts[1]).toBeLessThan(counts[2]);
+    // Lanes come from the ship, not difficulty: the default is 3, elite included.
+    expect(buildTrack(tl, { difficulty: 'elite', mode: 'mono', seed: 1 }).lanes).toBe(3);
+  });
+
+  it('casual and pro 3-lane tracks are unchanged by the ship-lanes move and the reachability guard', () => {
+    // Block fingerprints from main (eb82d53), before lanes moved onto ships.
+    const before: Record<string, string> = {
+      'casual:1': '6217a29546277722ac084a44f2b07e2b07fa2b51', 'casual:4': 'c370c14fce1d1983b3c3d45bcb342cf53e6173c3',
+      'pro:1': '9de5f614b13e8be92a4b8381755acd30a39cbe65', 'pro:4': '0d9125a5943507caf09846b6a54b97db5ec99be5',
+    };
+    for (const [k, hash] of Object.entries(before)) {
+      const [difficulty, seed] = k.split(':') as [Difficulty, string];
+      for (const lanes of [undefined, 3]) {
+        const tr = buildTrack(tl, { difficulty, mode: 'mono', seed: Number(seed), ...(lanes ? { lanes } : {}) });
+        expect(createHash('sha1').update(JSON.stringify(tr.blocks)).digest('hex')).toBe(hash);
+      }
+    }
+  });
+
+  it('every block is reachable from the one before at 9 lanes/s (reachability guard)', () => {
+    expect([0.11, 0.22, 0.36, 0.5].map(maxLaneJump)).toEqual([1, 2, 3, 4]);
+    const reachable = (tr: Track, skipGreys: boolean) => {
+      const bs = skipGreys ? tr.blocks.filter((b) => b.color >= 0) : tr.blocks;
+      for (let i = 1; i < bs.length; i++) {
+        const dt = bs[i].t - bs[i - 1].t, jump = Math.abs(bs[i].lane - bs[i - 1].lane);
+        // Coloured blocks are what the rider must catch: within one lane, or what 9 lanes/s covers in the gap.
+        expect(jump, `${tr.lanes} lanes, t=${bs[i].t}`).toBeLessThanOrEqual(Math.max(1, 9 * dt + 0.1));
+      }
+    };
+    for (const lanes of [3, 5]) for (const difficulty of ['casual', 'pro', 'elite'] as Difficulty[]) for (const seed of [1, 4]) {
+      reachable(buildTrack(tl, { difficulty, mode: 'classic', seed, lanes }), false); // no greys: every consecutive pair
+      reachable(buildTrack(tl, { difficulty, mode: 'mono', seed, lanes }), true);
+    }
+    // The guard bites where it should: unguarded 5-lane elite would ask for 2+ lanes in 0.11 s.
+    const elite5 = buildTrack(tl, { difficulty: 'elite', mode: 'classic', seed: 1, lanes: 5 });
+    expect(elite5.blocks.some((b, i) => i > 0 && b.t - elite5.blocks[i - 1].t < 0.2 && Math.abs(b.lane - elite5.blocks[i - 1].lane) === 1)).toBe(true);
   });
 
   it('greys are always dodgeable: never next to each other, never in a neighbour block’s lane', () => {
-    const tr = buildTrack(tl, { difficulty: 'elite', mode: 'mono', seed: 4 });
-    const greys = tr.blocks.filter((b) => b.color < 0);
-    expect(greys.length).toBeGreaterThan(5);
-    tr.blocks.forEach((b, i) => {
-      if (b.color >= 0 || i === 0 || i === tr.blocks.length - 1) return;
-      expect(tr.blocks[i - 1].color).toBeGreaterThanOrEqual(0);
-      expect(b.lane).not.toBe(tr.blocks[i - 1].lane);
-      expect(b.lane).not.toBe(tr.blocks[i + 1].lane);
-    });
+    for (const lanes of [3, 5]) {
+      const tr = buildTrack(tl, { difficulty: 'elite', mode: 'mono', seed: 4, lanes });
+      const greys = tr.blocks.filter((b) => b.color < 0);
+      expect(greys.length).toBeGreaterThan(5);
+      tr.blocks.forEach((b, i) => {
+        if (b.color >= 0 || i === 0 || i === tr.blocks.length - 1) return;
+        expect(tr.blocks[i - 1].color).toBeGreaterThanOrEqual(0);
+        expect(b.lane).not.toBe(tr.blocks[i - 1].lane);
+        expect(b.lane).not.toBe(tr.blocks[i + 1].lane);
+      });
+    }
   });
 
   it('is deterministic and finds zones by time', () => {

@@ -5,8 +5,11 @@ import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
 import type { CadenzaSnapshot } from '../sim/sim';
 
-function ride(difficulty = 'pro', tuning = new TuningRegistry({ storage: null }), hub = new InputHub()) {
-  const s = createGameSession({ game: module, profile: testProfile(), input: hub, tuningRegistry: tuning,
+/** Manta (Launch Pad) flies the 5-lane road at any difficulty. */
+const MANTA = () => testProfile({ achievements: ['cz_launches'], gameData: { cadenza: { ship: 'manta' } } });
+
+function ride(difficulty = 'pro', tuning = new TuningRegistry({ storage: null }), hub = new InputHub(), profile = testProfile()) {
+  const s = createGameSession({ game: module, profile, input: hub, tuningRegistry: tuning,
     media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty } });
   const pull = (right: number, left = 0) => {
     hub.setControllerState({ buttons: new Set(), paddleL: left, paddleR: right }); s.step(30);
@@ -54,8 +57,8 @@ describe('Cadenza paddle tuning through the hardware input path', () => {
     expect(pull(6)).toBe(1); expect(pull(1)).toBe(0);
   });
 
-  it('supports all five lanes and preserves stronger-paddle selection', () => {
-    const { pull, tuning } = ride('elite');
+  it('supports all five lanes on Manta and preserves stronger-paddle selection', () => {
+    const { pull, tuning } = ride('pro', undefined, undefined, MANTA());
     tuning.set('cadenza.paddleDeadzone', 0);
     expect(pull(50)).toBe(1); expect(pull(75, 90)).toBeCloseTo(-1.8);
     tuning.set('cadenza.paddleMode', 'stepped');

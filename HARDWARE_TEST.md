@@ -37,7 +37,7 @@ Keep a note open and write down anything marked **record**.
 - [ ] Disable HR broadcast on the last-used watch, enable it on the other, then reload. Automatic connection should try the other saved watch without a picker. If both broadcast, use the named saved-watch buttons to switch; verify the live HR source changes.
 
 ## 5. Games (3 × ~3 min)
-- [ ] **Crank Crawler:** pedal to fire (the hero moves and aims itself), press A/B/Y/Z for Strike/Ward/Rally/Potion, and let it step on swamp tiles (green). **Record:** is the grade change noticeable? Does the 60–90 rpm movement speed feel right?
+- [ ] **Delve:** pedal to fire (the hero moves and aims itself), press A/B/Y/Z for Strike/Ward/Rally/Potion, and let it step on swamp tiles (green). **Record:** is the grade change noticeable? Does the 60–90 rpm movement speed feel right?
 - [ ] **Keeper's Light:** ride in Zone 2. The lamp should brighten and the fog should fall. Build something with the D-pad + A.
 - [ ] **Dynamo Defense:** shift tiers with the shifters and mount weapons with Y/B/Z. The trainer stays in resistance mode; the level should follow the tier. **Record** whether each shift is felt.
 - [ ] Throughout, watch the debug overlay for result codes other than `ok 1`, a growing `pkt age`, or reconnect messages.

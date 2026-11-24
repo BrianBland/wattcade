@@ -126,14 +126,14 @@ These are curation calls based on repeated shapes, weak visibility, generic reco
 | Kardashev I | HAMSTERGRID / Kardashev I (`hm_k1`) | Dyson array — **Back** | An orbiting miniature solar-panel rig makes a planet of power visible. |
 | Union Rep | HAMSTERGRID / Labour Relations (`hm_strike`) | Union work gloves — **Hands** | Labour Relations earns red work gloves with a small union badge. |
 | Breadbasket | Watershed / Breadbasket (`ws_breadbasket`) | Bread basket — **Back** | A wicker basket with baguettes: turn the title into a wearable joke. |
-| Not Today | Crank Crawler / Not Today (`dg_second_wind`) | Bandage wraps — **Hands** | A visible memento of surviving another near-death encounter. |
-| Perfectly Exposed | Crank Crawler / Perfect Exposure (`dg_perfect_exposure`) | Censored blocks — **Bottoms** | The Perfect Exposure pun: actual scene pixelation over a featureless pantless body, including the bike and background, with subtle noise. |
-| Walking Armoury | Crank Crawler / Full Arsenal (`dg_full_arsenal`) | Weapon rack — **Back** | A strapped sword, bow, and staff silhouette shows the collected arsenal. |
-| Spin Doctor | Crank Crawler / Spin Doctor (`dg_spin_doctor`) | Windstep boots — **Feet** | Spiral ankle wraps and a trailing ribbon reward spin-ups. |
-| Iron Vanguard | Crank Crawler / Vanguard Mastery (`dg_master_vanguard`) | Iron gauntlets — **Hands** | Steel fists suit the Vanguard stance. |
-| True Ranger | Crank Crawler / Ranger Mastery (`dg_master_ranger`) | Ranger riding chaps — **Bottoms** | Leather chaps and green leg wraps suit the Ranger stance. |
-| Wind Skirmisher | Crank Crawler / Skirmisher Mastery (`dg_master_skirmisher`) | Ragged scarf — **Back** | A long fluttering scarf suits the mobile Skirmisher stance. |
-| Grand Arcanist | Crank Crawler / Arcanist Mastery (`dg_master_arcanist`) | Rune spectacles — **Eyewear** | A glowing runic lens suits the Arcanist stance. |
+| Not Today | Delve / Not Today (`dg_second_wind`) | Bandage wraps — **Hands** | A visible memento of surviving another near-death encounter. |
+| Perfectly Exposed | Delve / Perfect Exposure (`dg_perfect_exposure`) | Censored blocks — **Bottoms** | The Perfect Exposure pun: actual scene pixelation over a featureless pantless body, including the bike and background, with subtle noise. |
+| Walking Armoury | Delve / Full Arsenal (`dg_full_arsenal`) | Weapon rack — **Back** | A strapped sword, bow, and staff silhouette shows the collected arsenal. |
+| Spin Doctor | Delve / Spin Doctor (`dg_spin_doctor`) | Windstep boots — **Feet** | Spiral ankle wraps and a trailing ribbon reward spin-ups. |
+| Iron Vanguard | Delve / Vanguard Mastery (`dg_master_vanguard`) | Iron gauntlets — **Hands** | Steel fists suit the Vanguard stance. |
+| True Ranger | Delve / Ranger Mastery (`dg_master_ranger`) | Ranger riding chaps — **Bottoms** | Leather chaps and green leg wraps suit the Ranger stance. |
+| Wind Skirmisher | Delve / Skirmisher Mastery (`dg_master_skirmisher`) | Ragged scarf — **Back** | A long fluttering scarf suits the mobile Skirmisher stance. |
+| Grand Arcanist | Delve / Arcanist Mastery (`dg_master_arcanist`) | Rune spectacles — **Eyewear** | A glowing runic lens suits the Arcanist stance. |
 | Lamplighter | Keeper’s Light / Electric Lantern (`lh_lens`) | Fresnel monocle — **Eyewear** | Electric Lantern earns the actual lens, worn over one eye. |
 | Clockwork Keeper | Keeper’s Light / Clockwork Keeper (`lh_clockwork`) | Clockwork boots — **Feet** | Chunky brass boots with little winding keys. |
 | Road Captain | Level 27 | Courier rolltop — **Back** | Replace an unthemed level title with something visibly wearable. |
@@ -149,7 +149,7 @@ These are curation calls based on repeated shapes, weak visibility, generic reco
 | Tiger (Top) | Cross-game riding / Big Day (`big_day`) | Tiger running shorts — **Bottoms** | Reuse the tiger stripes on a standalone lower half. |
 | Disco Sequins (Top) | Cadenza / Setlist (`cz_songs`) | Sequin crop top — **Top** | Keep the disco identity with an actual cropped hem rather than another jersey cut. |
 | Miller’s Overalls (Top) | Watershed / Miller (`ws_miller`) | Miller’s trousers — **Bottoms** | Separate the existing overalls’ blue lower half from the top. |
-| Skeleton (Top) | Crank Crawler / Abyssal (`dg_floor20`) | Skeleton leggings — **Bottoms** | Keep the bone motif, put it on the animated legs. |
+| Skeleton (Top) | Delve / Abyssal (`dg_floor20`) | Skeleton leggings — **Bottoms** | Keep the bone motif, put it on the animated legs. |
 | Welding Mask (Head) | Dynamo Defense / Boss Breaker (`td_boss`) | Welding goggles — **Eyewear** | Re-cut the current welding face shield into green-lens goggles usable with hats. |
 | Flight Suit (Top) | Sprocket Squadron / Into the Maw (`sf_maw`) | Flight jacket — **Top** | Keep the flight-suit palette, give the top a bomber collar and a separate waist. |
 | Pilot’s Cap (Head) | Sprocket Squadron / Ace of Aces (`sf_kills`) | Aviator goggles — **Eyewear** | Extract the goggles from Pilot’s Cap and wear them over the eyes. |
@@ -173,14 +173,14 @@ Every existing achievement is listed. **Keep** retains its current asset; **New*
 
 ### One signature title per game
 
-Crank Crawler currently awards nine titles. This proposal retains only Curse Eater there and applies an exact one-title limit to every game. Each listed title is that achievement’s one shared reward; it is not an additional reward layered onto a new garment. Other achievements continue to award equipment, companions, and effects.
+Delve currently awards nine titles. This proposal retains only Curse Eater there and applies an exact one-title limit to every game. Each listed title is that achievement’s one shared reward; it is not an additional reward layered onto a new garment. Other achievements continue to award equipment, companions, and effects.
 
 | Game | Signature title | Achievement |
 | --- | --- | --- |
 | Cadenza | Maestro | Sharpshooter (`cz_sharp`) |
 | HAMSTERGRID | Reincarnated | Circle of Life (`hm_reincarnate`) |
 | Watershed | Cadence Maestro | Cadence Maestro (`ws_maestro`) |
-| Crank Crawler | Curse Eater | Curse Eater (`dg_curses_total`) |
+| Delve | Curse Eater | Curse Eater (`dg_curses_total`) |
 | Keeper’s Light | Harbourmaster | Harbourmaster (`lh_harbour`) |
 | Dynamo Defense | Unbreakable | Unbreakable (`td_wave50`) |
 | Sprocket Squadron | Spectrum Ace | Full Spectrum (`sf_goldens`) |
@@ -299,21 +299,21 @@ Cross-game titles remain Long Hauler, Everester, and Steady Eddie. The total act
 | Act of Nature (`ws_act_of_nature`) | Ride out two geological events in one Watershed ride | Lava (Paint) | Lava — **Paint** | Keep |
 
 
-### Crank Crawler
+### Delve
 
 18 achievements across 10 slots: Head 3, Top 1, Bottoms 3, Hands 2, Feet 1, Eyewear 1, Back 2, Paint 1, Pet 3, Title 1.
 
 | Achievement | Current requirement | Current reward | Proposed reward | Action |
 | --- | --- | --- | --- | --- |
-| Dungeon Clear (`dungeon_clear`) | Defeat 30 bosses in Crank Crawler | Knight’s Helm (Head) | Knight’s Helm — **Head** | Keep |
-| Delver (`dg_floor5`) | Reach floor 8 of Crank Crawler | Bat (Pet) | Bat — **Pet** | Keep |
-| Deep Delver (`dg_floor10`) | Reach floor 12 of Crank Crawler | Chainmail (Top) | Chainmail — **Top** | Keep |
-| Abyssal (`dg_floor20`) | Reach floor 20 of Crank Crawler | Skeleton (Top) | Skeleton leggings — **Bottoms** | Move |
+| Dungeon Clear (`dungeon_clear`) | Defeat 30 bosses in Delve | Knight’s Helm (Head) | Knight’s Helm — **Head** | Keep |
+| Delver (`dg_floor5`) | Reach floor 8 of Delve | Bat (Pet) | Bat — **Pet** | Keep |
+| Deep Delver (`dg_floor10`) | Reach floor 12 of Delve | Chainmail (Top) | Chainmail — **Top** | Keep |
+| Abyssal (`dg_floor20`) | Reach floor 20 of Delve | Skeleton (Top) | Skeleton leggings — **Bottoms** | Move |
 | Legendary Loot (`dg_unique`) | Find 10 unique weapons | Mythic Purple (Paint) | Mythic Purple — **Paint** | Keep |
 | Elite Hunter (`dg_elites`) | Slay 75 elites in one dive | Baby Dragon (Pet) | Baby Dragon — **Pet** | Keep |
 | Untouchable (`dg_deathless`) | Defeat 8 bosses in one dive without dying | Halo (Head) | Halo — **Head** | Keep |
 | Curse Breaker (`dg_curses`) | Survive 6 curses in one ride | Devil Horns (Head) | Devil Horns — **Head** | Keep |
-| Curse Eater (`dg_curses_total`) | Survive 100 curses in Crank Crawler | Curse Eater (Title) | Curse Eater — **Title** | Keep |
+| Curse Eater (`dg_curses_total`) | Survive 100 curses in Delve | Curse Eater (Title) | Curse Eater — **Title** | Keep |
 | Not Today (`dg_second_wind`) | Get saved by Second Wind 25 times | Not Today (Title) | Bandage wraps — **Hands** | New |
 | Perfect Exposure (`dg_perfect_exposure`) | Land a Strike in every Exposed window of a boss fight (2+ windows) | Perfectly Exposed (Title) | Censored blocks — **Bottoms** | New |
 | Full Arsenal (`dg_full_arsenal`) | Carry a rare or better weapon in every stance in one dive | Walking Armoury (Title) | Weapon rack — **Back** | New |
@@ -322,7 +322,7 @@ Cross-game titles remain Long Hauler, Everester, and Steady Eddie. The total act
 | Ranger Mastery (`dg_master_ranger`) | Defeat 2,000 monsters as Ranger | True Ranger (Title) | Ranger riding chaps — **Bottoms** | New |
 | Skirmisher Mastery (`dg_master_skirmisher`) | Defeat 2,000 monsters as Skirmisher | Wind Skirmisher (Title) | Ragged scarf — **Back** | New |
 | Arcanist Mastery (`dg_master_arcanist`) | Defeat 2,000 monsters as Arcanist | Grand Arcanist (Title) | Rune spectacles — **Eyewear** | New |
-| Monster Masher (`dg_kills`) | Defeat 25,000 monsters in Crank Crawler | Ghost (Pet) | Ghost — **Pet** | Keep |
+| Monster Masher (`dg_kills`) | Defeat 25,000 monsters in Delve | Ghost (Pet) | Ghost — **Pet** | Keep |
 
 
 ### Keeper’s Light

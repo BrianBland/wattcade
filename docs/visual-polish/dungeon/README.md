@@ -1,4 +1,4 @@
-# Crank Crawler pixel art pass
+# Delve pixel art pass
 
 The preview and capture script show implemented game artwork. Generated images stay outside the repository in `/tmp/dungeon-smoke/`.
 

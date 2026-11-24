@@ -18,6 +18,6 @@ out
 /docs/towerdefense/paint-guide/*.png
 /docs/towerdefense/paint-guide/*-clearings.json
 
-# Crank Crawler review captures are reproducible and do not belong in source history.
+# Delve review captures are reproducible and do not belong in source history.
 /docs/visual-polish/dungeon/*.png
 /docs/visual-polish/dungeon/*.gif

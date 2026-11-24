@@ -24,6 +24,8 @@ export class TuningRegistry {
   private profileId: string;
   private loaded = new Map<string, Record<string, TuningValue>>();
   private listeners = new Set<() => void>();
+  /** Defaults from a live update for tunables not registered yet (key -> default). */
+  private pendingDefaults = new Map<string, { d: TuningValue; min?: number; max?: number }>();
 
   constructor(opts: { profileId?: string; storage?: StorageLike | null } = {}) {
     this.profileId = opts.profileId ?? 'default';
@@ -47,6 +49,8 @@ export class TuningRegistry {
     let entry = this.entries.get(e.key);
     if (!entry) {
       entry = e;
+      const nd = this.pendingDefaults.get(e.key);
+      if (nd) { this.pendingDefaults.delete(e.key); this.retarget(entry, nd); }
       const saved = this.savedFor(e.ns)[e.key];
       if (saved !== undefined) entry.value = this.coerce(entry, saved) ?? entry.value;
       this.entries.set(e.key, entry);
@@ -79,6 +83,35 @@ export class TuningRegistry {
     }
     for (const n of nss) { this.loaded.set(n, {}); this.persist(n); }
     this.listeners.forEach((l) => l());
+  }
+
+  /**
+   * Live updates (src/live): another version's defaults for namespace `ns`. Each tunable the rider hasn't overridden
+   * moves to its new default at once (the game reads it on its next tick); overridden ones keep the rider's value.
+   * Tunables not registered yet take the new default when they register. Returns the keys whose value changed.
+   */
+  applyDefaults(ns: string, defaults: Record<string, { d: TuningValue; min?: number; max?: number }>): string[] {
+    const changed: string[] = [];
+    for (const [name, nd] of Object.entries(defaults)) {
+      const key = `${ns}.${name}`;
+      const e = this.entries.get(key);
+      if (!e) { this.pendingDefaults.set(key, nd); continue; }
+      const before = e.value;
+      this.retarget(e, nd);
+      if (e.value !== before) changed.push(key);
+    }
+    if (changed.length) this.listeners.forEach((l) => l());
+    return changed;
+  }
+
+  private retarget(e: TuningEntry, nd: { d: TuningValue; min?: number; max?: number }): void {
+    const overridden = e.value !== e.def;
+    if (e.kind === 'num') { if (nd.min !== undefined) e.min = nd.min; if (nd.max !== undefined) e.max = nd.max; }
+    const d = this.coerce(e, nd.d);
+    if (d === undefined) return;
+    e.def = d;
+    if (!overridden) e.value = d;
+    else { const v = this.coerce(e, e.value); if (v !== undefined) e.value = v; }
   }
 
   onChange(cb: () => void): () => void { this.listeners.add(cb); return () => this.listeners.delete(cb); }

@@ -21,6 +21,11 @@ import { rememberInsets } from '../game/gameInsets';
 import { achievementToast, toast } from '../components/Toasts';
 import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 import { keepScreenAwake } from '../wakeLock';
+import { live, resolveLiveRun } from '../../live/client';
+import { LiveHost } from '../../live/host';
+import { LiveStore } from '../../live/store';
+import { LiveChip, LiveVersions } from '../../live/ui';
+import type { TuneDefault } from '../../live/types';
 
 /** Ride milestone toast every this many pedalling seconds. */
 export const MILESTONE_S = 600;
@@ -46,6 +51,8 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const [paused, setPaused] = useState(false);
   const [help, setHelp] = useState(false);
   const [history, setHistory] = useState(false);
+  const [versions, setVersions] = useState(false);
+  const [liveHost, setLiveHost] = useState<LiveHost | null>(null);
   const [pauseFocus, setPauseFocus] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -79,7 +86,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const setPause = (p: boolean) => {
     if (loadingRef.current) return;
     if (!canPause(phaseRef.current)) return;
-    pausedRef.current = p; setPaused(p); if (!p) { setHelp(false); setHistory(false); setPauseFocus(0); }
+    pausedRef.current = p; setPaused(p); if (!p) { setHelp(false); setHistory(false); setVersions(false); setPauseFocus(0); }
     const s = sessionRef.current; if (!s) return;
     if (phaseRef.current === 'menu') { if (p) s.pause(); else s.resume(); return; } // trainer stays neutral; no music yet
     if (p) { s.sim.receive?.({ type: 'inputCancel' }); s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
@@ -104,7 +111,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   };
   const toEnding = (over: boolean) => {
     if (phaseRef.current === 'ending') return;
-    pausedRef.current = false; setPaused(false); setHelp(false); setHistory(false);
+    pausedRef.current = false; setPaused(false); setHelp(false); setHistory(false); setVersions(false);
     debugActions.panic(true);
     if (music.current) { music.current.engine.setVolume(0); setTimeout(() => music.current?.engine.stop(), 1500); }
     let hold = 0;
@@ -116,7 +123,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   useEffect(() => {
     loadingRef.current = true; setLoading(true); setError('');
     const warmJob = takeWarmGame(game.id, profile.id);
-    let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null;
+    let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null, warmHost: HTMLElement | null = null;
     const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
     const remember = (i: Insets) => { const el = mount.current; if (el) rememberInsets(game.id, el.clientWidth, el.clientHeight, hasConnectedController(), i); return i; };
     const hudLayout = () => { if (!disposed) renderer?.setInsets?.(remember(readInsets())); };
@@ -140,8 +147,26 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     };
     (async () => {
       try {
-        const session = startSession(game, profile, onSave, media ? { timeline: media.timeline, ...(media.rolling?.announce ? { announce: (id: string, t: number) => media.rolling?.announce?.(id, t) } : {}) } : undefined);
+        // Live updates (src/live): start from this game's pinned versions; back up the save when the logic changes
+        const liveRun = live.isEnabled() ? await resolveLiveRun(game, profile).catch(() => null) : null; // no await when off
+        if (disposed) return;
+        liveRun?.notes.forEach((n) => toast(n));
+        let startProfile = profile;
+        if (live.isEnabled()) {
+          const store = new LiveStore(profile.id), simSha = liveRun?.layers.sim ?? null, last = store.lastStartedSim(game.id);
+          if (last !== undefined && last !== simSha && profile.gameData[game.id] !== undefined)
+            store.backup(game.id, { time: Date.now(), beforeSim: last, afterSim: simSha, data: profile.gameData[game.id] });
+          store.setStartedSim(game.id, simSha);
+          const ri = store.pendingRestore(game.id), b = ri === null ? undefined : store.backups(game.id)[ri];
+          store.setPendingRestore(game.id, null);
+          if (b) { startProfile = { ...profile, gameData: { ...profile.gameData, [game.id]: b.data } }; onSave(b.data); toast('Save restored from backup'); }
+        }
+        const simGame = liveRun?.sim ?? game, renderGame = liveRun?.render ?? game;
+        const session = startSession(simGame, startProfile, onSave, media ? { timeline: media.timeline, ...(media.rolling?.announce ? { announce: (id: string, t: number) => media.rolling?.announce?.(id, t) } : {}) } : undefined);
         sessionRef.current = session; setSession(session);
+        const builtInTuning: Record<string, TuneDefault> = {}; // the built-in defaults, to roll tunables back to
+        for (const e of session.tuning?.list(game.id) ?? []) builtInTuning[e.name] = { d: e.def, ...(e.min !== undefined ? { min: e.min, max: e.max } : {}) };
+        if (liveRun?.tuning) session.tuning?.applyDefaults(game.id, liveRun.tuning);
         const firstHud = session.sim.hud?.() ?? {};
         const sig = controlsSignature(playControls(firstHud), resolveHudLayout(loadHudLayout(), hasConnectedController()));
         const showCard = needsControls(profile, game.id, sig);
@@ -156,17 +181,19 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         }
         debugActions.panic(true); // trainer neutral through the controls card and the game's menu, until GO
         const musicFx = music.current ? (fx: MusicFx) => music.current?.engine.setFx(fx) : undefined;
-        const warm = warmJob ? await warmJob : null; // loaded while the rider rode to the portal
+        let warm = warmJob ? await warmJob : null; // loaded while the rider rode to the portal
+        if (warm && renderGame !== game) { disposeWarm(warm); warm = null; } // a live-updated renderer: the warm one is the built-in
+        const mountCtx = { profile, send: (a: unknown) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true };
         if (warm) {
           if (disposed) { disposeWarm(warm); return; }
           warm.attach((a) => session.sim.receive?.(a), musicFx);
-          adoptWarm(warm, mount.current!);
+          adoptWarm(warm, mount.current!); warmHost = warm.host;
           renderer = warm.renderer; rendererRef.current = renderer;
           renderer.resize?.(mount.current!.clientWidth, mount.current!.clientHeight);
         } else {
-          renderer = await game.loadRenderer(); rendererRef.current = renderer;
+          renderer = await renderGame.loadRenderer(); rendererRef.current = renderer;
           if (disposed) { renderer.unmount(); return; }
-          renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
+          renderer.mount(mount.current!, mountCtx);
         }
         renderer.setInsets?.(remember(readInsets()));
         const el = mount.current!;
@@ -182,6 +209,24 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         session.idle(0); // discard presses made while loading before exposing game controls
         renderer.render(session.sim.snapshot(), session.ctx.bike(), input.state());
         loadingRef.current = false; setLoading(false);
+        // mid-ride swaps for live updates: tunables move at once; a renderer is swapped while the sim keeps running
+        const swapRenderer = async (mod: GameModule) => {
+          const next = await mod.loadRenderer();
+          if (disposed) { next.unmount(); return; }
+          const old = renderer; renderer = null; rendererRef.current = null;
+          try { old?.unmount(); } catch { /* best effort */ }
+          warmHost?.remove(); warmHost = null;
+          next.mount(mount.current!, { ...mountCtx, insets: readInsets() });
+          next.setInsets?.(readInsets());
+          await next.ready?.();
+          if (next.prepare) { try { await next.prepare(session.sim.snapshot()); } catch { /* best effort */ } }
+          if (disposed) { next.unmount(); return; }
+          renderer = next; rendererRef.current = next;
+        };
+        if (live.isEnabled()) setLiveHost(new LiveHost(game, profile.id, liveRun?.layers ?? null, {
+          swapRenderer: (mod) => swapRenderer(mod).catch(async (e) => { if (!renderer && !disposed) await swapRenderer(game); throw e; }),
+          applyTuning: (d) => { session.tuning?.applyDefaults(game.id, d ?? builtInTuning); },
+        }));
         if (goOnReady) go();
         let last = performance.now();
         const T = timers.current;
@@ -226,7 +271,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
             T.ending += dt;
             if (endingStep(T.ending, T.hold, p.has('a')).leave) { disposed = true; leave(cb.current.onQuit); return; }
           }
-          renderer!.render(session.sim.snapshot(), session.ctx.bike(), input.state(), session.loop?.frameFraction);
+          renderer?.render(session.sim.snapshot(), session.ctx.bike(), input.state(), session.loop?.frameFraction);
           raf = requestAnimationFrame(loop);
         };
         raf = requestAnimationFrame(loop);
@@ -234,7 +279,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     })();
     return () => {
       disposed = true; window.removeEventListener(HUD_LAYOUT_EVENT, hudLayout); detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
-      renderer?.unmount(); rendererRef.current = null; releaseWake();
+      renderer?.unmount(); rendererRef.current = null; releaseWake(); setLiveHost(null);
       music.current?.engine.setFx({ degrade: 0 }); music.current?.engine.stop(); music.current = null; duckAmbient('music', false);
     };
   }, [game]);
@@ -264,8 +309,10 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
       )}
       {paused && help && session && <IntroHelp game={game} hud={hud} profile={profile} fake={isFake()} onClose={() => setHelp(false)} />}
       {paused && history && <PauseHistory ftp={profile.ftp} onClose={() => setHistory(false)} />}
-      {paused && !help && !history && (
-        <PauseMenu tuning={session?.tuning} fake={isFake()} onHistory={() => { setPauseFocus(6); setHistory(true); }} layout={layout} onLayout={(v) => { setLayout(v); saveHudLayout(v); }}
+      {paused && versions && liveHost && <LiveVersions host={liveHost} onClose={() => setVersions(false)} />}
+      <LiveChip host={liveHost} hidden={loading || phase === 'intro' || phase === 'ending' || paused} />
+      {paused && !help && !history && !versions && (
+        <PauseMenu tuning={session?.tuning} fake={isFake()} onVersions={liveHost ? () => { setPauseFocus(8); setVersions(true); } : undefined} onHistory={() => { setPauseFocus(6); setHistory(true); }} layout={layout} onLayout={(v) => { setLayout(v); saveHudLayout(v); }}
           onResume={() => setPause(false)} onHelp={() => { setPauseFocus(5); setHelp(true); }} initial={pauseFocus} onRestart={onRestart}
           extensions={session?.sim.menuActions?.() ?? []} onExtension={(action) => { session?.sim.receive?.(action); setPause(false); }}
           {...(phase === 'menu' || session?.sim.inMenu?.() ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) }

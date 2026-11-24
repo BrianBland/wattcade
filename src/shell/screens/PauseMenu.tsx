@@ -14,7 +14,7 @@ import { PaddleSettings, PADDLE_KEYS, type PaddleTuning } from './PaddleSettings
 
 const clampDiff = (v: number) => Math.min(1.5, Math.max(0.5, +v.toFixed(2)));
 
-export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayout, initial = 0, fake = false, onHistory, extensions = [], onExtension, quitLabel = 'End ride', tuning }: { tuning?: PaddleTuning; extensions?: readonly GameMenuAction[]; onExtension: (action: unknown) => void; initial?: number; fake?: boolean; onHistory?: () => void; quitLabel?: string; layout: HudLayout; onLayout: (v: HudLayout) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
+export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayout, initial = 0, fake = false, onHistory, onVersions, extensions = [], onExtension, quitLabel = 'End ride', tuning }: { tuning?: PaddleTuning; onVersions?: () => void; extensions?: readonly GameMenuAction[]; onExtension: (action: unknown) => void; initial?: number; fake?: boolean; onHistory?: () => void; quitLabel?: string; layout: HudLayout; onLayout: (v: HudLayout) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
   const card = useRef<HTMLDivElement>(null);
   const [diff, setDiff] = useState(getDifficulty);
   const setD = (v: number) => { const c = clampDiff(v); setDiff(c); debugActions.setDifficulty(c); };
@@ -22,7 +22,7 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayou
   const toggleSound = () => { setSoundEnabled(!sound); setSound(!sound); };
   const [steering, setSteering] = useState(false);
   const hasPaddles = tuning && PADDLE_KEYS.every(k => tuning.get(`cadenza.${k}`) !== undefined);
-  const tail = [{ label: 'Controls', run: onHelp }, ...(onHistory ? [{ label: 'History', run: onHistory }] : []), { label: '↻ Restart', run: onRestart }];
+  const tail = [{ label: 'Controls', run: onHelp }, ...(onHistory ? [{ label: 'History', run: onHistory }] : []), { label: '↻ Restart', run: onRestart }, ...(onVersions ? [{ label: 'Versions', run: onVersions }] : [])];
   const layouts = ['auto', 'touch', 'controller'] as const;
   const cycleLayout = (d: number) => onLayout(layouts[(layouts.indexOf(layout) + d + layouts.length) % layouts.length]);
   const actions = [onResume, onQuit, () => setD(diff + 0.05), () => cycleLayout(1), toggleSound, ...tail.map(a => a.run), ...extensions.map(entry => () => onExtension(entry.action)), ...(hasPaddles ? [() => setSteering(true)] : [])];

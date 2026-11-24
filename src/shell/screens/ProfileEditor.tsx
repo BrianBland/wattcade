@@ -23,6 +23,8 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
   const nameRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const fieldsRef = useRef<HTMLDivElement>(null);
+  const [fieldsMore, setFieldsMore] = useState(false);
   const isNew = !profile.name;
 
   const save = () => onSave({ ...p, name: p.name.trim() || 'Rider' });
@@ -55,6 +57,20 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
   // keep the focused row on screen; leave the name box when the D-pad moves
   useEffect(() => { listRef.current?.querySelectorAll('.field, .actions .btn')[idx]?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); }, [idx]);
   useEffect(() => onMenuPress((pr) => { if (['up', 'down'].some((k) => pr.has(k as 'up'))) nameRef.current?.blur(); }), []);
+  // Overlay scrollbars hide the clipped rows. Show the one-line hint only while more fields sit below.
+  useEffect(() => {
+    const el = fieldsRef.current;
+    if (!el) return;
+    const measure = () => {
+      const more = el.scrollHeight > el.clientHeight + 2 && el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+      setFieldsMore((prev) => (prev === more ? prev : more));
+    };
+    measure();
+    el.addEventListener('scroll', measure, { passive: true });
+    const ro = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
+    ro?.observe(el);
+    return () => { el.removeEventListener('scroll', measure); ro?.disconnect(); };
+  }, [fields.length]);
 
   const control = (f: FieldDef, i: number) => {
     switch (f.kind) {
@@ -75,8 +91,9 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
         <RiderAvatar profile={p} size="big" />
       </div>
       <div class="editor" ref={listRef}>
-        <div class="fields editor-fields">
+        <div class={`fields editor-fields${fieldsMore ? ' more' : ''}`} ref={fieldsRef}>
           {fields.map((f, i) => <div key={f.id} class={`editor-row editor-${f.kind}`}><Field label={f.label} focused={idx === i} hint={'hint' in f ? f.hint : undefined} onClick={() => setIdx(i)}>{control(f, i)}</Field></div>)}
+          {fieldsMore && <div class="editor-more" role="status">More settings below</div>}
         </div>
         <div class="actions editor-actions">
           <div class="row editor-primary">{actions.slice(0, 2).map((a, j) => <Btn key={a.label} primary={a.primary} focused={idx === nF + j} onClick={a.run}>{a.label}</Btn>)}</div>

@@ -1,0 +1,30 @@
+/* Live updates: chip + tray over the game (top right, clear of the bottom HUD), versions dialog from the pause menu. */
+.live-anchor { position:absolute; top:max(12px, env(safe-area-inset-top)); right:max(14px, env(safe-area-inset-right)); z-index:40; display:flex; flex-direction:column; align-items:flex-end; gap:8px; max-width:min(480px, calc(100% - 28px)); }
+.live-chip { display:inline-flex; align-items:center; gap:9px; padding:7px 14px 7px 9px; border-radius:99px; cursor:pointer; font:800 15px var(--font, inherit); color:var(--fg); background:var(--glass); border:2px solid var(--glass-line); -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); }
+.live-chip.has { border-color:var(--neon); box-shadow:0 0 0 2px #00f0ff33, 0 0 20px #00f0ff55; animation:livePulse 1.6s ease-in-out 3; }
+.live-chip:disabled { opacity:.75; cursor:default; }
+.live-count { min-width:24px; height:24px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:#ffffff1f; color:var(--fg); font-weight:900; }
+.live-chip.has .live-count { background:var(--neon); color:#001; }
+@keyframes livePulse { 50% { box-shadow:0 0 0 6px #00f0ff22, 0 0 32px #00f0ffaa; } }
+.live-tray { width:100%; max-height:min(70vh, 520px); overflow-y:auto; background:var(--glass); border:2px solid var(--glass-line); border-radius:16px; padding:12px; display:flex; flex-direction:column; gap:8px; -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); box-shadow:0 10px 40px #000a; }
+.live-tray h3, .live-backups h3 { margin:0; font-size:13px; letter-spacing:2px; text-transform:uppercase; color:var(--pink); }
+.live-row, .live-list li { display:grid; grid-template-columns:62px minmax(0,1fr) auto; gap:3px 10px; align-items:center; padding:8px 10px; border-radius:12px; background:#ffffff08; }
+.live-sha { font:800 13px ui-monospace, Menlo, monospace; color:var(--dim); grid-row:1 / span 2; }
+.live-msg { font-weight:700; font-size:15px; min-width:0; overflow-wrap:anywhere; }
+.live-meta { grid-column:2; font-size:12.5px; color:var(--dim); display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.live-acts { grid-column:3; grid-row:1 / span 2; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.live-kind { font-size:10.5px; font-weight:900; letter-spacing:1px; padding:1px 7px; border-radius:99px; border:1px solid currentColor; text-transform:uppercase; }
+.live-kind.tuning { color:#b6ff3b; } .live-kind.art { color:#00f0ff; } .live-kind.logic { color:#ffb020; } .live-kind.shell { color:#ff4d6d; margin-right:6px; }
+.live-mark { font-size:10.5px; font-weight:900; letter-spacing:.5px; text-transform:uppercase; padding:1px 7px; border-radius:99px; background:var(--lime); color:#001; }
+.live-mark.queued { background:none; color:var(--lime); border:1px dashed var(--lime); }
+.live-mark.built { background:#ffffff1f; color:var(--fg); }
+.live-note { margin:0; font-size:13px; color:var(--dim); line-height:1.4; }
+.live-versions { width:min(720px, 94vw); max-height:92dvh; overflow-y:auto; }
+.live-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+.live-head h2 { margin:0; }
+.live-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.live-list li.on { background:#b6ff3b12; outline:2px solid #b6ff3b44; }
+.live-backups { display:flex; flex-direction:column; gap:6px; }
+.live-backups .live-row { grid-template-columns:minmax(0,1fr) auto; }
+.live-backups .live-msg { grid-row:auto; font-weight:400; font-size:14px; }
+.live-backups .live-acts { grid-column:2; grid-row:auto; }

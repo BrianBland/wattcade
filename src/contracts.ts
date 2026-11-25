@@ -10,6 +10,7 @@ export type UnitSystem = 'imperial' | 'metric';
 export type AimMode = 'auto' | 'rotate' | 'axes' | 'buttons';
 export interface ProfileSettings {
   debugStats?: boolean; // per-player opt-in for diagnostic stats across the app; absent means off
+  liveUpdates?: boolean; // per-player opt-in: follow new versions of games pushed to main and apply them mid-ride (src/live); absent means off
   units?: UnitSystem;      // absent on older profiles: imperial
   difficulty: number;      // 0.5..1.5, default 1.0
   zoneSource: ZoneSource;
@@ -245,6 +246,9 @@ export interface GameModule {
   requires?: { erg?: boolean; media?: MediaNeed[] };
   createSim(ctx: GameContext, opts?: { seed?: number }): GameSim;
   loadRenderer(): Promise<GameRenderer>;           // must use dynamic import()
+  /** Optional: version of the snapshot() shape the renderer reads (default 1). Bump it whenever a change to the
+   *  snapshot would break an older renderer or a newer renderer drawing an older sim, so live updates (src/live) never pair them. */
+  snapshotFormat?: number;
   /** Optional: one short line for the arcade card from this rider's save (profile.gameData[id]), e.g. "Best floor 7". Pure. */
   progressLine?(save: unknown): string | null;
   /** Optional: animated banner art for the arcade card (Canvas 2D, ~16:7). `t` = seconds; `color` = rider colour. Keep it tiny. */

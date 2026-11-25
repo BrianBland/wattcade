@@ -60,6 +60,11 @@ def main():
         manifest(path)
         for file in json.loads(path.read_text())['files'].values():
             use(path.parent / file)
+    # Painted fire/blast animation strips (render/fxArt.ts): the manifest names each strip, shipped as <name>.webp.
+    fx = KIT / 'fx/manifest.json'
+    use(fx)
+    for name in json.loads(fx.read_text()):
+        use(fx.parent / f'{name}.webp')
     # The retained production previews are the style references for future machinery art.
     for folder in ['outpost', 'towers']:
         use(KIT / folder / 'preview.png')

@@ -28,7 +28,7 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'beam'; angle: number; spread: boolean; width?: number }
   | { id: number; t0: number; life: number; kind: 'zap'; pts: Array<{ x: number; y: number }>; /** firing tower's pad: the renderer starts the arc at its art's muzzle */ pad?: number }
   | { id: number; t0: number; life: number; kind: 'lens'; x0: number; y0: number; x1: number; y1: number; /** firing tower's pad: the renderer starts the beam at its crystal */ pad?: number }
-  | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number }
+  | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number; /** A Mortar shell (gravel and shrapnel), not a Fireball. */ mortar?: boolean }
   /** an ignition burst; `chain` groups bursts from one fire kill, `ordinal` counts them (1, 2, …) */
   | { id: number; t0: number; life: number; kind: 'burst'; x: number; y: number; r: number; chain: number; ordinal: number }
   | { id: number; t0: number; life: number; kind: 'hitStop'; seconds: number }
@@ -43,7 +43,8 @@ export type Fx =
 export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: number; r: number; tower?: true }
 /** Burning road left by a fireball; `k` = share of its burn time left. */
 export interface BurnView { x: number; y: number; r: number; k: number }
-export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }
+/** `burstAt`/`burstS`: a Flamethrower's last burst started then and lasts that long (its aim is locked meanwhile). */
+export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number; burstAt?: number; burstS?: number }
 /** `locked`: a tower kind not yet earned with campaign stars (shown, never buildable). */
 /** A tower attribute on an upgrade row: stars now (`from`) and after the upgrade (`to`), out of `max`, and the change in words. */
 export interface RowStat { name: string; from: number; to: number; max: number; change: string }

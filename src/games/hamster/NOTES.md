@@ -20,12 +20,13 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - Peptides: costs scale with the current rate. Tolerance (+1 per use, −1 per 8 min) shrinks the bonus. Trenbalone has a 30% chance of roid rage (hamsters at −25%; sprint Z4+ for 8 s).
 - Resistance: sim mode, `inertia` effect adds +0.15% grade per era, virtual gears on both hoods.
 - Reincarnation: seeds = floor(cbrt(lifeEnergy / 1e27)). Requires a double press. Keeps vibes, milestones and unlocks.
-- Autobuyers (specials): Middle Manager buys generators and HR buys upgrades, each spending ≤ 25% of the bank.
+- Autobuyers (specials): HR buys upgrades, spending ≤ 25% of the bank. Wholesale Seed Contract (era 1) makes B (×10) generator buys 10% cheaper; single buys stay full price. Legacy saves may still contain `sp:manager` (the retired Middle Manager autobuyer); it is dropped on load with no refund.
 - Controls: ◀▶ tab, ▲▼ row, A buy/toggle, B buy ×10, Y re-dose the last peptide, Z accept trial; shifters are gears. Tap a tab or row (tap again to buy).
 - Save `HamsterSave` v1 via ctx.save: every 30 s, 3 s after a purchase, and on dispose.
 
 ## Balance (autopilot greedy buyer, z2 = 0.65 FTP of 200 W, no sprints/peptides)
-- Era 1 at 10 min, era 2 at 1.1 h, era 3 at 2.9 h, era 4 at 4 h, era 5 at 5.3 h, era 6 (Star) at 7.2 h, Dyson Swarm Wheel at 8.6 h, galaxy at 9 h, Kardashev 2 at 10.4 h.
+- Era 1 at 12 min, era 2 at 1.15 h, era 3 at 2.49 h, era 4 at 3.63 h, era 5 at 5.08 h, era 6 (Star) at 6.94 h, Dyson Swarm Wheel at 8.59 h, galaxy at 9.56 h, Kardashev 2 at 11.45 h.
+- After Middle Manager was removed, the same run reached Kardashev 2 in 5.24 h because autopilot no longer wasted spare energy on cheap generators. To restore a ~10–11 h climb without an autobuyer, the ladder was retuned: `cost0` 400 → 450, `costStep` 13 → 13.8, `growth` 1.15 → 1.22 (`outStep` stays 11). Era 1 is allowed to run to 12 min (up to 15 min was acceptable) so mid and late eras can stay close to the old `main` curve. Wholesale Seed Contract is still priced at 6× Ferret Turbine base cost; with the new `cost0`/`costStep` that is 97.9 MJ (was 68.5 MJ). The 10% ×10 discount is a little more valuable with the higher growth rate, and it still does not affect this autopilot run (one-at-a-time buys).
 - Re-run: `npx tsx src/games/hamster/test/balance.ts 14 z2` (about 30 s).
 
 ## Testing
@@ -39,4 +40,5 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - Shared controller HUD opts Z into a Trial offer indicator during offers. Touch keeps Buy ×10 in generators and Re-dose when unlocked. Swipe/drag/wheel scroll the list; row taps buy on release and drags/cancel never buy. Controller selection re-centers the list; native tab/row/trial taps replace duplicate buttons.
 
 - Completed visual pass: `render/art.ts` supplies custom inventory art, `render/machinery.ts` draws workshop equipment, and `render/orbital.ts` carries those materials into space. Current eight-era gallery and verification: `docs/visual-polish/hamster/README.md`.
-- `render/ticker.ts` manages headline reading time independently of simulation news cadence. It holds the opening, pans overflowing text through its final words, and retains only the newest pending headline. Tap the 44 px news strip to pause/resume; this does not pause riding or event cards.
+- `render/ticker.ts` is a side-scrolling crawl (`TICKER_SPEED` px/s): each headline enters from the right and leaves on the left before the newest pending one starts; with nothing new it loops. Tap the 44 px news strip to pause/resume; this does not pause riding or event cards.
+- Workforce art: `render/critters.ts` (gerbil with tail, tricolour guinea pig on a treadmill, bounding ferret; gerbils wear hard hats/vests, guinea pigs sweatbands), `render/gym.ts` (upright front-facing lifters: press/squat/deadlift/curl cycle per gym, mirror strip + 24H sign; bars rest on floor/rack when stopped), `render/turbine.ts` (full-width coiled glass pipes with brass collars and an inline turbine). Animals vary per slot via `quirk(seed)` in `draw.ts` (coat shade, size, ears, markings; guinea pig palettes, ferret coats). Smoke-tested in `test/art.test.ts`. Capture: `docs/visual-polish/hamster/complete/garage-workforce.png`.

@@ -6,7 +6,7 @@
 import * as T from 'three';
 
 export function install($scope) {
-const { mulberry, TAU } = $scope;
+const { mulberry, TAU, HAZE, HAZE_GLSL } = $scope;
 
 const PPM = 64;                          // texture pixels per metre
 const TOPS = ['lawn', 'meadow', 'flagstone', 'courtyard', 'gravel', 'beds'];
@@ -62,8 +62,9 @@ function paintTile(style, pal, seed) {
     for (let j = 0; j <= n; j += 2) for (let i = 0; i <= n; i += 2) { g.fillStyle = css(pal.accent || pal.bloom[0]); g.beginPath(); g.moveTo(i * s, j * s - s * .22); g.lineTo(i * s + s * .22, j * s); g.lineTo(i * s, j * s + s * .22); g.lineTo(i * s - s * .22, j * s); g.closePath(); g.fill(); }
   } else if (style === 'gravel') {
     // raked gravel: gentle waves, fine grit, a few larger stones
-    fill(mix(pal.stone, '#FFFFFF', .25)); pebbles(2600, [pal.stone, pal.stoneDark, '#FFFFFF'], .012, .03);
-    g.strokeStyle = css(pal.stoneDark, .35); g.lineWidth = 3;
+    // kept low in contrast: it is the ground most levels stand on, and the road must read over it
+    fill(mix(pal.stone, '#FFFFFF', .12)); pebbles(1400, [mix(pal.stone, pal.stoneDark, .5), mix(pal.stone, '#FFFFFF', .3)], .012, .026);
+    g.strokeStyle = css(pal.stoneDark, .18); g.lineWidth = 3;
     for (let r = 0; r < 12; r++) { const y0 = (r + .5) * W / 12; g.beginPath(); for (let x = 0; x <= W; x += 6) { const y = y0 + Math.sin(x / W * TAU * 2) * 6; x ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
     pebbles(6, [pal.stoneDark], .1, .2);
   } else if (style === 'beds') {
@@ -88,7 +89,8 @@ function paintTile(style, pal, seed) {
 
 const VS = `varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 // the decal shading (face-by-normal brightness, turned with the camera) over a top texture and a side texture, both in world space
-const FS = `uniform sampler2D uTop, uSide; uniform float tTop, tSide; varying vec3 vW;
+const FS = HAZE_GLSL + `
+uniform sampler2D uTop, uSide; uniform float tTop, tSide; varying vec3 vW;
 void main() {
   vec3 n0 = normalize(cross(dFdx(vW), dFdy(vW))), n = n0;
   vec3 cz = vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]); vec2 h = normalize(cz.xz + vec2(1e-5)), h0 = vec2(0.70710678);
@@ -99,7 +101,7 @@ void main() {
   vec3 a = abs(n0), c;
   if (a.y > 0.6) c = texture2D(uTop, vW.xz / tTop).rgb;
   else c = texture2D(uSide, vec2(a.x > a.z ? vW.z : vW.x, vW.y) / tSide).rgb;
-  gl_FragColor = vec4(pow(c, vec3(2.2)) * k, 1.0); }`;
+  gl_FragColor = vec4(haze(pow(c, vec3(2.2)) * k, vW.y), 1.0); }`;
 
 const texCache = new Map(), matCache = new Map();
 function tileTex(style, pal, seed) {
@@ -108,9 +110,11 @@ function tileTex(style, pal, seed) {
   const out = { t, m }; texCache.set(key, out); return out;
 }
 /** A palette for a theme: grass, stone and blooms drawn from the theme's own colours. */
+// The ground sits a step below the road in value and saturation (a little of the theme's ink), so the
+// track reads first and the land stays quiet underneath it, however busy its pattern.
 function groundPal(th) {
-  const turf = th.turf || th.stone, st = th.stone;
-  return { grass: turf.t, grassDark: turf.l, stone: st.l, stoneDark: st.r, soil: '#8A5E3C', terra: '#D98A5F', accent: th.goal || '#E8553B',
+  const turf = th.turf || th.stone, st = th.stone, ink = th.ink || '#2A2A33', quiet = (h, k) => mix(h, ink, k);
+  return { grass: quiet(turf.t, .03), grassDark: quiet(turf.l, .06), stone: quiet(st.l, .13), stoneDark: quiet(st.r, .15), soil: '#8A5E3C', terra: '#D98A5F', accent: th.goal || '#E8553B',
     bloom: ['#FFFFFF', th.goal || '#EE6C98', '#FFD45A', '#B9A2F0'] };
 }
 /** A material for a solid whose top shows `top` and whose sides show `side` (styles above), in world space. */
@@ -118,7 +122,7 @@ function surface(th, top, side = 'ashlar', o = {}) {
   const pal = { ...groundPal(th), ...(o.pal || {}) }, seed = o.seed ?? 1, key = top + side + JSON.stringify(pal) + seed;
   if (matCache.has(key)) return matCache.get(key);
   const A = tileTex(top, pal, seed), Bt = tileTex(side, { ...pal, ...(o.sidePal || {}) }, seed + 1);
-  const m = new T.ShaderMaterial({ uniforms: { uTop: { value: A.t }, uSide: { value: Bt.t }, tTop: { value: A.m }, tSide: { value: Bt.m } }, vertexShader: VS, fragmentShader: FS, extensions: { derivatives: true } });
+  const m = new T.ShaderMaterial({ uniforms: { ...HAZE, uTop: { value: A.t }, uSide: { value: Bt.t }, tTop: { value: A.m }, tSide: { value: Bt.m } }, vertexShader: VS, fragmentShader: FS, extensions: { derivatives: true } });
   matCache.set(key, m); return m;
 }
 

@@ -15,12 +15,13 @@ Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws t
   Save `{ done: levelIds[], at }`; autopilot solves never count as clears.
 - `engine/`: the prototype's level player and generators, untyped (`// @ts-nocheck`), as modules sharing one scope
   (`install($scope)`, order in `engine/index.ts`): `core` (materials, view, wheel, themes, roads, makeLevel and the
-  level flow, wheel-over-roads overlay pass), `machines`, `levels` (hand-built), `studies`, `gen9` (main generator:
+  level flow, wheel-over-roads overlay pass; art rules: `DECKS` keep the road the lightest surface, ground is `groundPal`-quieted,
+  `setHaze` fades faces below the lowest road into the lower sky, `skyCss` backlights the island), `machines`, `levels` (hand-built), `studies`, `gen9` (main generator:
   TIERS, planLevel3, checkPlan3, solve3, genDef3, candidates3), `persp`, `machines2`, `combos` (+ sceneryPass),
   `gravity`, `gravity2`, `curtain` (curtain generator), `audit` (screen audit), `decor` (seeded wall-art decals that
   shade like the wall), `cube` (wall machines and The Cube: box turns per edge, camera per storey, per-wall checkpoints,
   one button per storey via `machine.live`), `studies2` (conveyor, reflection pools, portal doors, clutch bridge, seam
-  studies), `surfaces` (tiling ground textures), `terrain` (plateaus on a base; `autoTerrain` lays them under a level via `def.terrain`; `strip` swaps hand floors for plateaus, `anchors`/`L.anchors` extend the base under piers), `levels3` (levels using them, spread through the chapters), `compose` (beat composer: stations joined by gate, mirror, clutch, see-saw, camera-join, curtain and door beats, turning so a level winds on itself under a ground and on-screen layout check, with knots (a 270 degree turn that changes level and bridges over itself); `'bc:<seed>'`, plans tested in `test/compose.test.ts`). Colour management is off (`LinearSRGBColorSpace`) to keep the look. `render/engineTypes.ts` is the typed surface, including `tools`.
+  studies), `surfaces` (tiling ground textures), `terrain` (plateaus on a base; `autoTerrain` lays them under a level via `def.terrain`; `strip` swaps hand floors for plateaus, `anchors`/`L.anchors` extend the base under piers), `levels3` (levels using them, spread through the chapters), `ambient` (per-theme life: grass, banners, laundry, crystals, lit windows, cogs, steam, birds and stars; spots found by rays on a triangle BVH, every piece kept clear of the track in screen space from every camera stop; sky sprites and `drift` fade near the track; `def.ambient: false` opts out), `compose` (beat composer: stations joined by gate, mirror, clutch, see-saw, camera-join, curtain and door beats, turning so a level winds on itself under a ground and on-screen layout check, with knots (a 270 degree turn that changes level and bridges over itself); `'bc:<seed>'`, plans tested in `test/compose.test.ts`). Colour management is off (`LinearSRGBColorSpace`) to keep the look. `render/engineTypes.ts` is the typed surface, including `tools`.
 - `campaign.ts`: the chapters, as data: hand-built ids, `'<tier>:<seed>'` (gen9), `'cg:<seed>'` (curtain) or `'bc:<seed>'` (composer).
 - `render/renderer.ts`: builds the sky / stage / status / fade DOM, feeds the engine rider from the snapshot (not while
   the autopilot drives), reports level, wins, falls and load back through `send`.
@@ -35,7 +36,5 @@ Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws t
   (no `scenarios.ts` yet). Plan: move `Road`, the wheel stepper and machine state into `sim/` as pure math
   (the screen joins only need the iso projection per camera yaw), leaving three.js meshes in `render/`.
 - The engine is untyped and uses its own frame-dt. Hints are prose; no achievements or sound yet.
-
-Checked: all 36 levels solve on the engine autopilot inside the port (same times as the prototype), and the full
-vitest suite and `tsc` pass.
+Checked: all levels solve on the engine autopilot (same times as the prototype); vitest and `tsc` pass.
 - Loading: the renderer builds the campaign's level list between frames (`createPenroseEngine(..., { sliced: true })`, `ready()` = `whenReady`), and `campaign.ts` `PLAN_SUB` gives each generated level the sub-seed that plans, so it isn't searched for (same levels; was ~5 s of CPU). Re-take `PLAN_SUB` (the sweep prints `sub`) when gen9 changes.

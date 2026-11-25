@@ -3,6 +3,7 @@ import { runHeadless } from '../../../core';
 import { module } from '../index';
 import { makePlan, PLAN, PLAN_MINUTES, planAt, planMinutes, RIDE_LENGTHS } from '../sim/plan';
 import { makeTerrain, NX, NY, SEA } from '../sim/terrain';
+import { LEVELS, levelPlan } from '../sim/levels';
 import { DEFAULT_WATER, Water, type Emit } from '../sim/water';
 import { makeRng } from '../../../core';
 
@@ -120,7 +121,7 @@ describe('watershed ride length', () => {
     const snap = s.sim.snapshot() as Snap;
     expect(s.sim.inMenu?.()).toBe(false);
     expect(snap.phase).toBe('rain');
-    expect(snap.rideS).toBe(planMinutes(makePlan(45, true)) * 60);
+    expect(snap.rideS).toBe(planMinutes(levelPlan(LEVELS[0], true)) * 60);   // a new rider starts on campaign level 1
     expect(snap.sky.size).toBeGreaterThan(50);
   });
   it('a tap toggles the warm-up too', async () => {

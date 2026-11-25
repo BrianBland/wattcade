@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import type { WatershedSnapshot } from '../sim/sim';
 import { SEA, sample } from '../sim/terrain';
-import { NOISE_GLSL } from './glsl';
+import { CLOUD_SHADOW_GLSL, NOISE_GLSL } from './glsl';
 import { gridIndex } from './terrainView';
 import { fine, upsample2 } from './upsample';
 
@@ -23,11 +23,12 @@ void main() {
 }`;
 
 const FRAG = /* glsl */ `
-uniform float uTime; uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uSky; uniform vec3 uShallow; uniform vec3 uDeep;
+uniform float uTime; uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uSky; uniform vec3 uZen; uniform vec3 uShallow; uniform vec3 uMid; uniform vec3 uDeep;
 varying float vDepth; varying vec2 vFlow; varying float vFoam; varying vec3 vWPos; varying vec3 vN;
 #include <common>
 #include <fog_pars_fragment>
 ${NOISE_GLSL}
+${CLOUD_SHADOW_GLSL}
 vec2 ripple(vec2 p) { float e = 0.07, a = wsFbm(p); return vec2(wsFbm(p + vec2(e, 0.0)) - a, wsFbm(p + vec2(0.0, e)) - a) / e; }
 void main() {
   if (vDepth < 0.008) discard;
@@ -36,25 +37,33 @@ void main() {
   vec2 base = vWPos.xz * 0.5;
   vec2 g = mix(ripple(base - vFlow * 0.22 * p0), ripple(base + vec2(0.37, 0.11) - vFlow * 0.22 * p1), wgt);
   g += ripple(vWPos.xz * 1.1 + vec2(uTime * 0.13, -uTime * 0.09)) * 0.3;
-  float amp = 0.035 + 0.09 * clamp(sp / 6.0, 0.0, 1.0);
+  float amp = 0.04 + 0.1 * clamp(sp / 6.0, 0.0, 1.0);
   vec3 N = normalize(vN + vec3(-g.x * amp, 0.0, -g.y * amp));
   vec3 V = normalize(cameraPosition - vWPos);
   float ndv = clamp(dot(N, V), 0.0, 1.0);
-  float fres = 0.03 + 0.97 * pow(1.0 - ndv, 5.0);
-  float d = clamp(vDepth / 1.3, 0.0, 1.0);
-  vec3 col = mix(uShallow, uDeep, d) * (0.6 + 0.4 * clamp(dot(N, uSun), 0.0, 1.0));
-  col = mix(col, uSky, fres * 0.5);
-  col += uSunCol * pow(clamp(dot(N, normalize(uSun + V)), 0.0, 1.0), 600.0) * 0.9;  // tight sparkles, not glare
-  // foam streaks: noise stretched along the flow direction
+  float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
+  float shade = wsCloudShadow(vWPos, uTime);
+  // body colour by depth: clear green-teal over the bed, deep blue in pools and gorges
+  float d = clamp(vDepth / 1.6, 0.0, 1.0);
+  vec3 col = mix(uShallow, uMid, smoothstep(0.0, 0.45, d));
+  col = mix(col, uDeep, smoothstep(0.45, 1.0, d));
+  col *= (0.72 + 0.36 * clamp(dot(N, uSun), 0.0, 1.0)) * (1.0 - 0.3 * shade);
+  vec3 R = reflect(-V, N);
+  vec3 sky = mix(uSky, uZen, smoothstep(0.0, 0.7, R.y));
+  col = mix(col, sky, clamp(fres * 0.85, 0.0, 1.0));
+  vec3 H = normalize(uSun + V);
+  float nh = clamp(dot(N, H), 0.0, 1.0);
+  col += uSunCol * (pow(nh, 700.0) * 2.5 + pow(nh, 60.0) * 0.12) * (1.0 - 0.8 * shade);
+  // foam: streaks stretched along the flow in fast water, and a broken lace along the banks
   vec2 fdir = sp > 0.01 ? vFlow / sp : vec2(1.0, 0.0);
   vec2 fp = vec2(dot(vWPos.xz, fdir) * 0.7, dot(vWPos.xz, vec2(-fdir.y, fdir.x)) * 1.3);
   float n = wsFbm(fp - vec2(sp * 0.25 * p0, 0.0));
   float n2 = wsFbm(vWPos.xz * 2.3 + vec2(uTime * 0.2, 0.0));
-  float foam = clamp(vFoam, 0.0, 1.0) * smoothstep(0.55, 0.72, n) * 0.85;
-  foam = max(foam, (1.0 - smoothstep(0.02, 0.07, vDepth)) * smoothstep(0.55, 0.75, n2) * 0.35);
-  col = mix(col, vec3(0.94, 0.97, 1.0), foam);
-  float alpha = mix(0.62, 0.92, d) * smoothstep(0.008, 0.07, vDepth);
-  alpha = clamp(max(alpha, foam * 0.9) + fres * 0.15, 0.0, 1.0);
+  float foam = clamp(vFoam, 0.0, 1.0) * smoothstep(0.5, 0.7, n) * 0.9;
+  foam = max(foam, (1.0 - smoothstep(0.02, 0.08, vDepth)) * smoothstep(0.56, 0.78, n2) * 0.4);
+  col = mix(col, vec3(0.95, 0.98, 1.0) * (1.0 - 0.2 * shade), foam);
+  float alpha = mix(0.5, 0.94, smoothstep(0.0, 0.7, d)) * smoothstep(0.008, 0.06, vDepth);
+  alpha = clamp(max(alpha, foam * 0.92) + fres * 0.2, 0.0, 1.0);
   gl_FragColor = vec4(col, alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -87,7 +96,8 @@ export class WaterView {
     g.setIndex(gridIndex(FX, FY));
     this.uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uTime: { value: 0 }, uSun: { value: sunDir.clone().normalize() }, uSunCol: { value: new THREE.Color(0xfff3dd) },
-      uSky: { value: new THREE.Color(0xbfe0f2) }, uShallow: { value: new THREE.Color(0x3fb8c4) }, uDeep: { value: new THREE.Color(0x14548f) },
+      uSky: { value: new THREE.Color(0xcfe6f2) }, uZen: { value: new THREE.Color(0x3a86cf) },
+      uShallow: { value: new THREE.Color(0x4cc4b4) }, uMid: { value: new THREE.Color(0x1a8aa6) }, uDeep: { value: new THREE.Color(0x0b4372) },
     }]);
     const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms, transparent: true, depthWrite: false, fog: true });
     this.mesh = new THREE.Mesh(g, mat);

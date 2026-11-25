@@ -230,7 +230,8 @@ export interface GameRenderer {
    *  `compileAsync`) without blocking the page for long, so the shell can load the game while the overworld keeps
    *  moving. Called after ready(), before the first render. */
   prepare?(snapshot: unknown): Promise<void>;
-  render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;
+  /** frameFraction, when supplied, is the fixed-step accumulator remainder in ticks. */
+  render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>, frameFraction?: number): void;
   resize?(w: number, h: number): void;
   /** Optional: the ride just ended (quit or game over). Return seconds of the game's own recap to play before the
    *  rider rides back out to the overworld (capped at 15; A skips). The sim no longer steps, so animate on wall-clock time. */

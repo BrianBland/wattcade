@@ -120,6 +120,9 @@ describe('watershed landmarks', () => {
     expect(landmarks(snap(null)).map((l) => l.id)).toEqual(['spring', 'grist', 'saw', 'village']);
     expect(landmarks(snap({ x: 40, y: 60, broken: false })).map((l) => l.id)).toEqual(['spring', 'grist', 'saw', 'village', 'dam']);
     expect(landmarks(snap({ x: 40, y: 60, broken: true })).map((l) => l.id)).not.toContain('dam');
+    // campaign dams name themselves
+    const label = (kind: string) => landmarks(snap({ x: 40, y: 60, broken: false, kind } as typeof jobs.dam)).find((l) => l.id === 'dam')?.label;
+    expect([label('beaver'), label('gate'), label('log')]).toEqual(['Beaver dam', 'Beaver gate', 'Log dam']);
   });
   it('cycles through them and wraps', () => {
     const list = landmarks({ sourceX: 48, jobs: { ...jobs } } as unknown as Parameters<typeof landmarks>[0]);

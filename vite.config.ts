@@ -19,6 +19,7 @@ export default defineConfig({
         seasideFishing: resolve(__dirname, 'dev/seaside-fishing.html'),
         seasideStills: resolve(__dirname, 'dev/seaside.html'),
         fullsendPreview: resolve(__dirname, 'dev/fullsend.html'),
+        scrapjetPreview: resolve(__dirname, 'dev/scrapjet.html'),
       },
     },
   },

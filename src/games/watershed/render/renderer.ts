@@ -13,7 +13,9 @@ import { layout } from './layout';
 import { fitOverhead, overheadPitch, valleyOutline, type V3 } from './camFit';
 import { applyFreeCam, easeHome, easeToward, focusState, FreeCamGestures, freeCamActive, freeCamHome, inwardYaw } from './freeCam';
 import { landmarks, nextLandmark, type LandmarkId } from './landmarks';
-import { Clouds, Forest, SeaSurface, skyTexture } from './scenery';
+import { Clouds, Forest, SKY, skyTexture } from './scenery';
+import { SeaView } from './sea';
+import { CropFields } from './fields';
 import { TerrainView } from './terrainView';
 import { OuterLand } from './outerLand';
 import { Riverbank } from './riverbank';
@@ -46,8 +48,10 @@ const EVENT_TEXT: Record<string, { warn: [string, string]; hit: [string, string]
   volcano: { warn: ['The mountain is waking up…', 'Smoke over the ridge'], hit: ['Eruption!', 'Lava has sealed the easy saddle: carve another way'] },
   meteor: { warn: ['Incoming!', 'Something is falling from the sky…'], hit: ['METEOR!', '…well, that\'s a new lake'] },
 };
-const JOB_DONE: Record<string, string> = { grist: 'The grist mill is grinding flour', saw: 'The sawmill is cutting planks', village: 'Millbrook stayed dry', dam: 'The beavers move on', fields: 'The fields are thriving' };
-const JOB_MISS: Record<string, string> = { grist: 'Carve through to the mill and grind for heavy water', saw: 'The sawmill wants fast water: spin', village: 'The flood reached the houses', dam: 'Spin harder (A: surge) to wear the dam down', fields: 'Run the river beside the fields' };
+const JOB_DONE: Record<string, string> = { grist: 'The grist mill is grinding flour', saw: 'The sawmill is cutting planks', village: 'Millbrook stayed dry', dam: 'The beavers move on', fields: 'The fields are thriving',
+  carve: 'You carved a valley', harvest: 'The barns are full', salmon: 'The salmon are home', delta: 'There\'s room for a harbour town' };
+const JOB_MISS: Record<string, string> = { grist: 'Carve through to the mill and grind for heavy water', saw: 'The sawmill wants fast water: spin', village: 'The flood reached the houses', dam: 'Spin harder (A: surge) to wear the dam down', fields: 'Run the river beside the fields',
+  carve: 'Grind: heavy water carves', harvest: 'Run the river beside the fields, not over them', salmon: 'Dodge the bears and eagles', delta: 'Spin to carry more silt to the coast' };
 const BOOST_TEXT: Record<string, string> = { evaporate: 'Heat wave!', cloud: 'Inhale!', rain: 'Cloudburst!', river: 'Surge!', salmon: 'Sprint!' };
 const BLOCK_SUB: Record<string, string> = {
   grind: 'Grind it out: heavy water carves deep', spin: 'Spin it up: light water races silt to the sea',
@@ -58,10 +62,14 @@ export class WatershedRenderer implements GameRenderer {
   private renderer?: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(40, 4 / 3, 1, 1600);
-  private sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
+  private sun = new THREE.DirectionalLight(0xffe9cc, 3.1);
+  private hemi = new THREE.HemisphereLight(0xcfe6ff, 0x52603a, 1.05);
+  /** Shared shader clock (terrain cloud shadows, caustics, outer land). */
+  private clock = { value: 0 };
+  private vignette?: HTMLDivElement;
   private terrainView?: TerrainView; private water?: WaterView; private outer?: OuterLand; private landTick = 0;
   private drops?: THREE.InstancedMesh; private spring = new THREE.Group(); private extraSprings: THREE.Group[] = []; private springRing?: THREE.Mesh;
-  private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private jobs?: JobsLayer; private geo?: EventsLayer; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer; private current?: CurrentLayer;
+  private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private jobs?: JobsLayer; private geo?: EventsLayer; private clouds?: Clouds; private sea?: SeaView; private salmon?: SalmonLayer; private current?: CurrentLayer; private fields?: CropFields;
   private hud?: Hud;
   private ro?: ResizeObserver;
   private size: [number, number] = [800, 600]; private insetB = 0;
@@ -91,21 +99,28 @@ export class WatershedRenderer implements GameRenderer {
     const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
-    r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.05;
+    r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.08;
     r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none';
     container.appendChild(r.domElement);
+    // a soft vignette and a whisper of warm/cool grading, in CSS (free on the GPU), under the HUD
+    const vig = this.vignette = document.createElement('div');
+    vig.style.cssText = 'position:absolute;inset:0;pointer-events:none;'
+      + 'background:radial-gradient(ellipse 85% 80% at 50% 45%, rgba(0,0,0,0) 58%, rgba(10,20,35,0.34) 100%),'
+      + 'linear-gradient(180deg, rgba(255,236,200,0.06) 0%, rgba(0,0,0,0) 40%, rgba(20,40,70,0.08) 100%)';
+    container.appendChild(vig);
     this.renderer = r;
     this.detachGestures = this.attachGestures(r.domElement);
 
     const s = this.scene;
     s.background = skyTexture();
-    s.fog = new THREE.Fog(0xdcf0f9, 300, 950);
-    this.sun.position.set(-70, 130, 70);
+    s.fog = new THREE.Fog(SKY.haze, 300, 950);
+    // a lower, warmer late-morning sun from the upper left of the overview, so ridges, gullies and trees model in relief
+    this.sun.position.set(-88, 96, -72);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    const sc = this.sun.shadow.camera; sc.left = -95; sc.right = 95; sc.top = 75; sc.bottom = -75; sc.near = 10; sc.far = 360;
-    this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.12;
-    s.add(this.sun, this.sun.target, new THREE.HemisphereLight(0xd8eeff, 0x5a6a3a, 1.25));
+    const sc = this.sun.shadow.camera; sc.left = -112; sc.right = 112; sc.top = 100; sc.bottom = -100; sc.near = 10; sc.far = 420;
+    this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.1; this.sun.shadow.radius = 3;
+    s.add(this.sun, this.sun.target, this.hemi);
 
     this.hud = new Hud(container);
     this.hud.setSend(ctx.send);
@@ -126,13 +141,18 @@ export class WatershedRenderer implements GameRenderer {
   private build(s: WatershedSnapshot) {
     const { nx, ny } = s;
     this.nx = nx; this.ny = ny;
-    this.terrainView = new TerrainView(nx, ny, this.wx, this.wz);
+    this.terrainView = new TerrainView(nx, ny, this.wx, this.wz, this.clock);
     this.water = new WaterView(nx, ny, this.wx, this.wz, this.sun.position);
 
     // the sea: a translucent slab (sides) with a swelling surface on top
     // the sea runs to the horizon; the land beyond the valley continues into hills and peaks
-    this.sea = new SeaSurface(1400, 1100, this.wx(ny - 1) + 200, 0, 140);
-    this.outer = new OuterLand(s, this.wx, this.wz);
+    this.outer = new OuterLand(s, this.wx, this.wz, this.clock);
+    const tv = this.terrainView, sx0 = this.wx(s.coastY) - 30, sx1 = this.outer.rect.x0 + this.outer.rect.w;
+    this.sea = new SeaView({
+      plane: { x: (sx0 + sx1) / 2, w: sx1 - sx0, z: this.outer.rect.z0 + this.outer.rect.d / 2, d: this.outer.rect.d, segX: 260, segZ: 200 },
+      valley: { tex: tv.hTex, x0: this.wx(0), z0: this.wz(0), FX: tv.FX, FY: tv.FY },
+      outer: { tex: this.outer.hTex, ...this.outer.rect },
+    }, this.sun.position, { zenith: SKY.zenith, horizon: SKY.horizon });
 
     // drops: one instanced glossy sphere per water parcel
     const dg = new THREE.SphereGeometry(1, 12, 8);
@@ -166,12 +186,13 @@ export class WatershedRenderer implements GameRenderer {
     this.bank = new Riverbank(s, this.wx, this.wz);
     this.skyLayer = new SkyLayer(this.wx, this.wz, this.sun.position);
     this.jobs = new JobsLayer(s, this.wx, this.wz, (x, y) => this.terrainView!.heightAt(x, y));
+    this.fields = new CropFields(s, this.wx, this.wz, (x, y) => this.terrainView!.heightAt(x, y), this.forest.wind);
     this.geo = new EventsLayer(this.wx, this.wz, (x, y) => this.terrainView!.heightAt(x, y));
     this.clouds = new Clouds(ny + 60);
     this.salmon = new SalmonLayer(this.color, this.wx, this.wz);
     this.current = new CurrentLayer(this.color, this.wx, this.wz);
 
-    this.scene.add(this.terrainView.mesh, this.water.mesh, this.outer.group, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.skyLayer.group, this.jobs.group, this.geo.group, this.clouds.group, this.salmon.group, this.current.group);
+    this.scene.add(this.terrainView.mesh, this.water.mesh, this.outer.group, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.skyLayer.group, this.jobs.group, this.fields.group, this.geo.group, this.clouds.group, this.salmon.group, this.current.group);
     this.frameCamera();
   }
 
@@ -369,6 +390,12 @@ export class WatershedRenderer implements GameRenderer {
     this.camera.lookAt(this.camTgt);
   }
 
+  /** Aerial perspective scaled to the view: haze starts just past what the camera is looking at. */
+  private updateAtmosphere() {
+    const f = this.scene.fog as THREE.Fog, d = this.camera.position.distanceTo(this.camTgt);
+    f.near = Math.max(40, d * 1.15); f.far = Math.max(260, d * 4.2);
+  }
+
   /** Raise `cam` until its line of sight to `look` clears the terrain (canyon walls, ridges) with some margin. */
   /** Camera height at (cam.x, cam.z) whose line of sight to `look` clears the terrain (and water) by a margin. */
   private clearHeight(cam: V3, look: V3): number {
@@ -477,7 +504,21 @@ export class WatershedRenderer implements GameRenderer {
         case 'gorge': play('milestone'); this.hud?.popup(`Gorge ${Number(d.depth) * 4} m deep`, 'Heavy water cuts deep', 2.5); break;
         case 'deltaGrew': play('chime', { vol: 0.6 }); break;
         case 'rideDone': play('unique'); break;
+        default: this.levelCue(c.type, d);
       }
+    }
+  }
+  /** Campaign level cues: the goal at the start, beaver gates, the levee, surges and the level result. */
+  private levelCue(type: string, d: NonNullable<Cue['data']>) {
+    const drops = (n: number) => '💧'.repeat(n) + '○'.repeat(Math.max(0, 3 - n));
+    switch (type) {
+      case 'levelStart': this.hud?.popup(`Level ${d.n}: ${d.name}`, `${d.goal}. ${d.teaches}`, 6); play('horn', { vol: 0.5 }); break;
+      case 'gate': this.hud?.popup('Beaver gate', 'The crew is damming that saddle. Hold the band: they build faster', 3); play('plop'); break;
+      case 'gateBuilt': this.hud?.popup('Gate built!', 'The river has to find another way', 2.5, 'salmon'); play('chime'); break;
+      case 'levee': this.hud?.popup(`Levee ${d.built}% built`, Number(d.built) >= 100 ? 'Millbrook is walled in' : 'Hold the band: the villagers keep digging', 2.5); play('chime', { vol: 0.6 }); break;
+      case 'surgeHeld': this.hud?.popup('Surge held!', `Millbrook stayed dry (${d.held} of 3)`, 3, 'salmon'); play('reward', { vol: 0.7 }); break;
+      case 'surgeLost': this.hud?.popup('Millbrook flooded', 'The surge reached the houses', 3, 'warn'); play('deny', { vol: 0.5 }); break;
+      case 'levelDone': this.hud?.popup(d.goal ? `Level ${d.n} cleared! ${drops(Number(d.drops))}` : `Level ${d.n} not cleared`, d.goal ? `${d.campaignDrops} drops in the campaign` : 'Try it again from the level picker', 8, d.goal ? 'salmon' : 'warn'); play(d.goal ? 'reward' : 'deny'); break;
     }
   }
   /** Popups and sounds as geological events change state. */
@@ -541,11 +582,12 @@ export class WatershedRenderer implements GameRenderer {
     this.clouds!.update(dt);
     this.sea!.update(tNow / 1000);
     this.water!.tick(tNow / 1000);
-    this.terrainView!.time.value = tNow / 1000;
+    this.clock.value = tNow / 1000;
     this.forest!.wind.value = tNow / 1000;
     this.bank!.update(s, this.water!, (x, y) => this.terrainView!.heightAt(x, y), dt, tNow / 1000);
     this.skyLayer!.update(s, dt, tNow / 1000, (x, y) => this.terrainView!.heightAt(x, y));
     this.jobs!.update(s, dt, tNow / 1000);
+    this.fields!.update(s, dt);
     this.geo!.update(s, dt, tNow / 1000, (kind, state) => this.eventCue(kind, state));
     this.salmon!.update(s, s.salmon, dt, tNow / 1000);
     this.current!.update(s, this.water!.depth, (x, y) => this.terrainView!.heightAt(x, y), dt, tNow / 1000);
@@ -557,6 +599,7 @@ export class WatershedRenderer implements GameRenderer {
     const sky = s.phase === 'evaporate' || s.phase === 'cloud' || s.phase === 'rain';
     const focus = sky ? this.skyLayer!.focus : s.salmon ? (this.salmon!.leaderWorld(this.cD) ?? this.spring.position) : this.spring.position;
     this.outer!.setFocus(focus);
+    this.updateAtmosphere();
     this.cues(s);
     this.sound(s);
     this.hud?.setRpmRange(s.rpmLow, s.rpmHigh);
@@ -597,5 +640,6 @@ export class WatershedRenderer implements GameRenderer {
     if (this.scene.background instanceof THREE.Texture) this.scene.background.dispose();
     this.renderer?.dispose();
     this.renderer?.domElement.remove();
+    this.vignette?.remove();
   }
 }

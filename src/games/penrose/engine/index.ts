@@ -26,6 +26,7 @@ import { install as cube } from './cube';
 import { install as studies2 } from './studies2';
 import { install as levels3 } from './levels3';
 import { install as compose } from './compose';
+import { install as ambient } from './ambient';
 
 /** Hand-built level defs, by id, from every module that has them. */
 const handBuilt = (E) => {
@@ -55,7 +56,7 @@ const yieldToPage = () => new Promise((r) => setTimeout(r, 0));
  */
 export function createPenroseEngine(dom: EngineDom, hooks: EngineHooks, campaign = CAMPAIGN, opts: { sliced?: boolean } = {}): PenroseEngine {
   const E = { dom, hooks };
-  for (const install of [core, machines, levels, studies, gen9, persp, machines2, combos, gravity, gravity2, curtain, audit, decor, surfaces, terrain, cube, studies2, levels3, compose]) install(E);
+  for (const install of [core, machines, levels, studies, gen9, persp, machines2, combos, gravity, gravity2, curtain, audit, decor, surfaces, terrain, cube, studies2, levels3, compose, ambient]) install(E);
   const pool = handBuilt(E), LEVELS = E.LEVELS;
   const items = campaign.flatMap((ch) => ch.levels.map((it) => [ch.name, it]));
   const add = ([chapter, it]) => { const d = defFor(E, pool, it); if (d) LEVELS.push(Object.assign(Object.create(d), { chapter, item: it })); };

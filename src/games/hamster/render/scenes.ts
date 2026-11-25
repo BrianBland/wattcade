@@ -3,6 +3,10 @@ import { satellite, shippingLabel, cargoArrival } from './orbital';
 import { switchboard, dispatchDesk, deliveryCrate } from './machinery';
 import { placard } from './art';
 import type { HamsterSnapshot } from '../sim/sim';
+import { gerbil, guineaPig, treadmill } from './critters';
+import { gymStation, mirror, type GymKind } from './gym';
+import { ferretRun } from './turbine';
+import { quirk, varyFur } from './draw';
 import { FONT, FURS, STEEL, TAU, glow, hamster, hash, rr, shadow, wheelWith, type Fur, type Look, type WheelStyle } from './draw';
 
 export interface Box { x: number; y: number; w: number; h: number }
@@ -36,9 +40,20 @@ export function geraldWheel(g: G, x: number, y: number, r: number, st: SceneStat
   wheelWith(g, x, y, r, st.spin * dir, style(st, 0, { rim: '#f4f8ff', rimDark: '#8a94b0', motionDirection: dir }), st.speed, giant > 1 ? undefined : run);
   if (giant > 1) run(x, y + r * 0.94);
 }
-function minion(g: G, x: number, y: number, r: number, st: SceneState, idx: number, fur: Fur, extra: Look = {}) {
+function minion(g: G, x: number, y: number, r: number, st: SceneState, idx: number, fur: Fur, extra: Look = {}, gen = 0) {
+  const sign = st.strikeOn && idx % 3 === 0 ? 'STRIKE!' : undefined, q = quirk(idx);
+  if (gen === 2) {
+    const top = treadmill(g, x, y + r * 1.12, r * 1.9, st.time * st.speed + idx, st.stopped);
+    guineaPig(g, x - r * 0.1, top, r * 1.05 * quirk(idx + 50).size, st.spin * 5 + idx, { sleep: st.stopped, noShadow: true, sweatband: true, sign }, st.time, idx);
+    return;
+  }
+  if (gen === 1) {
+    wheelWith(g, x, y, r, st.spin * 1.4 + idx, style(st, idx), st.speed * 1.4, (fx, fy) =>
+      gerbil(g, fx + r * 0.08, fy, r * 0.8 * quirk(idx).size, st.spin * 5 + idx, { sleep: st.stopped, noShadow: true, hardhat: true, vest: true, sign }, st.time, idx));
+    return;
+  }
   wheelWith(g, x, y, r, st.spin * 1.4 + idx, style(st, idx), st.speed * 1.4, (fx, fy) =>
-    hamster(g, fx, fy, r * 0.75, st.spin * 5 + idx, { fur, sleep: st.stopped, noShadow: true, sign: st.strikeOn && idx % 3 === 0 ? 'STRIKE!' : undefined, ...extra }, st.time));
+    hamster(g, fx, fy, r * 0.75 * q.size, st.spin * 5 + idx, { fur: varyFur(fur, q), mark: q.mark, ear: q.ear, sleep: st.stopped, noShadow: true, sign, ...extra }, st.time));
 }
 
 // ---------- shared backgrounds ----------
@@ -94,7 +109,7 @@ function crowd(g: G, list: Array<[number, Fur]>, st: SceneState, place: (k: numb
   for (const [i, fur] of list) for (let n = 0; n < own(st, i); n++, k++) {
     if (k >= limit) return k;
     const p = place(k); if (!p) return k;
-    minion(g, p.x, p.y, p.r, st, k, fur);
+    minion(g, p.x, p.y, p.r, st, k, fur, {}, i);
   }
   return k;
 }
@@ -216,7 +231,7 @@ function garage(g: G, b: Box, st: SceneState) {
   g.strokeStyle = '#909096'; g.lineWidth = 3; g.stroke();
   if (w > 480) {
     placard(g, x + w * .78, y + h * .44, Math.min(190, w * .30), '0 DAYS WITHOUT A SQUEAK', 'Management remains optimistic.', .025);
-    placard(g, x + w * .77, y + h * .65, Math.min(180, w * .29), 'PERMITS: PENDING', 'The inspector ate the paperwork.', -.025);
+    if (!own(st, 3)) placard(g, x + w * .77, y + h * .65, Math.min(180, w * .29), 'PERMITS: PENDING', 'The inspector ate the paperwork.', -.025);
   }
   // shelves of small wheels (the shoebox crew moved in)
   for (let sh = 0; sh < 2; sh++) { const sy = y + h * (0.3 + sh * 0.2); g.fillStyle = '#7a5a3a'; g.fillRect(x + w * 0.03, sy, w * 0.52, 8); g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(x + w * 0.03, sy + 8, w * 0.52, 5); }
@@ -227,24 +242,10 @@ function garage(g: G, b: Box, st: SceneState) {
     const r = h * 0.035; return { x: x + w * (0.07 + col * 0.063), y: y + h * (0.3 + row * 0.2) - r * 1.12, r };
   }, 16);
   plusMore(g, x + w * 0.3, y + h * 0.56, total - drawn);
-  // ferret tubes
-  for (let k = 0; k < Math.min(4, own(st, 4)); k++) {
-    const ty = y + h * (0.6 + k * 0.03), cy1 = ty - 50, cy2 = ty + 40, ey = ty - 20;
-    const path = (dy: number) => { g.beginPath(); g.moveTo(x, ty + dy); g.bezierCurveTo(x + w * 0.35, cy1 + dy, x + w * 0.6, cy2 + dy, x + w, ey + dy); };
-    g.strokeStyle = 'rgba(150,220,255,0.28)'; g.lineWidth = 16; path(0); g.stroke();
-    g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 2; path(-6); g.stroke();
-    const p = (st.time * (st.stopped ? 0 : 0.25) + k * 0.27) % 1, q = 1 - p, bx = x + (3 * q * q * p * 0.35 + 3 * q * p * p * 0.6 + p ** 3) * w;
-    const by = q ** 3 * ty + 3 * q * q * p * cy1 + 3 * q * p * p * cy2 + p ** 3 * ey;
-    g.fillStyle = '#f4ead8'; g.beginPath(); g.ellipse(bx, by, 14, 5, 0, 0, TAU); g.fill(); g.fillStyle = '#222'; g.fillRect(bx + 9, by - 2, 2, 2);
-  }
-  // gym corner
-  for (let k = 0; k < Math.min(5, own(st, 3)); k++) {
-    const gx = x + w * (0.6 + k * 0.075), gy = fy + h * 0.06, lift = st.stopped ? 0 : Math.abs(Math.sin(st.time * 3 + k)) * 14;
-    shadow(g, gx, gy, 24, 5);
-    hamster(g, gx, gy, 30, 0, { swole: 0.8, sleep: st.stopped, noShadow: true, fur: k % 2 ? FURS.gerald : FURS.grey }, st.time);
-    g.strokeStyle = '#ccd'; g.lineWidth = 3; g.beginPath(); g.moveTo(gx - 10, gy - 34 - lift); g.lineTo(gx + 24, gy - 34 - lift); g.stroke();
-    g.fillStyle = '#222'; rr(g, gx - 16, gy - 42 - lift, 7, 16, 2); g.fill(); rr(g, gx + 21, gy - 42 - lift, 7, 16, 2); g.fill();
-  }
+  // ferret turbines: full-width coiled pipes, each with an inline turbine
+  const tw = Math.max(14, h * 0.025);
+  for (let k = Math.min(4, own(st, 4)) - 1; k >= 0; k--) ferretRun(g, x - tw, w + tw * 2, y + h * (0.6 + k * 0.03), tw, st.time, st.speed > 0 ? Math.min(1.6, 0.6 + st.speed * 0.4) : 0, st.stopped, k);
+  gymCorner(g, b, st, fy);
   // capybara hot tub
   const capys = Math.min(5, own(st, 5));
   if (capys) {
@@ -614,3 +615,15 @@ function gerCam(g: G, b: Box, st: SceneState) {
 }
 
 export const SCENES = [shoebox, garage, startup, city, mega, planet, star, galaxy];
+
+const KINDS: GymKind[] = ['press', 'squat', 'deadlift', 'curl', 'press'];
+/** Hamster Gym: one lifting station per gym (up to five) in front of a mirror strip. */
+function gymCorner(g: G, b: Box, st: SceneState, fy: number) {
+  const { x, w, h } = b, ng = Math.min(5, own(st, 3));
+  if (!ng) return;
+  const s = h * 0.058, gy = fy + h * 0.08, gap = Math.min(w * 0.095, s * 2.1), startX = x + w * 0.57;
+  const mx = startX - s * 1.1, mw = gap * (ng - 1) + s * 2.2, my = fy - h * 0.055;
+  mirror(g, mx, my, mw, h * 0.055 + 3, () => { for (let k = 0; k < ng; k++) gymStation(g, startX + k * gap, my + h * 0.12, s * 0.9, KINDS[k], st.time, { stopped: st.stopped, phase: k * 1.3, mat: false, rack: false }); });
+  g.save(); g.fillStyle = '#ff4fa3'; g.font = `900 ${Math.round(s * 0.42)}px ${FONT}`; g.textAlign = 'center'; g.shadowColor = '#ff4fa3'; g.shadowBlur = 10; g.fillText('24H', mx + mw - s * 0.45, my - 5); g.restore();
+  for (let k = 0; k < ng; k++) gymStation(g, startX + k * gap, gy, s, KINDS[k], st.time, { stopped: st.stopped, phase: k * 1.3, fur: k % 2 ? FURS.gerald : FURS.grey });
+}

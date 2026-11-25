@@ -1,29 +1,35 @@
 interface Headline { id: number; text: string }
 
-/** Finish the current joke before taking the newest bulletin; never build a backlog. */
+/** Pixels per second the headline travels right-to-left across the strip. */
+export const TICKER_SPEED = 55;
+
+/**
+ * A classic side-scrolling news crawl: each headline enters from the right edge and
+ * crawls fully off the left before the next starts. Only the newest pending bulletin
+ * is kept; with nothing new, the current one loops.
+ */
 export class NewsTicker {
   paused = false;
   private current: Headline | null = null;
   private pending: Headline | null = null;
   private seen = -1;
-  private elapsed = 0;
-  private width = 0;
+  private x = 0;
 
   frame(news: Headline, dt: number, width: number, measure: (text: string) => number) {
+    width = Math.max(1, width);
     if (!this.current || news.id < this.seen) {
-      this.current = { ...news }; this.pending = null; this.elapsed = 0;
+      this.current = { ...news }; this.pending = null; this.x = width;
     } else if (news.id !== this.seen) this.pending = { ...news };
     this.seen = news.id;
-    // A rotation should offer a fresh reading window, not land halfway through a joke.
-    if (width !== this.width) { this.width = width; this.elapsed = 0; }
-    const travel = () => Math.max(0, measure(this.current!.text) - Math.max(1, width));
-    const distance = travel(), duration = Math.max(7, 2.5 + distance / 40 + 3);
     if (!this.paused) {
-      this.elapsed += Math.max(0, dt);
-      if (this.pending && this.elapsed >= duration) {
-        this.current = this.pending; this.pending = null; this.elapsed = 0;
+      this.x -= Math.max(0, dt) * TICKER_SPEED;
+      if (this.x < -measure(this.current.text)) {
+        if (this.pending) { this.current = this.pending; this.pending = null; }
+        this.x = width;
       }
     }
-    return { text: this.current.text, offset: 0 - Math.min(travel(), Math.max(0, this.elapsed - 2.5) * 40) };
+    // After a resize, never leave a headline parked beyond the new right edge.
+    if (this.x > width) this.x = width;
+    return { text: this.current.text, offset: this.x };
   }
 }

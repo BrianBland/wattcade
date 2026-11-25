@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Scrapjet Rally · Test ride</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #201b24;
+        color: #eee2ca;
+        font: 600 14px system-ui;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      main {
+        min-height: 0;
+        flex: 1;
+      }
+      footer {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 6px;
+        background: #201b24;
+      }
+      button {
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        background: #413440;
+        border: 1px solid #846d65;
+        color: #f7ead1;
+        font: inherit;
+        border-radius: 4px;
+        padding: 8px 12px;
+        min-height: 44px;
+      }
+      button:active {
+        background: #805a39;
+      }
+      small {
+        margin: 0 0.5em;
+        color: #d6c6ad;
+      }
+      button[hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main aria-label="Scrapjet Rally"></main>
+    <footer aria-label="Test ride controls">
+      <small>Simulated bike</small> <button data-key="ArrowLeft">← Lean</button
+      ><button data-key="ArrowRight">Lean →</button> <button data-key="KeyZ">Start · Z</button
+      ><button data-key="KeyX">Course · X</button><button data-key="ArrowDown">Cup · ↓</button><button data-key="ArrowUp">Distance · ↑</button><button data-key="Space">Sprint · Space</button
+      ><button data-key="KeyC">Coast · C</button><button id="again" hidden>Race again</button>
+    </footer>
+    <script type="module" src="./scrapjet.ts"></script>
+  </body>
+</html>

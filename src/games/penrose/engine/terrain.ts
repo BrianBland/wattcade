@@ -199,7 +199,7 @@ function autoTerrain(L, o = {}) {
   let B0 = shrink(grow(F, 18), 18); const under = new Set(); for (const p of placed) for (const k of p.cells) under.add(k);
   for (const p of placed) for (const f of p.falls) if (f.len === undefined) { for (const k of [...B0]) { if (under.has(k)) continue; const [i, j] = k.split(',').map(Number), [cx, cy] = ctr(i, j), u = (cx - f.x) * f.dx + (cy - f.y) * f.dy, w = Math.abs((cx - f.x) * f.dy - (cy - f.y) * f.dx); if (u > -.1 && w < 1.2) B0.delete(k); } }
   B0 = grow(shrink(B0, 1), 1); for (const k of under) B0.add(k);
-  drawBase(L, traceCells(B0, C, gx, gy).map(o => ({ outer: smooth(o.outer), holes: o.holes.map(h => smooth(h)), r: 0 })), bz, 1.2, o.base || 'gravel', 'strata');
+  drawBase(L, traceCells(B0, C, gx, gy).map(o => ({ outer: smooth(o.outer), holes: o.holes.map(h => smooth(h)), r: 0 })), bz, 1.2, o.base || (L.th.turf ? 'lawn' : 'gravel'), 'strata');   // a green theme's land is green; the road is the pale stone on it
   // surfaces: calm ones for the big plateaus, livelier ones only on small
   const big = o.surfaces || ['lawn', 'meadow', 'flagstone'], small = ['courtyard', 'beds', 'meadow', 'lawn'];
   let last = ''; placed.forEach((p, i) => { const pool = (p.area > 24 ? big : small).filter(s => s !== last), s = pool[Math.floor(rnd() * pool.length)]; last = s;

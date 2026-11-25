@@ -17,6 +17,8 @@ export interface Block {
   job?: 'grist' | 'saw' | 'village' | 'dam' | 'fields';
   /** Beavers move in during this block. */
   beavers?: boolean;
+  /** Campaign: a flood surge (Millbrook floods count against the level while it runs). */
+  surge?: boolean;
 }
 
 const GRIND = { min: 60, max: 72 }, SPIN = { min: 98 }, STEADY = { min: 82, max: 95 };

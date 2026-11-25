@@ -4,7 +4,7 @@ Gear: iPad with **Bluefy**, KICKR CORE on the Zwift Ride frame, Zwift Ride contr
 Keep a note open and write down anything marked **record**.
 
 ## 0. Before you start (2 min)
-- [ ] `npm run deploy` has run and the site loads over **HTTPS** (Pages URL or custom domain).
+- [ ] `npm run deploy` has run and the site loads over **HTTPS** (the workers.dev URL or the custom domain).
 - [ ] **Close Zwift** (and any other trainer app) on the iPad and every other nearby device. FTMS control is single-owner.
 - [ ] Do **not** update the Ride controller firmware through Zwift. Firmware ≥ 1.3 locks the controller to Zwift.
 - [ ] Garmin: enable **Broadcast Heart Rate**. If you want a Garmin/Strava record, also start an Indoor Bike activity on the watch.
@@ -27,7 +27,7 @@ Keep a note open and write down anything marked **record**.
 ## 3. Controller (3 min)
 - [ ] Connect → **Controller** → pick "Zwift Ride". **Record** the firmware and battery shown, and any warning.
 - [ ] In the **CONTROLLER** panel, press every button. Each one should light the matching cell, and nothing else should stay lit at rest. **Record** any button that is wrong, stuck or missing.
-- [ ] Move each paddle. **Record** the raw rest value, the raw value at full travel, and the direction for L and R. If a direction feels backwards, set "Invert left/right paddle" in the profile editor. If the rest value isn't 0, raise the deadzone.
+- [ ] Move each paddle. **Record** the raw rest value, the raw value at full travel, and the direction for L and R. The left paddle is always inverted; there is no invert setting. If the rest value isn't 0, raise **Paddle deadzone** in the profile editor.
 - [ ] Tap both powerUp buttons together to **pause**, and hold them together for 1 s to **toggle debug**.
 - [ ] If anything looks wrong, open **`/probe.html`**: Pick Zwift Ride → Send RideOn → press buttons → **Download** the hex log and keep it.
 
@@ -37,9 +37,9 @@ Keep a note open and write down anything marked **record**.
 - [ ] Disable HR broadcast on the last-used watch, enable it on the other, then reload. Automatic connection should try the other saved watch without a picker. If both broadcast, use the named saved-watch buttons to switch; verify the live HR source changes.
 
 ## 5. Games (3 × ~3 min)
-- [ ] **Crank Crawler:** pedal to move and fire, aim with the paddles, and step on swamp tiles (green). **Record:** is the grade change noticeable? Does the 90 rpm movement speed feel right?
+- [ ] **Crank Crawler:** pedal to fire (the hero moves and aims itself), press A/B/Y/Z for Strike/Ward/Rally/Potion, and let it step on swamp tiles (green). **Record:** is the grade change noticeable? Does the 60–90 rpm movement speed feel right?
 - [ ] **Keeper's Light:** ride in Zone 2. The lamp should brighten and the fog should fall. Build something with the D-pad + A.
-- [ ] **Dynamo Defense:** switch weapons with A/B/Y. The trainer should go sim → resistance → ERG. **Record** whether each switch is felt and whether the ERG/resistance transitions are smooth.
+- [ ] **Dynamo Defense:** shift tiers with the shifters and mount weapons with Y/B/Z. The trainer stays in resistance mode; the level should follow the tier. **Record** whether each shift is felt.
 - [ ] Throughout, watch the debug overlay for result codes other than `ok 1`, a growing `pkt age`, or reconnect messages.
 
 ## 6. Wrap-up (1 min)

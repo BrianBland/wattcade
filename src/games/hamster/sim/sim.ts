@@ -50,9 +50,9 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
   const tun = {
     out0: T.num('out0', 1.5, 0.1, 100, 0.1, 'Hamster base output (W)'),
     outStep: T.num('outStep', 11, 2, 30, 0.5, 'Output ratio between generator tiers'),
-    cost0: T.num('cost0', 400, 10, 1e5, 10, 'Hamster base cost (J)'),
-    costStep: T.num('costStep', 13, 2, 40, 0.5, 'Cost ratio between generator tiers'),
-    growth: T.num('growth', 1.15, 1.01, 1.5, 0.01, 'Per-owned cost growth'),
+    cost0: T.num('cost0', 450, 10, 1e5, 10, 'Hamster base cost (J)'),
+    costStep: T.num('costStep', 13.8, 2, 40, 0.1, 'Cost ratio between generator tiers'),
+    growth: T.num('growth', 1.22, 1.01, 1.5, 0.01, 'Per-owned cost growth'),
     unionCadence: T.num('unionCadence', 35, 0, 90, 1, 'Hamsters only run while your cadence is at least this (rpm)'),
     zone1Eff: T.num('zone1Eff', 0.5, 0, 1, 0.05, 'Hamster efficiency in Zone 1'),
     monoBase: T.num('monoBase', 2, 1, 10, 0.5, 'Base Mind-Numbing cap'),
@@ -97,6 +97,8 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
   if (opts.preset?.gens) opts.preset.gens.forEach((n, i) => { if (i < S.gens.length) S.gens[i] = n; });
   if (opts.preset?.bank) S.bank = opts.preset.bank;
   const upg = new Set(S.upg), miles = new Set(S.miles), unlocks = new Set(S.unlocks), vibes = new Set(S.vibes), vibesOn = new Set(S.vibesOn);
+  // Retired Middle Manager: drop the dead key from old saves. No refund; the purchase is sunk and rebirth already wipes specials.
+  if (upg.delete('sp:manager')) S.upg = [...upg];
   const autopilot = !!opts.autopilot;
 
   // ---------- transient ----------
@@ -264,7 +266,8 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     const [kind, a, b] = key.split(':');
     if (kind === 'gen') {
       const i = +a; if (!revealed(i)) return false;
-      const c = genCost(e, i, S.gens[i], n, discount());
+      const bulk = n === 10 && has('wholesale') ? 0.9 : 1;
+      const c = genCost(e, i, S.gens[i], n, discount() * bulk);
       if (S.bank < c) return false;
       spend(c); S.gens[i] += n; sess.gens += n;
       ctx.emit({ type: 'buy', data: { gen: GENS[i].id, n } });
@@ -489,7 +492,6 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     return best;
   }
   function autoBuy() {
-    if (has('manager')) { for (let n = 0; n < 5; n++) { const i = bestGen(S.bank * 0.25); if (i < 0 || !buy(`gen:${i}`)) break; } }
     if (has('hr')) for (const it of upgradeItems()) if (!it.key.startsWith('sp:') && it.cost <= S.bank * 0.25) buy(it.key);
   }
   /** Greedy best Δwatts/J buyer for headless balance runs. */

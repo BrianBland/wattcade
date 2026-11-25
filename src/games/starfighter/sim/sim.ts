@@ -822,8 +822,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         clear: { rate: clearTotal ? clearKilled / clearTotal : 0, perfects, streak: perfectStreak, last: lastClear },
         ...(() => { const s = routeS(), pose = world.pose(s), cur = seg ?? segmenter.at(p).segment, next = segmenter.peek(), sw = !next ? s + 1e5 : switchS > 0 ? switchS : s + Math.max(0, cur.t1 - p) * speed, np = world.pose(sw);
           // Samples at fixed route distances (multiples of 30) from behind the camera to past the haze, so the city's
-          // "near the route" test never flickers as the ship moves.
-          const ahead: number[] = []; for (let q = Math.floor((s - 300) / 30) * 30; q <= s + 1350; q += 30) { const w = world.pose(q); ahead.push(w.x, w.z); }
+          // "near the route" test never flickers as the ship moves. The ends sit well outside the view (even where the
+          // route curls back) so samples joining or leaving never move a ship's route clearance on screen.
+          const ahead: number[] = []; for (let q = Math.floor((s - 420) / 30) * 30; q <= s + 1500; q += 30) { const w = world.pose(q); ahead.push(w.x, w.z); }
           return { world: { ...pose, turn: world.curvature(s) * speed, s }, routeAhead: ahead,
             frames: { cur: curFrame, next: { ...np, s: sw, biome: next?.biome ?? cur.biome, seed: next?.seed ?? cur.seed } } }; })(),
         segment: (() => { const cur = seg ?? segmenter.at(p).segment, next = segmenter.peek();

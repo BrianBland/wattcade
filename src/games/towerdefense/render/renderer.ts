@@ -17,7 +17,8 @@ import { decks, onDeck, underDeck } from './ground/deck';
 import { Machinery } from './machinery';
 import { along, cableRoutes, culvertPlates, strokeCrossings } from './cables';
 import { DynamoSound } from './dynamoSound';
-import { cableHeat, shimmerBands, stepBlend } from './overdrive';
+import { cableHeat, mixHex, shimmerBands, stepBlend } from './overdrive';
+import { bakeCables, blitCables, lampLook, lightFor, powerState, type CableBake, type PowerState } from './cableArt';
 import { HitFeedback, type Callout, type HitEvent } from './hitFeedback';
 import { ALARM_EVERY_S, FALL_S, HEAD_DELAY_S, damageState, dropDone, pipFlash } from './structureFx';
 import { prefetchLevel } from './levelPool';
@@ -75,6 +76,8 @@ export class TdRenderer implements GameRenderer {
   private shake = 0; private flash = { color: '#fff', a: 0 }; private lastT = -1; private wall = 0;
   /** Power pulses: sim time of each pedal half-stroke still travelling down the cables. */
   private pulses: number[] = []; private pulseRevs: number | null = null;
+  /** Painted cables for the current level and built pads (render/cableArt.ts). */
+  private cables: CableBake | null = null; private cablesLevel: TdLevel | null = null;
   private hitStopUntil = 0;
   /** 0..1 smoothed Overdrive (sprinting) for cable heat, flame, muzzle and edge shimmer */
   private odBlend = 0;
@@ -356,6 +359,19 @@ export class TdRenderer implements GameRenderer {
     }
     for (const pad of this.drops.keys()) if (!live.has(pad)) this.drops.delete(pad);
   }
+  /**
+   * World-space UI, above the actors, the bridge decks and their effects: pad markers, the selected pad's range ring,
+   * the D-pad cursor and its 'A · Build' tag, tower level pips, and enemy markers (reticles, boss shield/charge, daze).
+   */
+  private drawWorldUi(g: CanvasRenderingContext2D, s: TdSnapshot, t: number, marks: ReadonlyArray<() => void>) {
+    for (const m of marks) m();
+    const k = this.k;
+    for (const tw of s.towers) {
+      const p = this.P(this.geo.pads[tw.pad].x, this.geo.pads[tw.pad].y), d = this.drops.get(tw.pad)!;
+      this.levelPips(g, tw.level, p.x, p.y + 5.1 * k, d.built ? 0 : pipFlash(s.t - d.at));
+    }
+    this.drawPads(g, s, t);
+  }
   /** Five small diamonds under a tower, filled to its level; the newest flashes after an upgrade. */
   private levelPips(g: CanvasRenderingContext2D, level: number, x: number, y: number, flash: number) {
     const k = this.k, r = 0.58 * k, gap = 1.45 * k;
@@ -539,7 +555,7 @@ export class TdRenderer implements GameRenderer {
     // the loading card. Usually the menu already baked it, and the level appears at once.
     const waiting = !!s.loading && !this.bgReal;
     if (!s.loading) this.readySent = false;
-    else if (!waiting && !this.readySent) { this.readySent = true; this.send?.({ type: 'levelReady' }); }
+    else if (!waiting && !this.readySent) { this.readySent = true; cableRoutes(this.geo.level); this.send?.({ type: 'levelReady' }); } // routes are cached: plan them under the loading card
     this.hud.render(s, this.L, this.W, waiting ? { progress: this.battlefield.progress(this.geo.level) } : null);
     if (waiting) { this.holdMenuFrame(); return; }
     this.heldDim = false;
@@ -587,14 +603,12 @@ export class TdRenderer implements GameRenderer {
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
       this.aliens?.drawGround(g, this.view, t);
       this.odBlend = stepBlend(this.odBlend, s.overdrive && !s.over, realDt);
-      this.drawPads(g, s, t);
       this.trackDrops(s, firstFrame);
       for (const tw of s.towers) {
         const p = this.P(this.geo.pads[tw.pad].x, this.geo.pads[tw.pad].y), d = this.drops.get(tw.pad)!, age = s.t - d.at;
         const drop = dropDone(age, d.built ? HEAD_DELAY_S : 0) ? undefined : { level: d.level, from: d.from, built: d.built, age };
         this.contactShadow(g, p.x, p.y, k);
         if (!this.machinery.tower(g, tw, this.view, s, drop)) drawTower(g, { ...tw, angle: tw.angle + rot }, p.x, p.y, k, t, s.grid);
-        this.levelPips(g, tw.level, p.x, p.y + 5.1 * k, d.built ? 0 : pipFlash(age));
       }
       this.drawTowerFlames(g, s, t, dt);
       // aim line, from the muzzle along the turret's screen heading
@@ -606,7 +620,7 @@ export class TdRenderer implements GameRenderer {
       const puppets = this.aliens?.ready ? this.aliens : null;
       if (puppets) puppets.draw(g, s, this.view, t, (e, h) => { const q = this.P(e.x, e.y); drawEnemy(g, e, q.x, q.y, k, h + rot, t); });
       puppets?.drawGibs(g, this.view, t);
-      const live = new Set<number>();
+      const live = new Set<number>(), marks: Array<() => void> = [];
       for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
         live.add(e.id);
         const { x, y } = this.P(e.x, e.y);
@@ -615,16 +629,19 @@ export class TdRenderer implements GameRenderer {
         if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.3) { const nh = Math.atan2(y - prev.y, x - prev.x); h = prev.h + angleLerp(prev.h, nh, 0.3); }
         this.heading.set(e.id, { x, y, h });
         if (!puppets) drawEnemy(g, e, x, y, k, h, t);
-        if (e.kind === 'boss') this.bossTrick(g, e, s, x, y, h, t);
-        if (e.id === s.targetId || e.id === s.lock?.id) this.reticle(g, e, x, y, t, e.id === s.lock?.id);
-        if (e.dazed) this.daze(g, e, x, y, t);
+        // Markers wait for the world-UI pass, so a bridge deck never hides them.
+        if (e.kind === 'boss') marks.push(() => this.bossTrick(g, e, s, x, y, h, t));
+        if (e.id === s.targetId || e.id === s.lock?.id) marks.push(() => this.reticle(g, e, x, y, t, e.id === s.lock?.id));
+        if (e.dazed) marks.push(() => this.daze(g, e, x, y, t));
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
       drawBurnFlames(g, this.patches, this.view.P, k, s.t);
       this.drawDecks(g, s, t, puppets);
+      this.drawBridgeCables(g, s);
       this.drawFx(g, s, muzzle, t);
       this.drawParticles(g);
       this.blasts.draw(g, k);
+      this.drawWorldUi(g, s, t, marks);
       this.contactShadow(g, bx, by, k * 2.4);
       if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, {
         x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: s.grid, color: this.color, hpFrac: s.baseHp / s.baseMaxHp, hurt: s.baseHurt,
@@ -632,6 +649,7 @@ export class TdRenderer implements GameRenderer {
         railCharge: s.railCharges / Math.max(1, s.railMaxCharges), flaming: s.flaming,
       });
       this.baseDamage(g, s, bx, by);
+      if (s.weapon === 'rail' && s.swapLeft <= 0) this.railRing(g, s, bx, by, k, t);
       // Fireballs arc over everything, from the launcher.
       this.drawShells(g, s, muzzle);
       if (this.odBlend > 0.02) { // Overdrive: a white-hot muzzle that flares with each shot
@@ -695,35 +713,63 @@ export class TdRenderer implements GameRenderer {
   }
 
   /**
-   * Power cables from under the deck to each built tower, routed around the road (render/cables.ts). Every pedal
-   * half-stroke sends a pulse down each one while the dynamo is live.
+   * Power cables from under the deck to each built tower (routes: render/cables.ts; painted bitmaps and the power
+   * indicator: render/cableArt.ts). At ordinary power the cables are quiet with a steady green socket lamp per tower;
+   * under power the lamps blink amber (red when the dynamo stalls); overclocked, cyan pulses run down the cables
+   * with every pedal half-stroke; in Overdrive the cables go white-hot with gold pulses.
    */
   private drawCables(g: CanvasRenderingContext2D, s: TdSnapshot, bike: Readonly<BikeState>) {
-    // Overdrive (odBlend) turns the cables white-hot and speeds up their pulses.
-    const k = this.k, speed = 55, H = cableHeat(this.odBlend);
+    const k = this.k, speed = 55, H = cableHeat(this.odBlend), power = powerState(s.grid, s.stalled, s.overdrive);
     const n = this.pulseRevs === null ? 0 : strokeCrossings(this.pulseRevs, bike.crankRevs);
     this.pulseRevs = bike.crankRevs;
-    if (s.grid > 0) for (let i = 0; i < n; i++) this.pulses.push(s.t);
+    if (lampLook(power, s.t).pulses) for (let i = 0; i < n; i++) this.pulses.push(s.t);
     this.pulses = this.pulses.filter((t0) => s.t >= t0 && (s.t - t0) * speed < 160).slice(-16);
-    if (!s.towers.length) return;
+    const bake = this.cableArt(s);
+    if (!bake) return;
+    if (bake.ground) blitCables(g, this.view, bake.ground, power, this.odBlend);
     const routes = cableRoutes(this.geo.level);
-    g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+    g.save(); g.globalCompositeOperation = 'lighter';
+    const pulseColor = power.kind === 'over' && this.odBlend < 0.5 ? '#7ff2ff' : H.pulseColor;
+    const pulseA = power.kind === 'over' ? 0.3 + 0.4 * power.amount : 0.75;
     for (const tw of s.towers) {
       const c = routes.find((r) => r.pad === tw.pad); if (!c) continue;
-      const path = () => { g.beginPath(); c.pts.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
-      if (H.glow) { g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = H.glow.alpha; g.strokeStyle = H.glow.color; g.lineWidth = H.glow.width * k; path(); g.stroke(); g.restore(); }
-      for (const [color, width] of [['rgba(0,0,0,0.45)', 1.5], ['#0b0e12', 1.1], [H.sheath, 0.56], [H.core, 0.3]] as const) {
-        g.strokeStyle = color; g.lineWidth = Math.max(0.6, width * k); path(); g.stroke();
-      }
-      g.globalCompositeOperation = 'lighter';
       for (const t0 of this.pulses) {
         const f = (s.t - t0) * speed * H.pulseSpeed / c.length; if (f > 1) continue;
-        const p = along(c.pts, c.length, f), q = this.P(p.x, p.y);
-        glowAt(g, H.pulseColor, q.x, q.y, 1.6 * k * H.pulseSize, 0.6 * Math.min(1, s.grid + this.odBlend));
+        const q = along(c.pts, c.length, f), p = this.P(q.x, q.y);
+        glowAt(g, pulseColor, p.x, p.y, 1.3 * k * H.pulseSize, pulseA);
       }
-      g.globalCompositeOperation = 'source-over';
     }
     g.restore();
+    this.drawLamps(g, s, bake, power);
+  }
+  /** The socket lamp where each tower's cable enters its clearing. */
+  private drawLamps(g: CanvasRenderingContext2D, s: TdSnapshot, bake: CableBake, power: PowerState) {
+    const k = this.k, look = lampLook(power, s.t);
+    for (const so of bake.sockets) {
+      const p = this.P(so.at.x, so.at.y), on = look.on;
+      // ok: a small steady pilot light; anything else throws a halo onto the ground around the socket
+      const halo = power.kind === 'ok' ? 1.1 : 2.6;
+      g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, look.color, p.x, p.y, halo * k * (0.6 + 0.4 * on), (power.kind === 'ok' ? 0.35 : 0.75) * on); g.restore();
+      g.fillStyle = on > 0.3 ? mixHex(look.color, '#ffffff', 0.35 * on) : '#2a2622';
+      g.beginPath(); g.arc(p.x, p.y, Math.max(1.2, (power.kind === 'ok' ? 0.24 : 0.36) * k), 0, TAU); g.fill();
+    }
+  }
+  /** The painted cables for the built pads, re-painted when a tower is built or sold or the view changes. */
+  private cableArt(s: TdSnapshot): CableBake | null {
+    if (!s.towers.length) return null;
+    const K = Math.max(8, Math.min(14, Math.round(this.k * this.dpr))), pads = s.towers.map((t) => t.pad).sort((a, b) => a - b);
+    const key = `${this.geo.level.id}|${this.view.turned}|${K}|${pads.join(',')}`;
+    if (this.cables?.key !== key || this.cablesLevel !== this.geo.level) {
+      this.cables = bakeCables(this.geo.level, new Set(pads), K, lightFor(this.view.turned), key);
+      this.cablesLevel = this.geo.level;
+    }
+    return this.cables;
+  }
+  /** Cables clamped along a bridge deck's side cross over the road below it, so they draw after the decks. */
+  private drawBridgeCables(g: CanvasRenderingContext2D, s: TdSnapshot) {
+    const b = this.cables?.bridge;
+    if (!b || this.cablesLevel !== this.geo.level) return;
+    blitCables(g, this.view, b, powerState(s.grid, s.stalled, s.overdrive), this.odBlend);
   }
   /** Steel covers where cables run under the road (forks and merges): drawn over the cables, so they pass beneath. */
   private drawCulverts(g: CanvasRenderingContext2D) {
@@ -859,6 +905,24 @@ export class TdRenderer implements GameRenderer {
     g.restore();
   }
 
+  /**
+   * The Railgun's charge as a ring round the turret: it fills with banked watts, drains by what each shot spends
+   * (each full pulse empties it), and pulses once a full pulse is ready.
+   */
+  private railRing(g: CanvasRenderingContext2D, s: TdSnapshot, x: number, y: number, k: number, t: number) {
+    const r = k * 6.2, p = Math.max(0, Math.min(1, s.railProgress)), ready = p >= 1;
+    g.save(); g.lineCap = 'round';
+    g.strokeStyle = '#0009'; g.lineWidth = Math.max(4, k * 1.2);
+    g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke();
+    if (p > 0) {
+      g.strokeStyle = COL.purple; g.lineWidth = Math.max(2.5, k * 0.8);
+      g.globalAlpha = ready ? 0.75 + 0.25 * Math.sin(t * 7) : 0.85;
+      if (ready) { g.shadowColor = COL.purple; g.shadowBlur = 12; }
+      g.beginPath(); g.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + TAU * p); g.stroke();
+    }
+    g.restore();
+  }
+
   /** The turret's target gets a white reticle; a rider's lock gets a gold one that holds still. */
   /** Purple's shield plates ring the boss and fall away as they break; red's charge warning flashes ahead of it. */
   private bossTrick(g: CanvasRenderingContext2D, e: EnemyView, s: TdSnapshot, x: number, y: number, heading: number, t: number) {
@@ -941,7 +1005,7 @@ export class TdRenderer implements GameRenderer {
         g.globalAlpha = 1;
       } else if (f.kind === 'beam') {
         const a = f.angle + rot, ex = muzzle.x + Math.sin(a) * 160 * k, ey = muzzle.y - Math.cos(a) * 160 * k;
-        // the pulse is as wide as the tier's beam (field units), a quick snap half that
+        // the pulse is as wide as the tier's beam (field units)
         g.strokeStyle = COL.purple; g.globalAlpha = life * 0.6; g.lineWidth = Math.max(2.5, (f.width ?? 1.5) * k) * life;
         g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(ex, ey); g.stroke();
         g.strokeStyle = '#ffffff'; g.globalAlpha = life; g.lineWidth = 1.2 * k * life;

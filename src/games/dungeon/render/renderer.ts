@@ -163,6 +163,7 @@ export function createRenderer(): GameRenderer {
   // the DNF beat: when a run ends, the last frame freezes, the hero crumples (3-frame fall) and the screen fades before camp
   type HeroPin = { x: number; y: number; scale: number; angle: number };
   let bossChip = 1, bossChipName = '';
+  const flashAt = new Map<number, number>(), hpSeen = new Map<number, number>();
   let hideHero = false, lastRun: { s: DungeonSnapshot; bike: Readonly<BikeState>; input: Readonly<InputState> } | null = null;
   let swapFx: { t0: number; c: string; from: string } | null = null, lastStance = '';
   let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
@@ -302,7 +303,11 @@ export function createRenderer(): GameRenderer {
     const fr = anim(name, st, t + e.id * 0.13, e.kind === 'bat' ? 10 : 7);
     const def = sprite2(name, fr.state, fr.idx, pal, false, scale);
     const ps = 1; // all actor pixels are the same size as one background pixel
-    const flash = e.hurt < (isBoss ? 0.035 : 0.06);
+    // hit flash: a short pop per hit, rate-limited so damage over time or rapid fire never leaves it washed out
+    // (damage-over-time ticks are too small to count as a hit)
+    let fl0 = flashAt.get(e.id) ?? -9; const hp0 = hpSeen.get(e.id) ?? e.hp; hpSeen.set(e.id, e.hp);
+    if (e.hurt < 0.06 && hp0 - e.hp > e.maxHp * (isBoss ? 0.004 : 0.03) && t - fl0 > 0.12) { fl0 = t; if (flashAt.size > 512) { flashAt.clear(); hpSeen.clear(); } flashAt.set(e.id, t); }
+    const flash = t - fl0 < 0.06;
     const bob = e.kind === 'bat' ? Math.sin(t * 14 + e.id) * TS * 0.12 : -Math.abs(Math.sin(t * 8 + e.id)) * TS * 0.05;
     shadow(x, y, e.r * TS * 0.9);
     if (e.elite) { gg.globalCompositeOperation = 'lighter'; glowAt(ELITE_COLORS[e.elite], x, y - e.r * TS, e.r * TS * (2 + Math.sin(t * 5 + e.id) * 0.2), 0.55); gg.globalCompositeOperation = 'source-over'; }
@@ -1043,27 +1048,31 @@ export function createRenderer(): GameRenderer {
     gg.globalAlpha = 1;
 
     // minimap with fog (top-right)
-    const w = s.world, mm = Math.max(1, Math.round(MM * u * 0.8));
-    const mScale = Math.min(0.55, (110 * u) / Math.max(1, w.w * mm)); // drawn at ~half size, capped at ~110u wide
-    if (!mini || mini.width !== w.w * mm) { mini = document.createElement('canvas'); mini.width = w.w * mm; mini.height = w.h * mm; }
+    // crisp: one whole number of device pixels per tile, no resampling
+    const w = s.world, mm = Math.max(1, Math.floor((118 * u) / Math.max(1, w.w)));
+    if (!mini || mini.width !== w.w * mm || mini.height !== w.h * mm) { mini = document.createElement('canvas'); mini.width = w.w * mm; mini.height = w.h * mm; }
     const m = mini.getContext('2d')!;
     m.clearRect(0, 0, mini.width, mini.height);
+    for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.DOOR && w.rooms[w.doorRoom[i]]?.seen) { m.fillStyle = '#9a8458'; m.fillRect((i % w.w) * mm, Math.floor(i / w.w) * mm, mm, mm); }
     for (const r of w.rooms) {
       if (!r.seen) continue;
-      m.fillStyle = r.id === s.room ? '#8a8fa0' : r.cleared ? '#4a6a52' : r.boss ? '#6a3a5a' : '#555a66';
-      m.fillRect(r.x0 * mm, r.y0 * mm, r.w * mm, r.h * mm);
-      if (r.chest && !r.chest.opened) { m.fillStyle = '#ffd84a'; m.fillRect((r.chest.x - 1) * mm, (r.chest.y - 1) * mm, 2 * mm, 2 * mm); }
+      const here = r.id === s.room, fill = here ? '#6e6a84' : r.cleared ? '#3c5844' : r.boss ? '#5a2a46' : '#46445a', edge = here ? '#d8d0f0' : r.cleared ? '#6a9a72' : r.boss ? '#c0507a' : '#7a7890';
+      m.fillStyle = edge; m.fillRect(r.x0 * mm, r.y0 * mm, r.w * mm, r.h * mm);
+      m.fillStyle = fill; m.fillRect(r.x0 * mm + 1, r.y0 * mm + 1, r.w * mm - 2, r.h * mm - 2);
+      if (r.chest && !r.chest.opened) { m.fillStyle = '#2a1d00'; m.fillRect((r.chest.x - 1) * mm - 1, (r.chest.y - 1) * mm - 1, 2 * mm + 2, 2 * mm + 2); m.fillStyle = '#ffd84a'; m.fillRect((r.chest.x - 1) * mm, (r.chest.y - 1) * mm, 2 * mm, 2 * mm); }
     }
-    for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.DOOR && w.rooms[w.doorRoom[i]]?.seen) { m.fillStyle = '#7a6a4a'; m.fillRect((i % w.w) * mm, Math.floor(i / w.w) * mm, mm, mm); }
     const br = w.rooms.find((r) => r.boss);
-    if (br?.seen) { m.fillStyle = s.stairsOpen ? '#ffd84a' : '#a07a2a'; m.fillRect((w.stairs.x - 1) * mm, (w.stairs.y - 1) * mm, 2 * mm, 2 * mm); }
-    const mw = mini.width * mScale, mh = mini.height * mScale, mx0 = W - mw - L, my0 = L, mk = mm * mScale;
-    pixelPanel(gg,mx0-3,my0-3,mw+6,mh+6,'#655572','#171320cc',dpr); hudBox(mx0 - 3, my0 - 3, mw + 6, mh + 6);
-    gg.globalAlpha = 0.8; gg.drawImage(mini, mx0, my0, mw, mh); gg.globalAlpha = 1;
+    if (br?.seen) { const sx = Math.floor(w.stairs.x) * mm, sy = Math.floor(w.stairs.y) * mm; m.fillStyle = '#0a0810'; m.fillRect(sx - mm, sy - mm, 3 * mm, 3 * mm); m.fillStyle = s.stairsOpen ? '#ffd84a' : '#a07a2a'; for (let k = 0; k < 3; k++) m.fillRect(sx - mm + k * mm, sy - mm + k * mm, (3 - k) * mm, mm); }
+    const mw = mini.width, mh = mini.height, mx0 = Math.round(W - mw - L), my0 = Math.round(L), mk = mm;
+    pixelPanel(gg,mx0-4*dpr,my0-4*dpr,mw+8*dpr,mh+8*dpr,'#655572','#120e18dd',dpr); hudBox(mx0 - 4 * dpr, my0 - 4 * dpr, mw + 8 * dpr, mh + 8 * dpr);
+    gg.imageSmoothingEnabled = false; gg.drawImage(mini, mx0, my0);
     for (const e of s.enemies) if (e.kind === 'boss' || w.rooms[s.room] && e.x >= w.rooms[s.room].x0 && e.x <= w.rooms[s.room].x0 + w.rooms[s.room].w && e.y >= w.rooms[s.room].y0 && e.y <= w.rooms[s.room].y0 + w.rooms[s.room].h) {
-      gg.fillStyle = ENEMY_TINT[e.kind] ?? '#e55'; gg.fillRect(mx0 + e.x * mk - 1, my0 + e.y * mk - 1, 2.5 * u, 2.5 * u);
+      const sz = Math.max(2, Math.round((e.kind === 'boss' ? 3 : 2) * dpr)); gg.fillStyle = ENEMY_TINT[e.kind] ?? '#e55'; gg.fillRect(Math.round(mx0 + e.x * mk - sz / 2), Math.round(my0 + e.y * mk - sz / 2), sz, sz);
     }
-    gg.fillStyle = color; gg.fillRect(mx0 + p.x * mk - 2 * u, my0 + p.y * mk - 2 * u, 4 * u, 4 * u);
+    { // the hero: an outlined diamond that pulses
+      const hx0 = Math.round(mx0 + p.x * mk), hy0 = Math.round(my0 + p.y * mk), R = Math.round((2.5 + (Math.sin(s.t * 6) > 0 ? 0.5 : 0)) * dpr);
+      for (const [rr, c] of [[R + dpr, '#0a0810'], [R, '#ffffff'], [Math.max(1, R - dpr), color]] as const) { gg.fillStyle = c; gg.beginPath(); gg.moveTo(hx0, hy0 - rr); gg.lineTo(hx0 + rr, hy0); gg.lineTo(hx0, hy0 + rr); gg.lineTo(hx0 - rr, hy0); gg.fill(); }
+    }
 
     if (s.boss && s.boss.active) {
       const BR=bossHudLayout(W,H,insetCss*dpr,hu),bw=BR.w,bx=BR.x,by=BR.y;

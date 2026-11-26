@@ -136,7 +136,7 @@ export const isNumberText = (t: string | undefined) => !!t && /^[+-]?\d{1,6}$/.t
 export function drawNumber32(g: CanvasRenderingContext2D, text: string, color: string, x: number, y: number, k: number, big: boolean, seed: number) {
   const s = big ? 2 : 1, c = numberSprite(text, color, s);
   const rise = k < 0.35 ? 1 - (1 - k / 0.35) ** 3 : 1 - (k - 0.35) * 0.25;
-  const dx = (seed % 7 - 3) * k * 2, shake = big && k < 0.15 ? ((Math.floor(k * 60) % 2) * 2 - 1) : 0;
+  const dx = (seed % 7 - 3) * (2 + k * 2), shake = big && k < 0.15 ? ((Math.floor(k * 60) % 2) * 2 - 1) : 0;
   g.globalAlpha = k > 0.75 ? 1 - (k - 0.75) / 0.25 : 1;
   g.drawImage(c, Math.round(x - c.width / 2 + dx + shake), Math.round(y - rise * (big ? 18 : 13) - c.height));
   g.globalAlpha = 1;

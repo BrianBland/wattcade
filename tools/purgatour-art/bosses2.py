@@ -14,7 +14,7 @@ def h2(x, y, s=0):
 MOSS = R('#1a2c18', '#2e4a26', '#5e8a3a', '#9ac45a')
 
 # ------------------------------------------------------------------ King of the Mountains: a living mountain in the KOM mantle
-ROCK = R('#221d28', '#3e3646', '#62586a', '#8f8492', '#b9adb4'); SNOW = R('#6f8296', '#b4c6d8', '#e4eef8', '#ffffff')
+ROCK = R('#1c1822', '#332c3a', '#4e4656', '#706774', '#958a94'); SNOW = R('#5e6e80', '#98aabc', '#cad8e6', '#eef6ff')
 def king_of_mountains(fr=0, atk=False):
     cv = Cv(64, 64); b = fr % 2
     peaks = [(31, 3 + b), (14, 27 + b), (50, 24 + b)]
@@ -94,12 +94,12 @@ def king_of_mountains(fr=0, atk=False):
     for x in range(2, 63):
         for y in range(top(x), 62):
             if not (inside(x, y) or inside(x - 2, y) or inside(x + 2, y)) or y > 60 - (1 if (x // 3) % 2 else 0): continue
-            fold = math.sin(x * 0.55 + 0.6) ; base = 10 if fold > .55 else 9 if fold > -.35 else 8
+            fold = math.sin(x * 0.55 + 0.6) ; base = 9 if fold > .55 else 8 if fold > -.35 else 7
             if x > 46: base -= 1
             u, v = (x + (y // 5) % 2 * 3) % 6, (y - top(x)) % 5
             dot = u in (1, 2) and v in (2, 3)
             c = C(base)
-            if dot: c = RED[2] if base >= 9 else RED[1]
+            if dot: c = RED[2] if base >= 8 else RED[1]
             if y == top(x): c = GOLD[2]
             elif y == top(x) + 1: c = GOLD[1]
             cv.set(x, y, c)
@@ -303,10 +303,58 @@ def lycra_lich(fr=0, atk=False):
         cv.ell(50, 26 + f, 4, 4, orb); cv.set(48, 24 + f, hx('#ffffff'))
     return cv.done()
 
+# ------------------------------------------------------------------ King Gel: a translucent jelly king with its swallowed loot showing through
+from chars import GEL
+from bosses import chainring
+def king_gel(fr=0, atk=False):
+    cv = Cv(64, 64); sq = fr % 2
+    rx, ry = (28, 15) if atk else (24 + sq, 20 - sq)
+    cy = round(61 - ry * .62)
+    G = GEL
+    for y in range(int(cy - ry - 1), 62):
+        for x in range(int(32 - rx - 1), int(32 + rx + 2)):
+            nx, ny = (x + .5 - 32) / rx, (y + .5 - cy) / ry
+            if ny > 0: ny *= 1.6   # flatter base where it sags on the floor
+            d = nx * nx + ny * ny
+            if d > 1 or y > 61: continue
+            rim = d > .78
+            l = -.55 * nx - .6 * ny
+            k = 1
+            if rim: k = 2 if l > -.1 else 0            # bright rim on the lit side, deep edge on the dark side
+            elif d < .35: k = 2 if l > .15 else 1      # glowing core
+            if y >= 60: k = 0
+            cv.set(x, y, G[k])
+    # the things it swallowed, dimmed by the gel
+    def dim(c): return G[0] if c != G[1] else c
+    cv.line(19, cy + 4, 26, cy + 1, hx('#7aa060')); cv.set(19, cy + 5, hx('#7aa060')); cv.set(26, cy, hx('#7aa060'))   # a bone
+    for (x, y) in ((41, cy + 3), (43, cy + 2), (42, cy + 5), (44, cy + 4)): cv.set(x, y, hx('#8aa040'))                     # a coin
+    cv.poly([(33, cy + 3), (36, cy + 3), (36, cy + 8), (33, cy + 8)], [hx('#2a7a6a'), hx('#3a9a80'), hx('#5abaa0'), hx('#8adac0')], 1)   # a bidon
+    # bubbles rising inside
+    for i in range(4):
+        ph = (fr * .5 + i * .27) % 1
+        bx, by = 22 + i * 6, cy + ry * .6 - ph * ry * 1.1
+        cv.set(bx, by, G[3]); cv.set(bx + 1, by + 1, G[2])
+    # specular highlights
+    for (x, y) in ((18, cy - ry * .55), (19, cy - ry * .6), (20, cy - ry * .62), (18, cy - ry * .45)): cv.set(x, y, G[4])
+    cv.set(23, cy - ry * .78, G[3]); cv.set(24, cy - ry * .8, G[3])
+    # face
+    ey = cy - ry * .45
+    for ex in (25, 39):
+        if atk: cv.line(ex - 3, ey - 1, ex + 3, ey + 1 if ex < 32 else ey - 3, C(0), 2)
+        cv.ell(ex, ey + 1, 3, 3 if not atk else 2, [C(0)] * 4, spec=False); cv.set(ex - 1, ey, C(11)); cv.set(ex + 1, ey + 2, G[3])
+    if atk: cv.ell(32, ey + 9, 7, 4, [C(0), C(0), RED[1], RED[2]], spec=False)
+    else:
+        cv.line(29, ey + 7, 35, ey + 7, C(0)); cv.set(28, ey + 6, C(0)); cv.set(36, ey + 6, C(0))
+    # drips at the base and a goo puddle
+    for x in range(int(32 - rx - 2), int(32 + rx + 3)):   # a goo puddle where it sits
+        if cv.get(x, 61)[3] == 0: cv.set(x, 61, G[1] if x % 5 else G[2])
+    chainring(cv, 32 + (5 if atk else 0), cy - ry - 3 + (2 if atk else 0), 8)   # the crown: a big chainring
+    return cv.done()
+
 if __name__ == '__main__':
     from PIL import Image
     from chars import flash
-    fns = [king_of_mountains, headwind_wyrm, grim_sweeper, lycra_lich]
+    fns = [king_gel, king_of_mountains, headwind_wyrm, grim_sweeper, lycra_lich]
     o = Image.new('RGBA', (4 * 100 + 4, len(fns) * 100 + 4), C(3))
     for r, fn in enumerate(fns):
         for c, im in enumerate([fn(0), fn(1), fn(0, True), flash(fn(0))]): o.alpha_composite(im, (4 + c * 100, 4 + r * 100))

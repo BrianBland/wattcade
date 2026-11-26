@@ -147,6 +147,7 @@ def chars_sheet():
     for sname, g in GR.STANCES.items():
         g = dict(g); g.pop('wpn', None); key = g.get('stance', 'scout')
         for f in 'dru': strip(f'hero.{key}.{f}', [GR.hero_geared(f, fr, **g) for fr in range(4)])
+        strip(f'down.{key}', [CH.hero_down(i, lambda f, fr, g=g: GR.hero_geared(f, fr, **g)) for i in range(3)])
     strip('chaser', [CH.coneling(i) for i in range(4)]); strip('chaser.atk', [CH.coneling(2)])
     strip('bat', [CH.saddle_sore(i) for i in range(3)]); strip('bat.atk', [CH.saddle_sore(1)])
     hop = [CH.gel_hop(i) for i in range(10)]

@@ -310,10 +310,11 @@ def puff(fr, tint=None):
             if 0 <= x < 32 and 0 <= y < 32: px[x, y] = C(25)
     return im
 
-def hero_down(fr):
-    """the DNF: knocked flat, then dizzy spokes circle the head"""
-    if fr == 0: return flash(hero('d', 0))
-    body = hero('r', 1).rotate(90, expand=False)
+def hero_down(fr, hero_fn=None):
+    """the DNF: knocked flat, then dizzy spokes circle the head (hero_fn draws a geared stance instead of the base kit)"""
+    hf = hero_fn or hero
+    if fr == 0: return flash(hf('d', 0))
+    body = hf('r', 1).rotate(90, expand=False)
     im = Image.new('RGBA', (32, 32)); im.alpha_composite(body, (0, 6))
     p = im.load()
     for k in range(5):   # little spinning chainring teeth = dizzy stars

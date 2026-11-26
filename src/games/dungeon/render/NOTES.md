@@ -10,13 +10,14 @@
   void elsewhere, trims, torches, hangings, baked decor), animated lava, pool glints. `floorInfo` places torches/pillars/decor.
 - `actors32.ts`: hero (5 stance outfits × front/side/back × 4-frame walk, weapon gripped at the hand and rotated to the aim),
   enemies (Coneling, Saddle Sore, Gel Slime hop, Lost Rider, CO2 Gremlin, Wrench Troll, Directeur Sportif), 6 bosses
-  (+ Grim Sweeper exported, unused), shots, coins, items (bidon, helmet, jersey, shoe, ring), shrines, curse sigils, puffs.
+  (+ Grim Sweeper exported, unused; `bosses2.py` repaints 5 of 7), shots, coins, items, shrines, sigils, puffs, per-stance DNF.
 - `light32.ts` (pure): ambient per zone + lights falling off (1-d/r)², vertical distance ×1.25, stepped by 0.17 with Bayer
   dither on 2×2 blocks. Walls occlude via grid line of sight; a wall face is lit only by a light at or below its row that
   sees its foot; wall tops get a 30% spill. Buffer holds L/2 and is applied multiply + one additive pass (up to 2×).
 - `shade` works per light over its bounding box (cost ∝ lit area). Static LOS cached; ≤24 nearest statics + all dynamic.
 - Emissive layer after lighting: flames, crystal glow, relics, shots, muzzle flashes, pixel damage numbers, stance swap, pool
-  light streaks. Fog over unseen rooms on top. Death plays a DNF beat (falling hero, title) before the camp guardroom.
+  light streaks, open-stairs motes. Fog over unseen rooms on top. Death plays a DNF beat before the camp guardroom.
+- HUD: framed boss bar (phase pips, damage chip), crisp whole-pixel minimap; hit flash per real hit (DoT ticks ignored).
 - Old 16 px paths (`sprites.ts`, `art.ts`, `weapons.ts` masks) remain as the fallback until the sheets decode.
 - Budget: 1024×768 DPR 2 headless Chromium: median 16.7 ms on floors 1/2/4, p95 ≤ 21 ms. Floor textures tile seamlessly.
 - Room dressing (`world32.ts` `dress`): corner clusters, back-wall furniture, side-wall clutter, a centrepiece per room
@@ -36,5 +37,4 @@
 ## Checks
 - Review: `/dev/dungeon.html` (Live game; `floor=N` jumps to a floor, `manual=1` for captures).
 - `node scripts/dungeon-render-smoke.mjs` while Vite runs on 5173; captures go to `/tmp/dungeon-smoke/`.
-- typecheck, dungeon + inset tests (`light32.test.ts`: occlusion, faces, shading; `dress32.test.ts`: dressing rules).
-- Physical iPad/Bluefy is not covered by the browser checks.
+- typecheck, dungeon + inset tests (light32: occlusion, shading; dress32: dressing). Physical iPad not covered.

@@ -161,7 +161,7 @@ export function createRenderer(): GameRenderer {
   let worldCanvas: HTMLCanvasElement | null = null;
   let pixelScale = 1;
   // the DNF beat: when a run ends, the last frame freezes, the hero crumples (3-frame fall) and the screen fades before camp
-  type HeroPin = { x: number; y: number; scale: number; angle: number };
+  type HeroPin = { x: number; y: number; scale: number; angle: number; stance: string };
   let bossChip = 1, bossChipName = '';
   const flashAt = new Map<number, number>(), hpSeen = new Map<number, number>();
   let hideHero = false, lastRun: { s: DungeonSnapshot; bike: Readonly<BikeState>; input: Readonly<InputState> } | null = null;
@@ -715,7 +715,7 @@ export function createRenderer(): GameRenderer {
       if(p.hurt<0.3){gg.fillStyle='#f4516133';gg.fillRect(0,0,W,2);gg.fillRect(0,H-2,W,2);gg.fillRect(0,0,2,H);gg.fillRect(W-2,0,2,H);}
       g=output;output.imageSmoothingEnabled=false;
       output.drawImage(worldCanvas,0,0,W*pixelScale,H*pixelScale);
-      lastHero = { x: (p.x * TS - Math.round(cx)) * pixelScale, y: (p.y * TS + p.r * TS * 1.1 - Math.round(cy)) * pixelScale, scale: pixelScale, angle: s.aim.angle };
+      lastHero = { x: (p.x * TS - Math.round(cx)) * pixelScale, y: (p.y * TS + p.r * TS * 1.1 - Math.round(cy)) * pixelScale, scale: pixelScale, angle: s.aim.angle, stance: s.stance.id };
       output.save();output.translate(-Math.round(cx)*pixelScale,-Math.round(cy)*pixelScale);
       for(const f of s.fx)if(f.kind==='text'&&!(bg32&&isNumberText(f.text)))drawFx(f,t,TS*pixelScale);
       output.font = pixelFont(10 * dpr); output.textAlign = 'center'; output.strokeStyle = '#100d1c';
@@ -743,14 +743,15 @@ export function createRenderer(): GameRenderer {
     const gg = g!, d = dnf!, W = canvas!.width, H = canvas!.height, h = d.hero;
     gg.imageSmoothingEnabled = false; gg.globalAlpha = 1; gg.drawImage(d.img, 0, 0);
     gg.fillStyle = '#1a0610'; gg.globalAlpha = Math.min(0.75, k * 0.9); gg.fillRect(0, 0, W, H); gg.globalAlpha = 1;
-    const fr = charFrame('down', Math.min(2, Math.floor(k * 5))), m = anim32('down');
+    const dn = anim32('down.' + h.stance) ? 'down.' + h.stance : 'down', fr = charFrame(dn, Math.min(2, Math.floor(k * 5))), m = anim32(dn);
     if (fr && m) { const sc = h.scale, flip = Math.cos(h.angle) < 0;
       gg.save(); gg.translate(Math.round(h.x), Math.round(h.y)); if (flip) gg.scale(-1, 1);
       gg.drawImage(fr, -m.ax * sc, -m.ay * sc, fr.width * sc, fr.height * sc); gg.restore(); }
     if (k > 0.6) { const a = Math.min(1, (k - 0.6) * 3); gg.globalAlpha = a;
       const ty = Math.max(24 * dpr, Math.min(H * 0.34, h.y - 34 * h.scale - 70 * dpr));
-      pixelText(gg, 'DNF', W / 2, ty, Math.max(4, Math.round(8 * dpr)), '#ff5a5a', true);
-      gg.globalAlpha = a * 0.85; pixelText(gg, 'DID NOT FINISH', W / 2, ty + 52 * dpr, Math.max(1, Math.round(2 * dpr)), '#ffb0b0', true); gg.globalAlpha = 1; }
+      const S8 = Math.max(4, Math.round(8 * dpr)), S2 = Math.max(1, Math.round(2 * dpr));
+      pixelText(gg, 'DNF', W / 2 + S8 / 2, ty + S8 / 2, S8, '#2a0610', true); pixelText(gg, 'DNF', W / 2, ty, S8, '#ff5a5a', true);
+      gg.globalAlpha = a * 0.85; pixelText(gg, 'DID NOT FINISH', W / 2 + S2, ty + 66 * dpr + S2, S2, '#2a0610', true); pixelText(gg, 'DID NOT FINISH', W / 2, ty + 66 * dpr, S2, '#ffb0b0', true); gg.globalAlpha = 1; }
     if (k > DNF_S - 0.45) { gg.fillStyle = '#07060b'; gg.globalAlpha = Math.min(1, (k - (DNF_S - 0.45)) / 0.45); gg.fillRect(0, 0, W, H); gg.globalAlpha = 1; }
   }
   function drawCamp(c: CampView, W: number, H: number, t: number) {

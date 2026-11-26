@@ -58,7 +58,7 @@ export interface LightJob {
   grid: LightGrid; ts: number; rise: number;
   ox: number; oy: number; W: number; H: number;    // view origin and size in world px
   amb: readonly [number, number, number];
-  lights: Array<Light & { los: Los }>;
+  lights: Array<Light & { los?: Los }>;   // no los: an open space, nothing occludes
 }
 /** Fill `out` (RGBA, ceil(W/2) x ceil(H/2)) with the stepped light level of each 2x2 block, divided by LIGHT_SCALE. */
 export function shade(job: LightJob, out: Uint8ClampedArray, stepped = true): void {
@@ -72,7 +72,7 @@ export function shade(job: LightJob, out: Uint8ClampedArray, stepped = true): vo
       const dx = wx - l.x, dy = (wy - l.y) * 1.25, dd = dx * dx + dy * dy;
       if (dd > l.r * l.r) continue;
       let k = 1;
-      if (s.top) k = 0.3; else if (!losAt(l.los, s.tx, s.ty)) continue;
+      if (s.top) k = 0.3; else if (l.los && !losAt(l.los, s.tx, s.ty)) continue;
       let f = 1 - Math.sqrt(dd) / l.r; f = f * f * 1.6 * k * l.i;
       r += l.c[0] / 255 * f; g += l.c[1] / 255 * f; b += l.c[2] / 255 * f;
     }

@@ -103,3 +103,41 @@ export function drawCrystalFloor(g: CanvasRenderingContext2D, sheet: CanvasImage
   r.globalCompositeOperation = 'source-over';
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.3; g.drawImage(cfR, 0, 0); g.restore();
 }
+
+// ---------------------------------------------------------------- damage numbers
+const DIG: Record<string, string[]> = {
+  '0': ['111', '101', '101', '101', '111'], '1': ['010', '110', '010', '010', '111'], '2': ['111', '001', '111', '100', '111'],
+  '3': ['111', '001', '011', '001', '111'], '4': ['101', '101', '111', '001', '001'], '5': ['111', '100', '111', '001', '111'],
+  '6': ['111', '100', '111', '101', '111'], '7': ['111', '001', '010', '010', '010'], '8': ['111', '101', '111', '101', '111'],
+  '9': ['111', '101', '111', '001', '111'], '+': ['000', '010', '111', '010', '000'], '-': ['000', '000', '111', '000', '000'],
+};
+const numCache = new Map<string, HTMLCanvasElement>();
+/** A number as chunky world-pixel digits with a 1 px dark outline and a lighter top row (cached per text+colour+size). */
+function numberSprite(text: string, color: string, s: number): HTMLCanvasElement {
+  const key = text + color + s; let c = numCache.get(key); if (c) return c;
+  // glyphs at scale s, then a 1 px 4-neighbour dark rim at final resolution (no filled box between digits)
+  const gw = text.length * 4 - 1, W = gw * s + 2, H = 5 * s + 2; c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d')!, on = (px: number, py: number) => {
+    const x = Math.floor((px - 1) / s), y = Math.floor((py - 1) / s); if (px < 1 || py < 1 || x >= gw || y >= 5) return false;
+    const ch = text[Math.floor(x / 4)], gl = ch && DIG[ch]; return !!gl && x % 4 < 3 && gl[y][x % 4] === '1'; };
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    if (on(px, py)) { g.fillStyle = py - 1 < s ? '#ffffff' : py - 1 >= 4 * s ? shadeHex(color, 0.7) : color; g.fillRect(px, py, 1, 1); }
+    else if (on(px - 1, py) || on(px + 1, py) || on(px, py - 1) || on(px, py + 1)) { g.fillStyle = '#100d1c'; g.fillRect(px, py, 1, 1); }
+  }
+  if (numCache.size > 400) numCache.clear(); numCache.set(key, c); return c;
+}
+function shadeHex(hex: string, k: number): string {
+  const m = /^#?([0-9a-f]{6})/i.exec(hex); if (!m) return hex; const n = parseInt(m[1], 16);
+  const f = (v: number) => Math.round(v * k).toString(16).padStart(2, '0');
+  return '#' + f(n >> 16) + f((n >> 8) & 255) + f(n & 255);
+}
+export const isNumberText = (t: string | undefined) => !!t && /^[+-]?\d{1,6}$/.test(t);
+/** Damage/coin numbers in world pixels: they hop up, hang, then fall back a little while fading; crits are double size and shake. */
+export function drawNumber32(g: CanvasRenderingContext2D, text: string, color: string, x: number, y: number, k: number, big: boolean, seed: number) {
+  const s = big ? 2 : 1, c = numberSprite(text, color, s);
+  const rise = k < 0.35 ? 1 - (1 - k / 0.35) ** 3 : 1 - (k - 0.35) * 0.25;
+  const dx = (seed % 7 - 3) * k * 2, shake = big && k < 0.15 ? ((Math.floor(k * 60) % 2) * 2 - 1) : 0;
+  g.globalAlpha = k > 0.75 ? 1 - (k - 0.75) / 0.25 : 1;
+  g.drawImage(c, Math.round(x - c.width / 2 + dx + shake), Math.round(y - rise * (big ? 18 : 13) - c.height));
+  g.globalAlpha = 1;
+}

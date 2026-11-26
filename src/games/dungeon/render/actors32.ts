@@ -125,3 +125,25 @@ export function wicks(zone: ZoneId, name: string): Array<[number, number]> {
   }
   wickCache.set(key, out); return out;
 }
+/** Where the held weapon's barrel tip is in world px (hero foot point, aim angle), from the arsenal muzzle and grip data. */
+export function muzzleTip(x: number, foot: number, angle: number, w: WeaponLook): { x: number; y: number } {
+  const { f, flip } = facingFor(angle), hand = HAND32[f], hx = x + (flip ? -hand.x : hand.x), hy = foot + hand.y;
+  const key = `${w.base}.${Math.max(0, Math.min(2, w.variant ?? 0))}.${w.element ?? 'normal'}.${w.rarity ?? 0}`;
+  const gp = ATLAS.arsenal.grip[key], mz = ATLAS.arsenal.muzzle[w.base]?.[Math.max(0, Math.min(2, w.variant ?? 0))];
+  if (!gp || !mz) return { x: hx + Math.cos(angle) * 14, y: hy + Math.sin(angle) * 14 };
+  const dx = mz[0] - gp[0], dy = (Math.cos(angle) < 0 ? -1 : 1) * (mz[1] - gp[1]), c = Math.cos(angle), s = Math.sin(angle);
+  return { x: hx + dx * c - dy * s, y: hy + dx * s + dy * c };
+}
+/** A 3-step pixel muzzle flash at the barrel tip: white core, element-coloured star with a forward spike, then sparks. */
+export function drawMuzzle32(g: CanvasRenderingContext2D, x: number, y: number, angle: number, color: string, k: number) {
+  const st = Math.min(2, Math.floor(k * 3)), c = Math.cos(angle), s = Math.sin(angle), px = (u: number, v: number, col: string, n = 1) => {
+    g.fillStyle = col; g.fillRect(Math.round(x + u * c - v * s), Math.round(y + u * s + v * c), n, n); };
+  if (st === 0) {
+    for (let u = 0; u <= 6; u++) px(u, 0, u < 3 ? '#ffffff' : color);
+    for (const v of [-2, -1, 1, 2]) px(1, v, Math.abs(v) === 1 ? '#fff2c0' : color);
+    px(3, -1, color); px(3, 1, color); px(-1, 0, color);
+  } else if (st === 1) {
+    for (const [u, v] of [[2, -2], [2, 2], [4, 0], [0, -1], [0, 1], [5, -1], [5, 1]]) px(u, v, color);
+    px(2, 0, '#fff2c0', 2);
+  } else for (const [u, v] of [[3, -3], [6, 0], [3, 3]]) px(u, v, color);
+}

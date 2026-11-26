@@ -62,7 +62,7 @@ export function charFrame(anim: string, i: number): HTMLCanvasElement | null {
 }
 export const anim = (name: string): AnimMeta | undefined => ATLAS.chars.anims[name];
 
-/** Hit flash: every pixel of the sprite except its dark outline turns pale pink-white. */
+/** Hit flash: the body washes most of the way to warm white (shading still reads) and the outline turns dark red. */
 export function flashOf(src: HTMLCanvasElement): HTMLCanvasElement {
   const key = 'flash|' + cacheId(src), hit = cache.get(key);
   if (hit) return hit;
@@ -71,7 +71,8 @@ export function flashOf(src: HTMLCanvasElement): HTMLCanvasElement {
   const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
   for (let i = 0; i < p.length; i += 4) if (p[i + 3]) {
     const dark = p[i] + p[i + 1] + p[i + 2] < 60;
-    p[i] = dark ? 255 : 241; p[i + 1] = dark ? 214 : 232; p[i + 2] = dark ? 224 : 214;
+    if (dark) { p[i] = 90; p[i + 1] = 20; p[i + 2] = 40; continue; }       // outline goes blood-dark, so the silhouette holds
+    p[i] += (255 - p[i]) * 0.7; p[i + 1] += (244 - p[i + 1]) * 0.7; p[i + 2] += (236 - p[i + 2]) * 0.7;   // body washes 70% to warm white, shading kept
   }
   g.putImageData(d, 0, 0); cache.set(key, c); return c;
 }

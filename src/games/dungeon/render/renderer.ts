@@ -12,13 +12,14 @@ import { drawProjectile, drawPixelFx, flameSprite } from './effects';
 import { pixelPanel, pixelMeter, pixelText } from './chrome';
 import { fillText, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
 import { drawFlagstone, drawMarsh } from './terrain';
-import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut } from './art32';
-import { drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor } from './fx32';
+import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut, charFrame, anim as anim32 } from './art32';
+import { drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
 import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
-import { wicks, drawItem32, drawHero32, drawEnemy32, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
+import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
 
+const DNF_S = 2.1;
 const ACTION_COLOR: Record<string, string> = { strike: '#ffd84a', ward: '#7fe7ff', rally: '#8fd8ff', potion: '#ff6b8a' };
 const BT = 16;           // background px per tile
 const MM = 2;            // minimap px per tile
@@ -149,6 +150,7 @@ export function createRenderer(): GameRenderer {
   let bg32: FloorBg32 | null = null, info: FloorInfo | null = null;
   const losCache = new Map<string, Los>();
   let litAt: { x: number; y: number } | null = null;
+  const goo: Array<{ x: number; y: number; t: number }> = [], gooLast = new Map<number, { t: number; x: number; y: number }>();
   let litC: HTMLCanvasElement | null = null, lightImg: ImageData | null = null;
   /** zone light colours: wall torches, PILLAR light props, pools (lava only) */
   const ZL: Record<string, { torch: [number, number, number]; prop: [number, number, number]; amb: [number, number, number] }> = {
@@ -158,7 +160,11 @@ export function createRenderer(): GameRenderer {
   let pillars: Array<{ x: number; y: number }> = [];
   let worldCanvas: HTMLCanvasElement | null = null;
   let pixelScale = 1;
+  // the DNF beat: when a run ends, the last frame freezes, the hero crumples (3-frame fall) and the screen fades before camp
+  type HeroPin = { x: number; y: number; scale: number; angle: number };
+  let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
   let lightC: HTMLCanvasElement | null = null;
+  let campSnap: HTMLCanvasElement | null = null;
   let lastCue = -1;
   let send: ((a: unknown) => void) | undefined;
   let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
@@ -347,6 +353,13 @@ export function createRenderer(): GameRenderer {
       // sound cues (skip any backlog from before mount)
       if (lastCue < 0) lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
       for (const c of s.cues) if (c.id > lastCue) { lastCue = c.id; play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] }); }
+      if (prevPhase === 'run' && s.phase === 'camp' && s.camp?.lastDeath && lastHero && artReady()) {
+        const img = document.createElement('canvas'); img.width = canvas.width; img.height = canvas.height; img.getContext('2d')!.drawImage(canvas, 0, 0);
+        dnf = { t0: s.t, img, hero: lastHero };
+      }
+      prevPhase = s.phase;
+      if (s.phase !== 'camp') dnf = null;
+      if (dnf && s.phase === 'camp' && s.t - dnf.t0 < DNF_S) { drawDnf(s.t - dnf.t0); return; }
       if (s.phase === 'camp' && s.camp) { actionHits = []; clearPinch(); drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
       campHits = []; if (s.phase !== 'run') actionHits = [];
       const output=g, OW=canvas.width, OH=canvas.height, w=s.world,t=s.t,p=s.player;
@@ -363,7 +376,7 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
       if (bgFor !== w || (!bg32 && artReady())) {
         if (bgFor !== w) { bg?.release(); bg = buildBackground(w); mini = null; }
-        bgFor = w; pillars = []; bg32?.release(); info = floorInfo(w); bg32 = buildBackground32(w, info); losCache.clear();
+        bgFor = w; pillars = []; goo.length = 0; gooLast.clear(); bg32?.release(); info = floorInfo(w); bg32 = buildBackground32(w, info); losCache.clear();
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
       const uiU=(Math.max(1,Math.min(OW,OH)/dpr/600)*0.75+0.25)*dpr;
@@ -411,6 +424,17 @@ export function createRenderer(): GameRenderer {
         const cm = Zr.rects.crystalMask, zsheet = sheetImage(Zn);
         if (bg32 && cm && zsheet && litC && litAt) drawCrystalFloor(gg, zsheet, cm, litC, litAt.x, litAt.y, Math.round(cx), Math.round(cy), W, H, t, (c) => openFloorClip(c));
       }
+      if (bg32 && artReady()) { // Gel Slimes leave fading goo where they land
+        for (const e of s.enemies) if (e.kind === 'spitter') {
+          const L = gooLast.get(e.id);
+          if (!L || (t - L.t > 0.32 && Math.hypot(e.x - L.x, e.y - L.y) > 0.25)) { gooLast.set(e.id, { t, x: e.x, y: e.y }); goo.push({ x: e.x * TS, y: e.y * TS + e.r * TS * 0.9, t }); }
+        }
+        while (goo.length && (t - goo[0].t > 3.5 || goo.length > 160)) goo.shift();
+        if (gooLast.size > 256) gooLast.clear();
+        const gc = charFrame('goo', 0), ga = anim32('goo');
+        if (gc && ga) for (const q of goo) { const k = (t - q.t) / 3.5; if (k < 0) continue; gg.globalAlpha = 0.7 * (1 - k) * (k < 0.08 ? k / 0.08 : 1); gg.drawImage(gc, Math.round(q.x - ga.ax), Math.round(q.y - ga.ay)); }
+        gg.globalAlpha = 1;
+      }
       // doors, stairs, chests
       const x0 = Math.max(0, Math.floor(cx / TS)), x1 = Math.min(w.w, Math.ceil((cx + W) / TS));
       const y0 = Math.max(0, Math.floor(cy / TS)), y1 = Math.min(w.h, Math.ceil((cy + H) / TS));
@@ -419,7 +443,16 @@ export function createRenderer(): GameRenderer {
         if (kk === TILE.DOOR && bg32) {
           const locked = w.rooms[w.doorRoom[y * w.w + x]]?.locked, wallAt = (dx: number) => w.tiles[y * w.w + x + dx] === TILE.WALL;
           if (wallAt(-1) && wallAt(1)) drawZoneProp(gg, Zn, locked ? 'doorLocked' : 'doorOpen', x * TS, y * TS - 16);
-          else if (locked) { gg.fillStyle = Zr.ramp[2]; gg.fillRect(x * TS, y * TS, TS, 3); for (let i = 2; i < TS; i += 5) { gg.fillStyle = Zr.ramp[8]; gg.fillRect(x * TS + i, y * TS - 12, 2, TS + 10); gg.fillStyle = Zr.ramp[4]; gg.fillRect(x * TS + i + 2, y * TS - 12, 1, TS + 10); } }
+          else if (locked) { // a gate across a side passage, seen along its length: a row of iron posts on a rail, back to front
+            const gx = x * TS + 14, IRON = ['#15121c', '#3a3243', '#5e5462', '#8f8489'];
+            gg.fillStyle = '#04020880'; gg.fillRect(gx - 2, y * TS + 2, 8, TS - 2);
+            gg.fillStyle = IRON[0]; gg.fillRect(gx, y * TS - 13, 3, TS + 2); gg.fillRect(gx, y * TS - 6, 3, 1);
+            for (let i = 0; i < 8; i++) { const yy = y * TS + 3 + i * 4;
+              gg.fillStyle = IRON[0]; gg.fillRect(gx - 1, yy - 16, 5, 17);
+              gg.fillStyle = IRON[1]; gg.fillRect(gx, yy - 15, 3, 15); gg.fillStyle = IRON[2]; gg.fillRect(gx, yy - 15, 1, 15);
+              gg.fillStyle = IRON[3]; gg.fillRect(gx, yy - 17, 2, 2); }
+            gg.fillStyle = IRON[2]; gg.fillRect(gx - 1, y * TS - 14, 1, TS + 2); gg.fillStyle = IRON[1]; gg.fillRect(gx + 3, y * TS - 7, 1, TS + 2);
+          }
           if (locked) { gg.globalCompositeOperation = 'lighter'; glowAt('#ff3b3b', x * TS + TS / 2, y * TS + TS / 2, TS * 0.8, 0.35); gg.globalCompositeOperation = 'source-over'; }
         } else if (kk === TILE.STAIRS && bg32) {
           drawZoneProp(gg, Zn, 'stairs', x * TS, y * TS);
@@ -551,7 +584,12 @@ export function createRenderer(): GameRenderer {
 
       const emissive = () => {
         for (const b of s.bullets) if (!(artReady() && drawShot32(gg, b, TS))) drawBullet(b, TS, t);
-        for (const f of s.fx) if (f.kind === 'death' && artReady()) drawPuff(gg, f.x * TS, f.y * TS + 8, (t - f.t0) / f.life); else if (f.kind !== 'text') drawFx(f, t, TS);
+        for (const f of s.fx) {
+          if (f.kind === 'death' && artReady()) drawPuff(gg, f.x * TS, f.y * TS + 8, (t - f.t0) / f.life);
+          else if (f.kind === 'muzzle' && artReady()) { const tip = muzzleTip(p.x * TS, p.y * TS + p.r * TS * 1.1, s.aim.angle, s.weapon); drawMuzzle32(gg, tip.x, tip.y, s.aim.angle, f.color, (t - f.t0) / f.life); }
+          else if (f.kind === 'text' && isNumberText(f.text)) { const k = (t - f.t0) / f.life; if (k >= 0 && k <= 1) drawNumber32(gg, f.text!, f.color, f.x * TS, f.y * TS, k, !!f.big, Math.round(f.t0 * 1000)); }
+          else if (f.kind !== 'text') drawFx(f, t, TS);
+        }
       };
       if (!bg32) emissive();
       // Orbit blades and target marker use the same native-pixel masks as ordinary shots.
@@ -653,8 +691,9 @@ export function createRenderer(): GameRenderer {
       if(p.hurt<0.3){gg.fillStyle='#f4516133';gg.fillRect(0,0,W,2);gg.fillRect(0,H-2,W,2);gg.fillRect(0,0,2,H);gg.fillRect(W-2,0,2,H);}
       g=output;output.imageSmoothingEnabled=false;
       output.drawImage(worldCanvas,0,0,W*pixelScale,H*pixelScale);
+      lastHero = { x: (p.x * TS - Math.round(cx)) * pixelScale, y: (p.y * TS + p.r * TS * 1.1 - Math.round(cy)) * pixelScale, scale: pixelScale, angle: s.aim.angle };
       output.save();output.translate(-Math.round(cx)*pixelScale,-Math.round(cy)*pixelScale);
-      for(const f of s.fx)if(f.kind==='text')drawFx(f,t,TS*pixelScale);
+      for(const f of s.fx)if(f.kind==='text'&&!(bg32&&isNumberText(f.text)))drawFx(f,t,TS*pixelScale);
       output.font = pixelFont(10 * dpr); output.textAlign = 'center'; output.strokeStyle = '#100d1c';
       for (const label of eliteLabels) {
         strokeText(output, label.text, label.x * pixelScale, label.y * pixelScale);
@@ -676,6 +715,18 @@ export function createRenderer(): GameRenderer {
     },
   };
 
+  function drawDnf(k: number) {
+    const gg = g!, d = dnf!, W = canvas!.width, H = canvas!.height, h = d.hero;
+    gg.imageSmoothingEnabled = false; gg.globalAlpha = 1; gg.drawImage(d.img, 0, 0);
+    gg.fillStyle = '#1a0610'; gg.globalAlpha = Math.min(0.75, k * 0.9); gg.fillRect(0, 0, W, H); gg.globalAlpha = 1;
+    const fr = charFrame('down', Math.min(2, Math.floor(k * 5))), m = anim32('down');
+    if (fr && m) { const sc = h.scale, flip = Math.cos(h.angle) < 0;
+      gg.save(); gg.translate(Math.round(h.x), Math.round(h.y)); if (flip) gg.scale(-1, 1);
+      gg.drawImage(fr, -m.ax * sc, -m.ay * sc, fr.width * sc, fr.height * sc); gg.restore(); }
+    if (k > 0.6) { const a = Math.min(1, (k - 0.6) * 3); gg.globalAlpha = a;
+      pixelText(gg, 'DNF', W / 2, H * 0.34, Math.max(4, Math.round(8 * dpr)), '#ff5a5a', true); gg.globalAlpha = 1; }
+    if (k > DNF_S - 0.45) { gg.fillStyle = '#07060b'; gg.globalAlpha = Math.min(1, (k - (DNF_S - 0.45)) / 0.45); gg.fillRect(0, 0, W, H); gg.globalAlpha = 1; }
+  }
   function drawCamp(c: CampView, W: number, H: number, t: number) {
     const gg = g!, u = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, fs = Math.round(15 * u);
     const compact = W < 700 * dpr;
@@ -684,22 +735,63 @@ export function createRenderer(): GameRenderer {
     if(!worldCanvas)worldCanvas=document.createElement('canvas');
     if(worldCanvas.width!==V.width||worldCanvas.height!==V.height){worldCanvas.width=V.width;worldCanvas.height=V.height;}
     const cg=worldCanvas.getContext('2d')!;cg.imageSmoothingEnabled=false;cg.fillStyle='#15111f';cg.fillRect(0,0,V.width,V.height);
-    const ground=Math.round(UH/scale*.84);
-    const kim=sheetImage('keep'),kfl=zoneRect('keep','floor');
-    if(kim&&kfl)for(let yy=ground;yy<V.height;yy+=kfl[3])for(let xx=0;xx<V.width;xx+=kfl[2])cg.drawImage(kim,kfl[0],kfl[1],kfl[2],kfl[3],xx,yy,kfl[2],kfl[3]);
-    else for(let yy=ground;yy<V.height;yy+=16)for(let xx=0;xx<V.width;xx+=16){cg.fillStyle=hash(xx,yy)>.5?'#302737':'#2a2332';cg.fillRect(xx,yy,15,15);}
-    pixelDisc(cg,V.width/2,UH/scale*.93,32,'#633b3033',.4);pixelDisc(cg,V.width/2,UH/scale*.93,20,'#b86a3633',.4);
-    const fc=flameSprite(t),hx=Math.round(V.width/2-20),hy=Math.round(UH/scale*.95);
-    if(artReady())drawHero32(cg,hx,hy,{angle:Math.PI/2,moving:false,t,stance:'scout',hurt:false,weapon:{base:'pellet'} as WeaponLook,kick:0});
-    else{const hero=sprite2('hero','idle',0,heroPalette(color));cg.drawImage(hero,hx-9,hy-18);}
-    cg.fillStyle='#704830';cg.fillRect(Math.round(V.width/2)-5,hy-2,11,2);cg.drawImage(fc,Math.round(V.width/2)-5,hy-10);
+    // layout first: the fire scene sits in the free band between the upgrade list and the hint line
+    const rowH0=(compact?48:32)*u, maxRows0=Math.max(4,Math.floor((UH*0.72-90*u)/rowH0)), nRows=Math.min(c.rows.length,maxRows0);
+    const menuBot=(90*u+nRows*rowH0+(c.lastDeath?34*u:0))/scale, hintTop=(UH-(compact?46:36)*u)/scale;
+    const fy=Math.round(Math.max(menuBot+28,menuBot+(hintTop-menuBot)*0.62)),hx=Math.round(V.width/2-26),hy=fy,fx=Math.round(V.width/2),ground=fy;
+    const kim=sheetImage('keep'),KR=ATLAS.zones.keep.rects;
+    if(kim&&artReady()){
+      // the camp is a Keep guardroom: flagstones, a back wall with banners and torches, a log fire, and stepped firelight
+      const fl=KR.floor;for(let yy=0;yy<V.height;yy+=fl[3])for(let xx=0;xx<V.width;xx+=fl[2])cg.drawImage(kim,fl[0],fl[1],fl[2],fl[3],xx,yy,fl[2],fl[3]);
+      const wallY=Math.max(0,Math.round(Math.min(ground-60,6*u/scale))),fc=KR.face;
+      cg.fillStyle='#07060b';cg.fillRect(0,0,V.width,wallY);
+      for(let xx=0;xx<V.width;xx+=32){cg.drawImage(kim,fc[0]+(xx%512),fc[1],32,48,xx,wallY,32,48);}
+      cg.fillStyle=ATLAS.zones.keep.ramp[8];cg.fillRect(0,wallY-1,V.width,1);
+      const torchX:number[]=[];for(let xx=48;xx<V.width-16;xx+=128)torchX.push(xx);
+      const tb=KR.torch,ban=KR['hang:banner'];
+      torchX.forEach((xx,i)=>{if(i%2&&ban)cg.drawImage(kim,ban[0],ban[1],ban[2],ban[3],xx+40,wallY+4,ban[2],ban[3]);if(tb)cg.drawImage(kim,tb[0],tb[1],tb[2],tb[3],xx-3,wallY+14,tb[2],tb[3]);});
+      cg.fillStyle='#04020866';cg.fillRect(0,wallY+48,V.width,4);
+      const prop=(n:string,x:number,foot:number)=>{const r=KR['decor:'+n];if(r){cg.fillStyle='#04020888';cg.fillRect(x-(r[2]>>1)+2,foot-2,r[2]-4,3);cg.drawImage(kim,r[0],r[1],r[2],r[3],x-(r[2]>>1),foot-r[3],r[2],r[3]);}};
+      const ro=KR['decal:rosette'];
+      if(ro)cg.drawImage(kim,ro[0],ro[1],ro[2],ro[3],fx-(ro[2]>>1),fy-(ro[3]>>1)-2,ro[2],ro[3]);
+      prop('candelabra',fx-140,fy-14);prop('candelabra',fx+136,fy-12);
+      prop('barrel',fx-86,fy-6);prop('crate',fx-108,fy+4);prop('barrel',fx+90,fy+2);prop('borne',fx+62,fy-8);
+      // log fire: two crossed logs, embers, and the Keep flame strip on top
+      const L=['#2a1810','#46281a','#683c24','#8c5530'];
+      for(let i=-8;i<=8;i++){cg.fillStyle=L[i<-6||i>6?0:i<0?2:1];cg.fillRect(fx+i,fy-2+Math.round(i/4),1,3);cg.fillRect(fx+i,fy-2-Math.round(i/4),1,3);}
+      cg.fillStyle=L[3];cg.fillRect(fx-7,fy-3,3,1);cg.fillRect(fx+4,fy-4,3,1);
+      cg.fillStyle='#ff8a2a';cg.fillRect(fx-3,fy-1,6,1);cg.fillStyle='#ffe08a';cg.fillRect(fx-1,fy-1,2,1);
+      const ff=Math.floor(t*10),flr=KR.flame;if(flr){const fw=Math.floor(flr[2]/4);for(const [ox,k] of [[-5,0],[0,1],[4,2]] as const)cg.drawImage(kim,flr[0]+fw*((ff+k)%4),flr[1],fw,flr[3],fx+ox-(fw>>1),fy-flr[3]-1+(k===1?-3:0),fw,flr[3]);}
+      drawHero32(cg,hx-6,hy,{angle:Math.PI*0.5,moving:false,t,stance:'scout',hurt:false,weapon:{base:'pellet'} as WeaponLook,kick:0});
+      // stepped light: the fire (flickering) and the wall torches over a dim ambient
+      const Wd=V.width,Hd=V.height,flick=1+Math.sin(t*9)*0.04+Math.sin(t*23)*0.03,grid={w:1,h:1,wall:()=>false};
+            const lights=[{x:fx,y:fy-8,r:200*flick,c:[255,170,90] as const,i:1.1},...torchX.map((xx)=>({x:xx,y:wallY+18,r:110*flick,c:[255,176,80] as const,i:0.8})),...[-140,136].map((dx)=>({x:fx+dx,y:fy-24,r:70*flick,c:[255,200,120] as const,i:0.6}))];
+      const BW=Math.ceil(Wd/2),BH=Math.ceil(Hd/2);
+      if(!lightC)lightC=document.createElement('canvas');if(lightC.width!==BW||lightC.height!==BH){lightC.width=BW;lightC.height=BH;lightImg=null;}
+      const lc=lightC.getContext('2d')!;if(!lightImg)lightImg=lc.createImageData(BW,BH);
+      shade({grid,ts:32,rise:16,ox:0,oy:0,W:Wd,H:Hd,amb:[0.3,0.27,0.36],lights},lightImg.data);lc.putImageData(lightImg,0,0);
+      cg.globalCompositeOperation='multiply';cg.imageSmoothingEnabled=false;cg.drawImage(lightC,0,0,BW*2,BH*2);cg.globalCompositeOperation='lighter';cg.globalAlpha=1;
+      if(!campSnap)campSnap=document.createElement('canvas');if(campSnap.width!==Wd||campSnap.height!==Hd){campSnap.width=Wd;campSnap.height=Hd;}
+      const sg=campSnap.getContext('2d')!;sg.clearRect(0,0,Wd,Hd);sg.drawImage(worldCanvas!,0,0);cg.drawImage(campSnap,0,0);cg.globalCompositeOperation='source-over';
+      // a soft vignette keeps the menu readable over the lit room
+      const vg=cg.createRadialGradient(fx,fy,20,fx,fy,Math.max(Wd,Hd)*0.75);vg.addColorStop(0,'rgba(8,6,12,0)');vg.addColorStop(1,'rgba(8,6,12,0.55)');cg.fillStyle=vg;cg.fillRect(0,0,Wd,Hd);
+      if(flr){for(const [ox,k] of [[-5,0],[0,1],[4,2]] as const){const fw=Math.floor(flr[2]/4);cg.drawImage(kim,flr[0]+fw*((ff+k)%4),flr[1],fw,flr[3],fx+ox-(fw>>1),fy-flr[3]-1+(k===1?-3:0),fw,flr[3]);}
+        torchX.forEach((xx,i)=>cg.drawImage(kim,flr[0]+Math.floor(flr[2]/4)*((ff+i)%4),flr[1],Math.floor(flr[2]/4),flr[3],xx-3,wallY+3,Math.floor(flr[2]/4),flr[3]));}
+      const cd=KR['decor:candelabra'];if(cd)for(const dx of [-140,136])for(const [wx,wy] of wicks('keep','candelabra')){const x0=fx+dx-(cd[2]>>1),y0=fy-(dx<0?14:12)-cd[3],k=Math.floor(t*8+wx*3+dx)&3;
+        cg.fillStyle='#ff9a3a';cg.fillRect(x0+wx,y0+wy-2,1,2);cg.fillStyle=k===0?'#ffd84a':'#fff2c0';cg.fillRect(x0+wx,y0+wy-3-(k===3?1:0),1,1);}
+      for(let i=0;i<10;i++){const ph=(t*0.5+i*0.137)%1;cg.fillStyle=i%3?'#ff8a2a':'#ffe08a';cg.globalAlpha=1-ph;cg.fillRect(Math.round(fx+Math.sin(t*2+i*1.7)*6*ph),Math.round(fy-10-ph*60),1,1);}cg.globalAlpha=1;
+    } else {
+      for(let yy=ground;yy<V.height;yy+=16)for(let xx=0;xx<V.width;xx+=16){cg.fillStyle=hash(xx,yy)>.5?'#302737':'#2a2332';cg.fillRect(xx,yy,15,15);}
+      const fc=flameSprite(t);const hero=sprite2('hero','idle',0,heroPalette(color));cg.drawImage(hero,hx-9,hy-18);
+      cg.fillStyle='#704830';cg.fillRect(Math.round(V.width/2)-5,hy-2,11,2);cg.drawImage(fc,Math.round(V.width/2)-5,hy-10);
+    }
     gg.imageSmoothingEnabled=false;gg.drawImage(worldCanvas,0,0,V.width*scale,V.height*scale);
     pixelText(gg,'CAMP',W/2,18*u,Math.max(3,Math.round(4*dpr)),'#ffd84a',true);
     gg.textAlign='center';
     gg.fillStyle = '#ccc'; gg.font = pixelFont(fs);
     fillText(gg, `Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}   ·   Runs ${c.runs}`, W / 2, 70 * u, W - 24 * u);
     if (c.lastDeath) { gg.fillStyle = '#ff8a8a'; gg.font = pixelFont(Math.round(fs * 0.9));
-      fillText(gg, compact ? `Fell on floor ${c.lastDeath.floor}. Coins banked.` : `You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, UH * 0.82, W - 24 * u); }
+      fillText(gg, compact ? `Fell on floor ${c.lastDeath.floor}. Coins banked.` : `You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, 90 * u + nRows * rowH0 + 22 * u, W - 24 * u); }
     const rowH = (compact ? 48 : 32) * u, lw = Math.min(W - 24 * u, 620 * u), lx = W / 2 - lw / 2;
     const maxRows = Math.max(4, Math.floor((UH * 0.72 - 90 * u) / rowH));
     const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));

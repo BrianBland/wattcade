@@ -61,29 +61,54 @@ export interface LightJob {
   lights: Array<Light & { los?: Los }>;   // no los: an open space, nothing occludes
 }
 /** Fill `out` (RGBA, ceil(W/2) x ceil(H/2)) with the stepped light level of each 2x2 block, divided by LIGHT_SCALE. */
+let bits = new Uint8Array(0), accR = new Float32Array(0), accG = new Float32Array(0), accB = new Float32Array(0), surf = new Int32Array(0);
 export function shade(job: LightJob, out: Uint8ClampedArray, stepped = true): void {
   const { grid, ts, rise, ox, oy, W, H, amb, lights } = job;
-  const BW = Math.ceil(W / 2), BH = Math.ceil(H / 2);
-  for (let by = 0; by < BH; by++) for (let bx = 0; bx < BW; bx++) {
-    const wx = ox + bx * 2 + 1, wy = oy + by * 2 + 1, s = surfaceAt(grid, wx, wy, ts, rise);
-    let r = amb[0], g = amb[1], b = amb[2];
-    if (s.top) { r *= 0.8; g *= 0.8; b *= 0.8; }
-    for (const l of lights) {
-      const dx = wx - l.x, dy = (wy - l.y) * 1.25, dd = dx * dx + dy * dy;
-      if (dd > l.r * l.r) continue;
-      let k = 1;
-      if (s.top) k = 0.3; else if (l.los && !losAt(l.los, s.tx, s.ty)) continue;
-      let f = 1 - Math.sqrt(dd) / l.r; f = f * f * 1.6 * k * l.i;
-      r += l.c[0] / 255 * f; g += l.c[1] / 255 * f; b += l.c[2] / 255 * f;
+  const BW = Math.ceil(W / 2), BH = Math.ceil(H / 2), N = BW * BH;
+  if (accR.length < N) { accR = new Float32Array(N); accG = new Float32Array(N); accB = new Float32Array(N); surf = new Int32Array(N * 3); }
+  // pass 1: surface of each block (top-of-wall flag + the tile it shows) and the ambient term
+  // tile wall bits for the view (bit0: wall, bit1: wall below, bit2: wall two below), so pass 1 allocates nothing
+  const tx0 = Math.floor((ox + 1) / ts), ty0 = Math.floor((oy + 1) / ts), TW = Math.floor((ox + W) / ts) - tx0 + 2, TH = Math.floor((oy + H) / ts) - ty0 + 2;
+  if (bits.length < TW * TH) bits = new Uint8Array(TW * TH);
+  for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) { const x = tx0 + i, y = ty0 + j;
+    bits[j * TW + i] = (grid.wall(x, y) ? 1 : 0) | (grid.wall(x, y + 1) ? 2 : 0) | (grid.wall(x, y + 2) ? 4 : 0); }
+  for (let by = 0, n = 0; by < BH; by++) {
+    const py = oy + by * 2 + 1, ty = Math.floor(py / ts), lowFace = py - ty * ts >= ts - rise, row = (ty - ty0) * TW - tx0;
+    for (let bx = 0; bx < BW; bx++, n++) {
+      const tx = Math.floor((ox + bx * 2 + 1) / ts), w = bits[row + tx];
+      let top = 0, sy = ty;
+      if ((w & 3) === 3) { if (lowFace && !(w & 4)) sy = ty + 1; else top = 1; }
+      const m = top ? 0.8 : 1;
+      surf[n * 3] = top; surf[n * 3 + 1] = tx; surf[n * 3 + 2] = sy;
+      accR[n] = amb[0] * m; accG[n] = amb[1] * m; accB[n] = amb[2] * m;
     }
-    const Lm = Math.max(r, g, b, 1e-3);
+  }
+  // pass 2: each light only touches the blocks inside its radius (cost scales with lit area, not lights x screen)
+  for (const l of lights) {
+    const rr = l.r * l.r, cr = l.c[0] / 255, cg = l.c[1] / 255, cb = l.c[2] / 255, ry = l.r / 1.25;
+    const bx0 = Math.max(0, Math.floor((l.x - l.r - ox - 1) / 2)), bx1 = Math.min(BW - 1, Math.ceil((l.x + l.r - ox - 1) / 2));
+    const by0 = Math.max(0, Math.floor((l.y - ry - oy - 1) / 2)), by1 = Math.min(BH - 1, Math.ceil((l.y + ry - oy - 1) / 2));
+    for (let by = by0; by <= by1; by++) {
+      const dy = (oy + by * 2 + 1 - l.y) * 1.25, dy2 = dy * dy; if (dy2 > rr) continue;
+      for (let bx = bx0, n = by * BW + bx0; bx <= bx1; bx++, n++) {
+        const dx = ox + bx * 2 + 1 - l.x, dd = dx * dx + dy2; if (dd > rr) continue;
+        let k = 1;
+        if (surf[n * 3]) k = 0.3; else if (l.los && !losAt(l.los, surf[n * 3 + 1], surf[n * 3 + 2])) continue;
+        let f = 1 - Math.sqrt(dd) / l.r; f = f * f * 1.6 * k * l.i;
+        accR[n] += cr * f; accG[n] += cg * f; accB[n] += cb * f;
+      }
+    }
+  }
+  // pass 3: stepped, dithered quantisation
+  for (let by = 0, n = 0; by < BH; by++) for (let bx = 0; bx < BW; bx++, n++) {
+    const r = accR[n], g = accG[n], b = accB[n], Lm = Math.max(r, g, b, 1e-3);
     let sc = 1;
     if (stepped) {
       const q = Lm / STEP; let base = Math.floor(q); const fr = q - base;
       if (fr > 0.7 && (fr - 0.7) / 0.3 > BAY[(by & 3) * 4 + (bx & 3)]) base++;
       sc = Math.max(1, base) * STEP / Lm;
     }
-    const o = (by * BW + bx) * 4, k = 255 / LIGHT_SCALE * sc;
+    const o = n * 4, k = 255 / LIGHT_SCALE * sc;
     out[o] = r * k; out[o + 1] = g * k; out[o + 2] = b * k; out[o + 3] = 255;
   }
 }

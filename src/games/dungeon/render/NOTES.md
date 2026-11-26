@@ -14,16 +14,16 @@
 - `light32.ts` (pure): ambient per zone + lights falling off (1-d/r)², vertical distance ×1.25, stepped by 0.17 with Bayer
   dither on 2×2 blocks. Walls occlude via grid line of sight; a wall face is lit only by a light at or below its row that
   sees its foot; wall tops get a 30% spill. Buffer holds L/2 and is applied multiply + one additive pass (up to 2×).
-- Static light LOS is cached per light; dynamic lights are the hero, up to 10 friendly shots and muzzle/boom flashes.
-- Emissive layer after lighting: flames, crystal glow, shrine relics, shots, puffs. Fog over unseen rooms on top.
-- `TILE_PX` is 32, so the viewport scale halves and the same number of tiles stay on screen (tests use device pixels).
+- `shade` works per light over its bounding box (cost ∝ lit area). Static LOS cached; ≤24 nearest statics + all dynamic.
+- Emissive layer after lighting: flames, crystal glow, relics, shots, muzzle flashes, pixel damage numbers, stance swap, pool
+  light streaks. Fog over unseen rooms on top. Death plays a DNF beat (falling hero, title) before the camp guardroom.
 - Old 16 px paths (`sprites.ts`, `art.ts`, `weapons.ts` masks) remain as the fallback until the sheets decode.
-- Budget: 1024×768 at DPR 2 holds 60 fps in headless Chromium on floors 1 and 4 (median 16.7 ms frame, p95 ≤ 19 ms).
+- Budget: 1024×768 DPR 2 headless Chromium: median 16.7 ms on floors 1/2/4, p95 ≤ 21 ms. Floor textures tile seamlessly.
 - Room dressing (`world32.ts` `dress`): corner clusters, back-wall furniture, side-wall clutter, a centrepiece per room
   (Keep rosette or carpet, Crypt ledger stones, Catacombs bone mosaic, Deep rune seal or lava fissures) ringed by lit props,
   weighted floor clutter; never within 2 tiles of doors/stairs or on chests/shrines. Lit props and glowing decals add lights.
 - `fx32.ts`: Crypt fog, grit (lit); Deep embers, refracting crystals, crystal floor slabs (`crystalMask`), clipped to open tiles.
-  Keep/Crypt pools mirror nearby actors; pool corners are rounded.
+  Pools: depth-dithered body (`POOL_RAMP`), stone lip, ripples, drip rings; Keep/Crypt mirror actors and lights.
 
 ## Layout and input (unchanged)
 - World camera and simulation remain continuous; drawing snaps to native pixels. Area-based zoom balances portrait/landscape.

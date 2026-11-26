@@ -5,7 +5,7 @@ import math, random
 from PIL import Image
 BAY = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
 
-def compose(im, ramp, floor, nearwall, seed=1, moss=None, grit=None):
+def compose(im, ramp, floor, nearwall, seed=1, moss=None, grit=None, period=None):
     px = im.load(); W, H = im.size; rnd = random.Random(seed)
     idx = {tuple(c[:3]): i for i, c in enumerate(ramp)}
     def step(x, y, d):
@@ -17,7 +17,11 @@ def compose(im, ramp, floor, nearwall, seed=1, moss=None, grit=None):
     for by in range(0, H, 2):
         for bx in range(0, W, 2):
             if not floor(bx, by): continue
-            n = (math.sin(bx / 47 + ph[0]) * math.cos(by / 39 + ph[1]) + .6 * math.sin((bx + by) / 29 + ph[2]) + .35 * math.sin(bx / 13 - by / 17 + ph[3])) / 1.95
+            if period:   # same look, but whole cycles per tile so a repeating texture has no seam
+                q = 2 * math.pi / period
+                n = (math.sin(bx * q * 2 + ph[0]) * math.cos(by * q * 2 + ph[1]) + .6 * math.sin((bx + by) * q * 3 + ph[2]) + .35 * math.sin(bx * q * 6 - by * q * 5 + ph[3])) / 1.95
+            else:
+                n = (math.sin(bx / 47 + ph[0]) * math.cos(by / 39 + ph[1]) + .6 * math.sin((bx + by) / 29 + ph[2]) + .35 * math.sin(bx / 13 - by / 17 + ph[3])) / 1.95
             th = BAY[((by >> 1) & 3) * 4 + ((bx >> 1) & 3)] / 16
             d = 0
             if n > .42 and (n - .42) / .14 > th: d = 1

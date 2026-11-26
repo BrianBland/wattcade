@@ -89,28 +89,29 @@ def floor_deep(w, hg, seed=6, crystal=False):
     crystal=True turns clusters of cells into flat crystal slabs (facets, cracks, bright lip) and also returns
     a mask of their glassy interiors for the renderer to refract through."""
     im = Image.new('RGBA', (w, hg)); px = im.load(); rnd = random.Random(seed)
-    S = 19; seeds = {}
-    for gy in range(-1, hg // S + 2):
-        for gx in range(-1, w // S + 2):
-            seeds[(gx, gy)] = (gx * S + rnd.uniform(2, S - 2), gy * S + rnd.uniform(2, S - 2), rnd.choice([(3, 4, 2), (3, 4, 2), (4, 5, 3), (3, 5, 2)]))
-    cell = [[None] * w for _ in range(hg)]
+    S = 19; nx, ny = max(1, round(w / S)), max(1, round(hg / S)); Sx, Sy = w / nx, hg / ny; seeds = {}
+    for gy in range(ny):          # periodic Voronoi: the texture tiles without a seam
+        for gx in range(nx):
+            seeds[(gx, gy)] = (gx * Sx + rnd.uniform(2, Sx - 2), gy * Sy + rnd.uniform(2, Sy - 2), rnd.choice([(3, 4, 2), (3, 4, 2), (4, 5, 3), (3, 5, 2)]))
+    cell = [[None] * w for _ in range(hg)]; cpos = [[None] * w for _ in range(hg)]
     for y in range(hg):
         for x in range(w):
-            gx, gy = x // S, y // S; best = None
+            gx, gy = int(x / Sx), int(y / Sy); best = None
             for dy in (-1, 0, 1):
                 for dx in (-1, 0, 1):
-                    sx, sy, t = seeds[(gx + dx, gy + dy)]; d = (x - sx) ** 2 + ((y - sy) * 1.3) ** 2
-                    if best is None or d < best[0]: best = (d, (gx + dx, gy + dy))
-            cell[y][x] = best[1]
+                    i, j = gx + dx, gy + dy; key = (i % nx, j % ny); bx, by, t = seeds[key]
+                    sx, sy = bx + (i // nx) * w, by + (j // ny) * hg; d = (x - sx) ** 2 + ((y - sy) * 1.3) ** 2
+                    if best is None or d < best[0]: best = (d, key, (sx, sy))
+            cell[y][x] = best[1]; cpos[y][x] = best[2]
     for y in range(hg):
         for x in range(w):
             k = cell[y][x]; t = seeds[k][2]
-            up = cell[y - 1][x] if y else k; lf = cell[y][x - 1] if x else k
-            dn = cell[y + 1][x] if y + 1 < hg else k; rt = cell[y][x + 1] if x + 1 < w else k
+            up = cell[y - 1][x]; lf = cell[y][x - 1]
+            dn = cell[(y + 1) % hg][x]; rt = cell[y][(x + 1) % w]
             c = t[0]
             if dn != k or rt != k: c = 1 if (x * 7 + y * 3) % 5 == 0 else 2
             elif up != k or lf != k: c = t[1]
-            elif (y + 2 < hg and cell[y + 2][x] != k) or (x + 2 < w and cell[y][x + 2] != k): c = t[2]
+            elif cell[(y + 2) % hg][x] != k or cell[y][(x + 2) % w] != k: c = t[2]
             px[x, y] = C(c)
     mask = None
     if crystal:
@@ -129,11 +130,11 @@ def floor_deep(w, hg, seed=6, crystal=False):
             for x in range(w):
                 k = cell[y][x]
                 if k not in glass: continue
-                up = cell[y - 1][x] if y else k; lf = cell[y][x - 1] if x else k
-                dn = cell[y + 1][x] if y + 1 < hg else k; rt = cell[y][x + 1] if x + 1 < w else k
+                up = cell[y - 1][x]; lf = cell[y][x - 1]
+                dn = cell[(y + 1) % hg][x]; rt = cell[y][(x + 1) % w]
                 if dn != k or rt != k: px[x, y] = V[0]; continue                    # dark seam
                 if up != k or lf != k: px[x, y] = V[3] if (x + y) % 4 else V[4]; continue   # bright lip
-                sx, sy, _ = seeds[k]; a0, n = facets[k]
+                sx, sy = cpos[y][x]; a0, n = facets[k]
                 ang = (math.atan2((y - sy) * 1.3, x - sx) - a0) % (2 * math.pi); sec = int(ang / (2 * math.pi / n))
                 edge = abs(((ang + 1e-6) % (2 * math.pi / n)) - 0) < .09 and (x - sx) ** 2 + (y - sy) ** 2 > 4
                 D = hexc('#3e1c70')

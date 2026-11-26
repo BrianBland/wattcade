@@ -141,3 +141,55 @@ export function drawNumber32(g: CanvasRenderingContext2D, text: string, color: s
   g.drawImage(c, Math.round(x - c.width / 2 + dx + shake), Math.round(y - rise * (big ? 18 : 13) - c.height));
   g.globalAlpha = 1;
 }
+
+/** Lights mirrored in still water: a broken column of wobbling dashes below each light, on pool pixels only. Emissive ('lighter'). */
+export function drawPoolLights(g: CanvasRenderingContext2D, tiles: Array<{ x: number; y: number }>, isSwamp: (x: number, y: number) => boolean,
+  lights: ReadonlyArray<{ x: number; y: number; r: number; c: readonly [number, number, number] }>, t: number, ts = 32) {
+  if (!tiles.length || !lights.length) return;
+  g.save(); g.globalCompositeOperation = 'lighter';
+  for (const l of lights) {
+    const lx = Math.round(l.x), reach = l.r * 1.1;
+    for (const q of tiles) {
+      const px = q.x * ts, py = q.y * ts; if (lx < px - 10 || lx > px + ts + 10) continue;
+      const top = py + (isSwamp(q.x, q.y - 1) ? 0 : 6), bot = py + ts - (isSwamp(q.x, q.y + 1) ? 0 : 3);
+      const x0 = px + (isSwamp(q.x - 1, q.y) ? 0 : 2), x1 = px + ts - (isSwamp(q.x + 1, q.y) ? 0 : 2);
+      for (let y = top + ((top - Math.round(l.y)) & 1); y < bot; y += 2) {
+        const d = y - l.y; if (d < 4 || d > reach) continue;
+        const k = 1 - d / reach, w = Math.max(1, Math.round((2 + 4 * k) * (0.7 + 0.3 * Math.sin(t * 5 + y * 0.9)))), cx = lx + Math.round(Math.sin(t * 2.3 + y * 0.45) * (1 + d * 0.04));
+        if ((Math.floor(t * 6 + y * 0.37) % 5) === 0) continue; // broken column
+        const a = Math.max(x0, cx - (w >> 1)), b = Math.min(x1, cx - (w >> 1) + w); if (b <= a) continue;
+        g.globalAlpha = 0.75 * k * k; g.fillStyle = `rgb(${l.c[0]},${l.c[1]},${l.c[2]})`; g.fillRect(a, y, b - a, 1);
+        if (k > 0.6 && w > 3) { g.fillStyle = '#fff4dc'; g.globalAlpha = 0.35 * k; g.fillRect(cx, y, 1, 1); }
+      }
+    }
+  }
+  g.restore();
+}
+
+/** Stance swap (emissive, world px, x/y = hero's feet): the old colour snaps inward, a stepped ring of the new colour
+ *  bursts out along the floor, a light pillar rises through the hero, and pixel sparks shed outward. k: 0→1 over ~0.5 s. */
+export function drawStanceSwap(g: CanvasRenderingContext2D, x: number, y: number, k: number, color: string, from: string, t: number) {
+  const X = Math.round(x), Y = Math.round(y), e = 1 - (1 - k) ** 3;
+  g.save();
+  // old colour collapses in the first fifth
+  if (k < 0.22) { const r = Math.round(18 * (1 - k / 0.22)) + 2; g.fillStyle = from; g.globalAlpha = 0.8; stepRing(g, X, Y - 10, r, r, 1); }
+  // light pillar
+  const ph = Math.round(44 * Math.min(1, k * 3)), pw = Math.max(1, Math.round(10 * (1 - k)));
+  g.globalCompositeOperation = 'lighter';
+  g.globalAlpha = 0.55 * (1 - k); g.fillStyle = color; g.fillRect(X - pw, Y - ph, pw * 2, ph);
+  g.globalAlpha = 0.7 * (1 - k); g.fillStyle = '#ffffff'; g.fillRect(X - (pw >> 1), Y - ph, Math.max(1, pw), ph);
+  // floor ring (flattened for the 3/4 view), two steps thick, plus a fainter echo
+  g.globalAlpha = 0.95 * (1 - k); g.fillStyle = color; stepRing(g, X, Y - 1, 4 + e * 26, (4 + e * 26) * 0.45, 2);
+  g.globalAlpha = 0.5 * (1 - k); stepRing(g, X, Y - 1, 2 + e * 16, (2 + e * 16) * 0.45, 1);
+  // sparks
+  g.fillStyle = '#ffffff';
+  for (let i = 0; i < 12; i++) {
+    const a = i / 12 * Math.PI * 2 + 0.3, d = 6 + e * (18 + (i % 3) * 6), sx = X + Math.round(Math.cos(a) * d), sy = Y - 12 + Math.round(Math.sin(a) * d * 0.7) - Math.round(k * 10);
+    g.globalAlpha = (1 - k) * (i % 2 ? 1 : 0.7); g.fillStyle = i % 3 ? color : '#ffffff'; g.fillRect(sx, sy, k < 0.5 ? 2 : 1, k < 0.5 ? 2 : 1);
+  }
+  void t; g.restore();
+}
+function stepRing(g: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number, th: number) {
+  const n = Math.max(16, Math.round(rx * 1.6));
+  for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; g.fillRect(Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry), th, th); }
+}

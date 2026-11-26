@@ -68,7 +68,7 @@ def zone_sheet(z):
         fl, cmask = zones.floor_deep(TEX, TEX, crystal=True); face = zones.wall_deep(TEX)
         door_open, door_locked = zones.door_deep('open')[0], zones.door_deep('locked')[0]
     every = lambda x, y: 0 <= x < TEX and 0 <= y < TEX
-    compose.compose(fl, ramp, every, lambda x, y: 99, seed=len(z) * 7)
+    compose.compose(fl, ramp, every, lambda x, y: 99, seed=len(z) * 7, period=TEX)
     idx = {c[:3]: i for i, c in enumerate(ramp)}
     dark = fl.copy(); dp = dark.load()
     for y in range(TEX):

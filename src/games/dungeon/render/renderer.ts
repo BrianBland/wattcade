@@ -13,7 +13,7 @@ import { pixelPanel, pixelMeter, pixelText } from './chrome';
 import { fillText, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
 import { drawFlagstone, drawMarsh } from './terrain';
 import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut, charFrame, anim as anim32 } from './art32';
-import { drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
+import { drawStanceSwap, drawPoolLights, drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
 import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
 import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
@@ -162,6 +162,8 @@ export function createRenderer(): GameRenderer {
   let pixelScale = 1;
   // the DNF beat: when a run ends, the last frame freezes, the hero crumples (3-frame fall) and the screen fades before camp
   type HeroPin = { x: number; y: number; scale: number; angle: number };
+  let hideHero = false, lastRun: { s: DungeonSnapshot; bike: Readonly<BikeState>; input: Readonly<InputState> } | null = null;
+  let swapFx: { t0: number; c: string; from: string } | null = null, lastStance = '';
   let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
   let lightC: HTMLCanvasElement | null = null;
   let campSnap: HTMLCanvasElement | null = null;
@@ -354,10 +356,14 @@ export function createRenderer(): GameRenderer {
       if (lastCue < 0) lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
       for (const c of s.cues) if (c.id > lastCue) { lastCue = c.id; play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] }); }
       if (prevPhase === 'run' && s.phase === 'camp' && s.camp?.lastDeath && lastHero && artReady()) {
+        // re-draw the last run frame without the standing hero, so only the falling one shows
+        if (lastRun) { hideHero = true; this.render(lastRun.s, lastRun.bike, lastRun.input); hideHero = false; }
         const img = document.createElement('canvas'); img.width = canvas.width; img.height = canvas.height; img.getContext('2d')!.drawImage(canvas, 0, 0);
         dnf = { t0: s.t, img, hero: lastHero };
       }
-      prevPhase = s.phase;
+      prevPhase = s.phase; if (s.phase === 'run') lastRun = { s, bike, input }; else if (!dnf) lastRun = null;
+      if (s.phase === 'run' && lastStance && s.stance.id !== lastStance) swapFx = { t0: s.t, c: s.stance.color, from: s.stance.list.find((x) => x.id === lastStance)?.color ?? '#ffffff' };
+      lastStance = s.phase === 'run' ? s.stance.id : '';
       if (s.phase !== 'camp') dnf = null;
       if (dnf && s.phase === 'camp' && s.t - dnf.t0 < DNF_S) { drawDnf(s.t - dnf.t0); return; }
       if (s.phase === 'camp' && s.camp) { actionHits = []; clearPinch(); drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
@@ -405,7 +411,7 @@ export function createRenderer(): GameRenderer {
         } };
       const isSwamp = (x: number, y: number) => x >= 0 && y >= 0 && x < w.w && y < w.h && w.tiles[y * w.w + x] === TILE.SWAMP;
       const inView = (q: { x: number; y: number }, m = 1) => q.x >= Math.floor(cx / TS) - m && q.x <= Math.ceil((cx + W) / TS) + m && q.y >= Math.floor(cy / TS) - m && q.y <= Math.ceil((cy + H) / TS) + m;
-      if (bg32 && info) { const vis = info.swamp.filter((q) => inView(q, 0)); if (Zn === 'deep') drawLava(gg, vis, isSwamp, t); else drawPoolGlints(gg, Zn, vis, t); }
+      if (bg32 && info) { const vis = info.swamp.filter((q) => inView(q, 0)); if (Zn === 'deep') drawLava(gg, vis, isSwamp, t); else drawPoolGlints(gg, Zn, vis, t, isSwamp); }
       if (bg32 && info && (Zn === 'keep' || Zn === 'crypt')) { // still water mirrors whoever stands at its edge (clipped to the pool, rippled)
         const vis = info.swamp.filter((q) => inView(q, 1));
         const near = (x: number, y: number) => vis.some((q) => Math.abs(q.x + 0.5 - x) < 2.2 && q.y + 0.5 - y > -0.5 && q.y + 0.5 - y < 3.5);
@@ -540,7 +546,7 @@ export function createRenderer(): GameRenderer {
       type A = { y: number; d: () => void };
       eliteLabels.length = 0;
       const actors: A[] = s.enemies.map((e) => ({ y: e.y, d: () => drawEnemy(e, TS, t) }));
-      actors.push({ y: p.y, d: () => {
+      actors.push({ y: p.y, d: () => { if (hideHero) return;
         const px = p.x * TS, py = p.y * TS + p.r * TS * 1.1, face = Math.cos(s.aim.angle) >= 0 ? 1 : -1;
         const bob = p.moving ? -Math.abs(Math.sin(t * 10)) * TS * 0.07 : 0;
         shadow(px, py, TS * 0.32);
@@ -583,6 +589,7 @@ export function createRenderer(): GameRenderer {
       }
 
       const emissive = () => {
+        if (swapFx) { const k = (t - swapFx.t0) / 0.5; if (k < 0 || k > 1) swapFx = null; else drawStanceSwap(gg, p.x * TS, p.y * TS + p.r * TS * 1.1, k, swapFx.c, swapFx.from, t); }
         for (const b of s.bullets) if (!(artReady() && drawShot32(gg, b, TS))) drawBullet(b, TS, t);
         for (const f of s.fx) {
           if (f.kind === 'death' && artReady()) drawPuff(gg, f.x * TS, f.y * TS + 8, (t - f.t0) / f.life);
@@ -645,6 +652,7 @@ export function createRenderer(): GameRenderer {
         for (let i = 1; i < LIGHT_SCALE; i++) { gg.globalCompositeOperation = 'lighter'; gg.drawImage(litC, 0, 0); gg.globalCompositeOperation = 'source-over'; }
         gg.restore(); gg.save(); gg.translate(-ox, -oy);
         // emissive layer: flames, glowing props, shots, bursts
+        if (Zn === 'keep' || Zn === 'crypt') drawPoolLights(gg, info.swamp.filter((q) => inView(q, 0)), isSwamp, L.filter((l) => statics.has(l)), t, TS);
         const fi = Math.floor(t * 10), fr = Zr.rects.flame;
         if (Zn !== 'deep' && fr) {
           for (const q of info.torches) if (inView(q)) drawZoneProp(gg, Zn, 'flame', q.x * TS + 13, q.y * TS - 10, fi + q.x, 4);
@@ -724,7 +732,9 @@ export function createRenderer(): GameRenderer {
       gg.save(); gg.translate(Math.round(h.x), Math.round(h.y)); if (flip) gg.scale(-1, 1);
       gg.drawImage(fr, -m.ax * sc, -m.ay * sc, fr.width * sc, fr.height * sc); gg.restore(); }
     if (k > 0.6) { const a = Math.min(1, (k - 0.6) * 3); gg.globalAlpha = a;
-      pixelText(gg, 'DNF', W / 2, H * 0.34, Math.max(4, Math.round(8 * dpr)), '#ff5a5a', true); gg.globalAlpha = 1; }
+      const ty = Math.max(24 * dpr, Math.min(H * 0.34, h.y - 34 * h.scale - 70 * dpr));
+      pixelText(gg, 'DNF', W / 2, ty, Math.max(4, Math.round(8 * dpr)), '#ff5a5a', true);
+      gg.globalAlpha = a * 0.85; pixelText(gg, 'DID NOT FINISH', W / 2, ty + 52 * dpr, Math.max(1, Math.round(2 * dpr)), '#ffb0b0', true); gg.globalAlpha = 1; }
     if (k > DNF_S - 0.45) { gg.fillStyle = '#07060b'; gg.globalAlpha = Math.min(1, (k - (DNF_S - 0.45)) / 0.45); gg.fillRect(0, 0, W, H); gg.globalAlpha = 1; }
   }
   function drawCamp(c: CampView, W: number, H: number, t: number) {
@@ -854,12 +864,12 @@ export function createRenderer(): GameRenderer {
       fillText(gg, `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
       pixelMeter(gg,x,y+13*hu,PW,3*hu,p.xp/p.xpNext,'#b58ad9',dpr);
       const ly = y + 28 * hu; gg.font = pixelFont(Math.round(10 * hu));
-      gg.fillStyle = '#fff'; fillText(gg, `Lv${p.level} F${s.floor}`, x, ly);
+      gg.fillStyle = '#fff'; const lvTxt = `Lv${p.level} F${s.floor}`; fillText(gg, lvTxt, x, ly); const coinX = Math.max(x + 44 * hu, x + textW(gg, lvTxt) + 6 * hu);
       const cp = Math.max(0, 1 - (s.t - coinPulseT) / 0.25);
       if (cp > 0) { gg.save(); gg.font = pixelFont(Math.round(10 * hu * (1 + 0.35 * cp))); }
-      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillText(gg, `● ${p.coins}`, x + 44 * hu, ly);
+      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillText(gg, `● ${p.coins}`, coinX, ly);
       if (cp > 0) gg.restore();
-      const tx = x + 47 * hu, ty = ly - 3.5 * hu;
+      const tx = coinX + 3 * hu, ty = ly - 3.5 * hu;
       for (let i = flyers.length - 1; i >= 0; i--) {
         const f = flyers[i], k = (s.t - f.t0) / 0.45;
         if (k >= 1 || k < 0) { flyers.splice(i, 1); if (k >= 1) coinPulseT = s.t; continue; }

@@ -276,15 +276,34 @@ export function buildBackground32(w: World, info: FloorInfo): FloorBg32 | null {
   };
 }
 
-/** Static base of a pool tile: water (Keep, Crypt), mud (Catacombs), or cooled crust under live lava (Deep). */
+/** Pool body ramps, deep → shallow → lip highlight: Keep slate water, Crypt teal ghost-water, Catacombs mud, Deep cooled crust. */
+export const POOL_RAMP: Record<ZoneId, string[]> = {
+  keep: ['#0b1628', '#10203a', '#16304e', '#24507a', '#5e8fc0'],
+  crypt: ['#071a1c', '#0a2826', '#0f3a36', '#1c5e57', '#58b0a2'],
+  catacombs: ['#140c07', '#1c120c', '#2e1f14', '#46301e', '#6e5440'],
+  deep: ['#120402', '#1a0604', '#3a1008', '#5a1a0a', '#7a2a10'],
+};
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** Static base of a pool tile: depth-shaded body (dithered steps from the bank in), a dark stone lip, lit coping on the far bank. */
 function drawPoolBase(g: CanvasRenderingContext2D, zone: ZoneId, ramp: string[], x: number, y: number, sw: (dx: number, dy: number) => boolean, floor: (dx: number, dy: number, w: number, h: number) => void) {
-  const px = x * T32, py = y * T32;
-  const body = zone === 'catacombs' ? ['#1c120c', '#2e1f14', '#46301e', '#5e4430'] : zone === 'deep' ? ['#1a0604', '#3a1008', '#5a1a0a', '#7a2a10'] : ['#121a2a', '#1e3048', '#36557a', '#6a93b8'];
-  g.fillStyle = body[1]; g.fillRect(px, py, T32, T32);
-  if (!sw(0, -1)) { g.fillStyle = ramp[3]; g.fillRect(px, py, T32, 1); g.fillStyle = ramp[2]; g.fillRect(px, py + 1, T32, 2); g.fillStyle = body[0]; g.fillRect(px, py + 3, T32, 2); }
-  if (!sw(-1, 0)) { g.fillStyle = body[2]; g.fillRect(px, py, 1, T32); }
-  if (!sw(1, 0)) { g.fillStyle = body[0]; g.fillRect(px + 31, py, 1, T32); }
-  if (!sw(0, 1)) { g.fillStyle = ramp[6]; g.fillRect(px, py + 31, T32, 1); }
+  const px = x * T32, py = y * T32, P = POOL_RAMP[zone];
+  const N = !sw(0, -1), S = !sw(0, 1), Wn = !sw(-1, 0), E = !sw(1, 0);
+  const cNW = !N && !Wn && !sw(-1, -1), cNE = !N && !E && !sw(1, -1), cSW = !S && !Wn && !sw(-1, 1), cSE = !S && !E && !sw(1, 1);
+  // distance (px) to the nearest bank; the top bank counts double (the far side reads as a shelf going down)
+  for (let yy = 0; yy < T32; yy++) for (let xx = 0; xx < T32; xx++) {
+    let d = 99;
+    if (N) d = Math.min(d, yy * 0.6); if (S) d = Math.min(d, 31 - yy); if (Wn) d = Math.min(d, xx); if (E) d = Math.min(d, 31 - xx);
+    if (cNW) d = Math.min(d, Math.hypot(xx, yy)); if (cNE) d = Math.min(d, Math.hypot(31 - xx, yy));
+    if (cSW) d = Math.min(d, Math.hypot(xx, 31 - yy)); if (cSE) d = Math.min(d, Math.hypot(31 - xx, 31 - yy));
+    const v = Math.min(3, d / 4.5) + (BAYER4[(yy & 3) * 4 + (xx & 3)] / 16 - 0.5) * 0.9;
+    const k = v < 0.3 ? 3 : v < 1.3 ? 2 : v < 2.5 ? 1 : 0;
+    g.fillStyle = P[k]; g.fillRect(px + xx, py + yy, 1, 1);
+  }
+  // far bank: lit coping, a dark lip, then the wet shelf; side and near banks get a dark 1 px lip
+  if (N) { g.fillStyle = ramp[3]; g.fillRect(px, py, T32, 1); g.fillStyle = ramp[2]; g.fillRect(px, py + 1, T32, 2); g.fillStyle = '#07060b'; g.fillRect(px, py + 3, T32, 1); g.fillStyle = P[4]; g.globalAlpha = 0.5; g.fillRect(px, py + 4, T32, 1); g.globalAlpha = 1; }
+  if (Wn) { g.fillStyle = '#07060b'; g.fillRect(px, py, 1, T32); }
+  if (E) { g.fillStyle = '#07060b'; g.fillRect(px + 31, py, 1, T32); }
+  if (S) { g.fillStyle = P[3]; g.fillRect(px, py + 30, T32, 1); g.fillStyle = ramp[6]; g.fillRect(px, py + 31, T32, 1); }
   // round the outer corners: the floor comes back in a stepped quarter circle, with the bank colour along its edge
   const ROUND = [7, 5, 3, 2, 1, 1];
   for (const [cxs, cys] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
@@ -292,12 +311,12 @@ function drawPoolBase(g: CanvasRenderingContext2D, zone: ZoneId, ramp: string[],
     ROUND.forEach((n, i) => {
       const yy = cys < 0 ? i : 31 - i, xx = cxs < 0 ? 0 : 32 - n;
       floor(xx, yy, n, 1);
-      g.fillStyle = cys < 0 ? ramp[3] : ramp[6]; g.fillRect(px + (cxs < 0 ? n : 31 - n), py + yy, 1, 1);
+      g.fillStyle = cys < 0 ? (i < 3 ? ramp[3] : '#07060b') : ramp[6]; g.fillRect(px + (cxs < 0 ? n : 31 - n), py + yy, 1, 1);
     });
   }
-  if (zone !== 'deep') for (let i = 0; i < 3; i++) { // still highlights on the surface
-    const hx = Math.floor(hash(x * 5 + i, y * 3) * 24), hy = 6 + Math.floor(hash(x, y * 7 + i) * 22), ln = 3 + Math.floor(hash(x + i, y) * 6);
-    g.fillStyle = body[2]; g.fillRect(px + hx, py + hy, ln, 1);
+  if (zone === 'catacombs') for (let i = 0; i < 4; i++) { // mud: lumps and a scum skin
+    const hx = Math.floor(hash(x * 5 + i, y * 3) * 26) + 2, hy = 7 + Math.floor(hash(x, y * 7 + i) * 20);
+    g.fillStyle = P[3]; g.fillRect(px + hx, py + hy, 3, 1); g.fillStyle = P[0]; g.fillRect(px + hx, py + hy + 1, 3, 1);
   }
 }
 
@@ -337,13 +356,38 @@ export function drawLava(g: CanvasRenderingContext2D, tiles: Array<{ x: number; 
   }
 }
 const hashF = (x: number, y: number) => hash(x * 31 + 7, y * 17 + 3);
-/** Moving glints on water and mud. */
-export function drawPoolGlints(g: CanvasRenderingContext2D, zone: ZoneId, tiles: Array<{ x: number; y: number }>, t: number) {
+/** Live water: drifting ripple bands, glints, and drip rings now and then; mud just heaves slowly. Call before lighting. */
+export function drawPoolGlints(g: CanvasRenderingContext2D, zone: ZoneId, tiles: Array<{ x: number; y: number }>, t: number, isSwamp?: (x: number, y: number) => boolean) {
   if (zone === 'deep') return;
-  g.fillStyle = zone === 'catacombs' ? '#6e5440' : '#9ac4e8';
-  for (const q of tiles) for (let i = 0; i < 2; i++) {
-    const ph = (t * 0.4 + hashF(q.x + i, q.y)) % 1; if (ph > 0.5) continue;
-    const x = q.x * T32 + 4 + Math.floor(hashF(q.x, q.y + i) * 22) + Math.round(Math.sin(t * 2 + i) * 1), y = q.y * T32 + 8 + Math.floor(hashF(q.x * 2 + i, q.y) * 20);
-    g.fillRect(x, y, ph < 0.25 ? 4 : 2, 1);
+  const P = POOL_RAMP[zone], mud = zone === 'catacombs';
+  for (const q of tiles) {
+    const px = q.x * T32, py = q.y * T32, top = isSwamp && !isSwamp(q.x, q.y - 1) ? 6 : 0, bot = isSwamp && !isSwamp(q.x, q.y + 1) ? 3 : 0;
+    const lft = isSwamp && !isSwamp(q.x - 1, q.y) ? 2 : 0, rgt = isSwamp && !isSwamp(q.x + 1, q.y) ? 2 : 0;
+    // ripple bands: short highlight dashes that slide sideways on a slow swell (world-space phase, so tiles join up)
+    g.fillStyle = P[mud ? 3 : 4];
+    for (let yy = top + 3; yy < T32 - bot - 1; yy += 5) {
+      const wy = py + yy, sp = mud ? 0.6 : 3.2, ph = Math.sin(wy * 0.21 + t * (mud ? 0.4 : 1.1)) * 6 + t * sp * (((wy >> 2) & 1) ? 1 : -1);
+      for (let xx = lft; xx < T32 - rgt; xx++) {
+        const wx = px + xx, v = Math.sin((wx + ph) * 0.35) + Math.sin((wx - ph * 0.7) * 0.13 + wy);
+        if (v > 1.55) { g.globalAlpha = mud ? 0.35 : v > 1.8 ? 0.55 : 0.3; g.fillRect(wx, wy + (v > 1.8 ? 0 : 1), 1, 1); }
+      }
+    }
+    g.globalAlpha = 1;
+    if (mud) { const b = (t * 0.25 + hashF(q.x, q.y)) % 1; if (b < 0.15) { const bx = px + 6 + Math.floor(hashF(q.x * 3, q.y) * 20), by = py + 10 + Math.floor(hashF(q.x, q.y * 3) * 14); g.fillStyle = P[3]; g.fillRect(bx, by - (b < 0.07 ? 1 : 0), 2, 1); } continue; }
+    // glints
+    g.fillStyle = '#e8f4ff';
+    for (let i = 0; i < 2; i++) {
+      const ph = (t * 0.5 + hashF(q.x + i, q.y)) % 1; if (ph > 0.3) continue;
+      const x = px + 4 + Math.floor(hashF(q.x, q.y + i) * 22) + Math.round(Math.sin(t * 2 + i)), y = py + top + 4 + Math.floor(hashF(q.x * 2 + i, q.y) * (22 - top));
+      g.fillRect(x, y, ph < 0.15 ? 3 : 1, 1);
+    }
+    // drip rings: a stepped ellipse that grows and fades
+    const cyc = 4.5, r = ((t + hashF(q.x * 7, q.y * 5) * cyc) % cyc) / 1.2;
+    if (r < 1 && hashF(q.x, q.y * 11) < 0.35) {
+      const cx0 = px + 8 + Math.floor(hashF(q.x * 9, q.y) * 16), cy0 = py + top + 8 + Math.floor(hashF(q.x, q.y * 9) * Math.max(1, 16 - top)), R = 1 + r * 9;
+      g.fillStyle = P[4]; g.globalAlpha = 0.7 * (1 - r);
+      for (let a = 0; a < 20; a++) { const an = a / 20 * Math.PI * 2; g.fillRect(Math.round(cx0 + Math.cos(an) * R), Math.round(cy0 + Math.sin(an) * R * 0.45), 1, 1); }
+      g.globalAlpha = 1;
+    }
   }
 }

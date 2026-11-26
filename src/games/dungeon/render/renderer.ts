@@ -12,9 +12,10 @@ import { drawProjectile, drawPixelFx, flameSprite } from './effects';
 import { pixelPanel, pixelMeter, pixelText } from './chrome';
 import { fillText, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
 import { drawFlagstone, drawMarsh } from './terrain';
-import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect } from './art32';
-import { buildBackground32, floorInfo, drawLava, drawPoolGlints, type FloorBg32, type FloorInfo } from './world32';
-import { drawItem32, drawHero32, drawEnemy32, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
+import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut } from './art32';
+import { drawFog, drawGrit, drawEmbers, drawRefracting } from './fx32';
+import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
+import { wicks, drawItem32, drawHero32, drawEnemy32, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
 
@@ -150,8 +151,8 @@ export function createRenderer(): GameRenderer {
   let litC: HTMLCanvasElement | null = null, lightImg: ImageData | null = null;
   /** zone light colours: wall torches, PILLAR light props, pools (lava only) */
   const ZL: Record<string, { torch: [number, number, number]; prop: [number, number, number]; amb: [number, number, number] }> = {
-    keep: { torch: [255, 170, 90], prop: [255, 160, 80], amb: [0.58, 0.55, 0.68] }, crypt: { torch: [90, 230, 210], prop: [90, 230, 210], amb: [0.5, 0.54, 0.68] },
-    catacombs: { torch: [255, 190, 110], prop: [255, 190, 110], amb: [0.56, 0.5, 0.48] }, deep: { torch: [170, 110, 255], prop: [170, 110, 255], amb: [0.4, 0.37, 0.48] } };
+    keep: { torch: [255, 170, 90], prop: [255, 160, 80], amb: [0.58, 0.55, 0.68] }, crypt: { torch: [90, 230, 210], prop: [90, 230, 210], amb: [0.55, 0.6, 0.74] },
+    catacombs: { torch: [255, 190, 110], prop: [255, 190, 110], amb: [0.56, 0.5, 0.48] }, deep: { torch: [170, 110, 255], prop: [170, 110, 255], amb: [0.47, 0.43, 0.56] } };
   let mini: HTMLCanvasElement | null = null;
   let pillars: Array<{ x: number; y: number }> = [];
   let worldCanvas: HTMLCanvasElement | null = null;
@@ -378,9 +379,33 @@ export function createRenderer(): GameRenderer {
       const Zn = info?.zone ?? 'keep', Zr = ATLAS.zones[Zn];
       if (bg32) { bg32.draw(gg, Math.max(0, cx), Math.max(0, cy), W, H); bg32.prefill(3, cx + W / 2, cy + H / 2); }
       else { if (sw > 0 && sh > 0) bg!.draw(gg, sx, sy, sw, sh, k); bg!.prefill(3, sx + sw / 2, sy + sh / 2); }
+      // a path over the visible open (non-wall) tiles: atmosphere stays inside rooms and corridors, never over solid rock
+      const openFloorClip = () => { gg.beginPath();
+        for (let ty = Math.max(0, Math.floor(cy / TS)); ty <= Math.min(w.h - 1, Math.floor((cy + H) / TS)); ty++) {
+          let run = -1;
+          for (let tx = Math.max(0, Math.floor(cx / TS)); tx <= Math.min(w.w, Math.floor((cx + W) / TS) + 1); tx++) {
+            const open = tx < w.w && w.tiles[ty * w.w + tx] !== TILE.WALL;
+            if (open && run < 0) run = tx; else if (!open && run >= 0) { gg.rect(run * TS, ty * TS, (tx - run) * TS, TS); run = -1; }
+          }
+          if (run >= 0) gg.rect(run * TS, ty * TS, (Math.min(w.w, Math.floor((cx + W) / TS) + 2) - run) * TS, TS);
+        } };
       const isSwamp = (x: number, y: number) => x >= 0 && y >= 0 && x < w.w && y < w.h && w.tiles[y * w.w + x] === TILE.SWAMP;
       const inView = (q: { x: number; y: number }, m = 1) => q.x >= Math.floor(cx / TS) - m && q.x <= Math.ceil((cx + W) / TS) + m && q.y >= Math.floor(cy / TS) - m && q.y <= Math.ceil((cy + H) / TS) + m;
       if (bg32 && info) { const vis = info.swamp.filter((q) => inView(q, 0)); if (Zn === 'deep') drawLava(gg, vis, isSwamp, t); else drawPoolGlints(gg, Zn, vis, t); }
+      if (bg32 && info && (Zn === 'keep' || Zn === 'crypt')) { // still water mirrors whoever stands at its edge (clipped to the pool, rippled)
+        const vis = info.swamp.filter((q) => inView(q, 1));
+        const near = (x: number, y: number) => vis.some((q) => Math.abs(q.x + 0.5 - x) < 2.2 && q.y + 0.5 - y > -0.5 && q.y + 0.5 - y < 3.5);
+        const who: Array<{ fy: number; d: () => void }> = [];
+        if (near(p.x, p.y)) { const fy = Math.round(p.y * TS + p.r * TS * 1.1); who.push({ fy, d: () => drawHero32(gg, p.x * TS, fy, { angle: s.aim.angle, moving: p.moving, t, stance: s.stance.id, hurt: false, weapon: s.weapon, kick: 0 }) }); }
+        if (artReady()) for (const e of s.enemies) if (e.kind !== 'bat' && near(e.x, e.y)) { const fy = Math.round(e.y * TS + e.r * TS * 0.9); who.push({ fy, d: () => drawEnemy32(gg, e.x * TS, fy, { kind: e.kind, variant: e.variant, moving: false, tell: 0, flash: false, face: e.face, t, id: e.id }) }); }
+        if (who.length) {
+          gg.save(); gg.beginPath();
+          for (const q of vis) { const bank = isSwamp(q.x, q.y - 1) ? 0 : 5; gg.rect(q.x * TS, q.y * TS + bank, TS, TS - bank); }
+          gg.clip(); gg.globalAlpha = 0.3;
+          for (const r of who) { gg.save(); gg.translate(Math.round(Math.sin(t * 3 + r.fy) * 1), 2 * r.fy + 1); gg.scale(1, -1); r.d(); gg.restore(); }
+          gg.restore();
+        }
+      }
       // doors, stairs, chests
       const x0 = Math.max(0, Math.floor(cx / TS)), x1 = Math.min(w.w, Math.ceil((cx + W) / TS));
       const y0 = Math.max(0, Math.floor(cy / TS)), y1 = Math.min(w.h, Math.ceil((cy + H) / TS));
@@ -511,6 +536,13 @@ export function createRenderer(): GameRenderer {
       }
       actors.sort((a, b) => a.y - b.y);
       for (const a of actors) a.d();
+      if (bg32 && info) { // atmosphere that the lighting should shade: fog banks in the Crypt, falling grit elsewhere
+        const fx0 = Math.round(cx), fy0 = Math.round(cy);
+        gg.save(); openFloorClip(); gg.clip();
+        if (Zn === 'crypt') drawFog(gg, fx0, fy0, W, H, t);
+        if (Zn !== 'deep') drawGrit(gg, Zn, fx0, fy0, W, H, t);
+        gg.restore();
+      }
 
       const emissive = () => {
         for (const b of s.bullets) if (!(artReady() && drawShot32(gg, b, TS))) drawBullet(b, TS, t);
@@ -539,6 +571,7 @@ export function createRenderer(): GameRenderer {
         add(null, p.x * TS, p.y * TS - 12, TS * (dark ? 2.2 : 3.2), [255, 236, 210], 0.55);
         if (!dark) {
           for (const q of info.torches) add(`t${q.x},${q.y}`, q.x * TS + 16, (q.y + 1) * TS + 2, TS * 3.4 * fl(q.x), zl.torch, 0.95);
+          for (const q of info.lit) add(q.key, q.x, q.y, q.r * fl(q.cx), q.c, q.i);
           for (const q of info.pillars) add(`p${q.x},${q.y}`, q.x * TS + 16, q.y * TS + 14, TS * 3.2 * fl(q.y), zl.prop, 0.95);
           if (Zn === 'deep') for (const q of info.swamp) if (q.x % 3 === 1 && q.y % 2 === 0) add(`l${q.x},${q.y}`, q.x * TS + 16, q.y * TS + 16, TS * 2.8, [255, 110, 40], 0.9);
           for (const sh of s.shrines) if (sh.state !== 'failed') add(`s${sh.room}`, sh.x * TS, sh.y * TS - 16, TS * 2.6, hexRgb(SHRINE_COLORS[sh.kind]), 0.7);
@@ -568,7 +601,24 @@ export function createRenderer(): GameRenderer {
           const lr = zonePropSize(Zn, 'light');
           if (lr) for (const q of info.pillars) if (inView(q)) drawZoneProp(gg, Zn, 'flame', q.x * TS + 13, q.y * TS + 28 - lr.h - 9, fi + q.y, 4);
         }
-        if (Zn === 'deep') { const lr = zonePropSize(Zn, 'light'); if (lr) for (const q of info.pillars) if (inView(q)) { gg.globalAlpha = 0.55 + 0.25 * Math.sin(t * 2 + q.x); drawZoneProp(gg, Zn, 'light', q.x * TS + 16 - (lr.w >> 1), q.y * TS + 28 - lr.h); gg.globalAlpha = 1; } }
+        if (Zn === 'deep') { const lr = zonePropSize(Zn, 'light'), sp = cut(Zn, 'light'); if (lr && sp && litC) for (const q of info.pillars) if (inView(q)) drawRefracting(gg, sp, q.x * TS + 16 - (lr.w >> 1), q.y * TS + 28 - lr.h, litC, ox, oy, t); gg.save(); openFloorClip(); gg.clip(); drawEmbers(gg, ox, oy, W, H, t); gg.restore(); }
+        for (const d of info.glow) { const gr = Zr.rects['decal:' + d.name]; if (!gr || d.px > ox + W || d.px + gr[2] < ox || d.py > oy + H || d.py + gr[3] < oy) continue;
+          gg.globalAlpha = 0.7 + 0.3 * Math.sin(t * 1.7 + d.px * 0.05); drawZoneProp(gg, Zn, 'decal:' + d.name, d.px, d.py); gg.globalAlpha = 1; }
+        for (const q of info.lit) { // glowing props shine through the dark; candles get flickering flames
+          if (q.cx < ox - 40 || q.cx > ox + W + 40 || q.foot < oy - 40 || q.foot > oy + H + 60) continue;
+          const pr = Zr.rects['decor:' + q.name]; if (!pr) continue;
+          const x0 = q.cx - (pr[2] >> 1), y0 = q.foot - pr[3];
+          if (PROP_LIGHT[q.name]?.glow) {
+            const sp = Zn === 'deep' && q.name.startsWith('crystal') ? cut(Zn, 'decor:' + q.name) : null;
+            if (sp && litC) drawRefracting(gg, sp, x0, y0, litC, ox, oy, t);
+            else { gg.globalAlpha = 0.45 + 0.2 * Math.sin(t * 2.2 + q.cx * 0.1); drawZoneProp(gg, Zn, 'decor:' + q.name, x0, y0); gg.globalAlpha = 1; }
+          }
+          else for (const [wx, wy] of wicks(Zn, q.name)) {
+            const k = Math.floor(t * 8 + wx * 3 + q.cx) % 4;
+            gg.fillStyle = '#ff9a3a'; gg.fillRect(x0 + wx, y0 + wy - 2, 1, 2);
+            gg.fillStyle = k === 0 ? '#ffd84a' : '#fff2c0'; gg.fillRect(x0 + wx, y0 + wy - 3 - (k === 3 ? 1 : 0), 1, 1);
+          }
+        }
         for (const sh of s.shrines) if (w.rooms[sh.room].seen && sh.state !== 'failed') { gg.globalAlpha = 0.5; drawShrine32(gg, sh.kind, sh.x * TS, sh.y * TS, t, false); gg.globalAlpha = 1; }
         emissive();
         for (const r of w.rooms) if (!r.seen) { gg.fillStyle = '#07060b'; gg.fillRect((r.x0 - 1) * TS, (r.y0 - 1) * TS - 16, (r.w + 2) * TS, (r.h + 2) * TS + 16); }

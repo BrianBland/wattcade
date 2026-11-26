@@ -9,7 +9,7 @@ import catacombsUrl from './zone-catacombs.png';
 import deepUrl from './zone-deep.png';
 
 export type Rect = [number, number, number, number];
-export interface ZoneMeta { rects: Record<string, Rect>; ramp: string[]; lightKind: string; flameKind: string; decor: string[]; hang: string[] }
+export interface ZoneMeta { rects: Record<string, Rect>; ramp: string[]; lightKind: string; flameKind: string; decor: string[]; hang: string[]; decals: string[]; faceVar: number }
 export interface AnimMeta { n: number; w: number; h: number; ax: number; ay: number; heights?: number[] }
 interface Atlas {
   zones: Record<string, ZoneMeta>;

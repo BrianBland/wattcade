@@ -111,3 +111,17 @@ export function drawItem32(g: CanvasRenderingContext2D, name: string, x: number,
   g.imageSmoothingEnabled = false;
   g.drawImage(c, Math.round(x - c.width * s / 2), Math.round(y - c.height * s), c.width * s, c.height * s); return true;
 }
+/** Wick points of a candle prop (local peaks of its top outline), relative to its top-left; cached. */
+const wickCache = new Map<string, Array<[number, number]>>();
+export function wicks(zone: ZoneId, name: string): Array<[number, number]> {
+  const key = zone + name, hit = wickCache.get(key); if (hit) return hit;
+  const c = cut(zone, 'decor:' + name); if (!c) return [];
+  const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data, top: number[] = [];
+  for (let x = 0; x < c.width; x++) { let y = 0; while (y < c.height && d[(y * c.width + x) * 4 + 3] === 0) y++; top.push(y); }
+  const out: Array<[number, number]> = [];
+  for (let x = 0; x < c.width; x++) {
+    const l = x > 0 ? top[x - 1] : c.height, r = x < c.width - 1 ? top[x + 1] : c.height;
+    if (top[x] < c.height && top[x] < l && top[x] < r && top[x] < c.height * 0.6) out.push([x, top[x]]);
+  }
+  wickCache.set(key, out); return out;
+}

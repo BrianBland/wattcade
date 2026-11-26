@@ -9,7 +9,7 @@ import os, sys, json, math
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from PIL import Image
-import pal, keep, zones, motifs, compose
+import pal, keep, zones, motifs, compose, inlays
 import chars as CH, chars2 as CH2, gear as GR, enemies3 as E3, bosses as BO, shrines as SH, arsenal as AR, tiers as TI, loot as LO
 
 OUT = os.path.join(HERE, '..', '..', 'src', 'games', 'dungeon', 'render', 'art32')
@@ -92,14 +92,30 @@ def zone_sheet(z):
         'keep': [('barrel', keep.barrel()), ('crate', keep.crate()), ('candelabra', keep.candelabra()), ('pillar', keep.pillar()), ('borne', motifs.borne(23))],
         'crypt': [('urn', zones.urn()), ('candles', zones.candles()), ('sarcophagus', zones.sarcophagus()), ('tomb', zones.sarcophagus(True)), ('coffin', zones.coffin())],
         'catacombs': [('skulls', zones.skull_pile()), ('sack', zones.sack()), ('skullCandle', zones.skull_candle()), ('borne', motifs.borne(21))],
-        'deep': [('stalagmite0', zones.stalagmite(0)), ('stalagmite1', zones.stalagmite(1)), ('stalagmite2', zones.stalagmite(2)), ('glowcaps', zones.mushrooms()), ('crystalS', zones.crystal(2)), ('wheel', zones.wheel_relic()), ('frame', motifs.frame_relic())],
+        'deep': [('stalagmite0', zones.stalagmite(0)), ('stalagmite1', zones.stalagmite(1)), ('stalagmite2', zones.stalagmite(2)), ('glowcaps', zones.mushrooms()), ('crystalS', zones.crystal(2)), ('crystalM', zones.crystal(4))],
     }[z]
     for n, im in decor: S.add('decor:' + n, im)
     hang = {'keep': [('banner', keep.banner()), ('wheel', motifs.wall_wheel())], 'crypt': [('cobweb', zones.cobweb())], 'catacombs': [], 'deep': []}[z]
     for n, im in hang: S.add('hang:' + n, im)
+    # flat floor details painted under everything (the renderer scatters them per room)
+    flip = lambda im: im.transpose(Image.FLIP_LEFT_RIGHT)
+    common = [('rubble', keep.decal_rubble()), ('broken', keep.decal_broken())]
+    decals = {
+        'keep': common + [('grate', keep.decal_grate()), ('carpet', keep.carpet(44, 320)), ('rosette', inlays.rosette())],
+        'crypt': common + [('bones', zones.bones_decal()), ('bonesF', flip(zones.bones_decal())), ('ledger', inlays.ledger(True, 1)), ('ledger2', inlays.ledger(False, 2))],
+        'catacombs': common + [('bones', zones.bones_decal()), ('bonesF', flip(zones.bones_decal())), ('chalk', motifs.chalk('ALLEZ', 9, seed=2)), ('mosaic', inlays.mosaic())],
+        'deep': common + [('wheel', zones.wheel_relic()), ('frame', motifs.frame_relic()), ('fissure', inlays.fissure()), ('fissure2', inlays.fissure(7, 60, 26)), ('rune', inlays.rune())],
+    }[z]
+    for n, im in decals: S.add('decal:' + n, im)
+    # wall-face variants: whole 32 x 48 face tiles with a feature built into the masonry
+    if z == 'crypt': fv = zones.wall_crypt(128, [(16, 'urn'), (48, 'skull'), (80, 'helmet'), (112, 'skull')])
+    elif z == 'catacombs': fv = zones.wall_catacombs(96, wheels=(48,)).crop((32, 0, 64, 48))
+    else: fv = None
+    nfv = 0
+    if fv is not None: S.add('faceVar', fv); nfv = fv.width // 32
     rects = S.save(f'zone-{z}.png')
     zones.use('keep')
-    return dict(rects=rects, ramp=[hexs(c) for c in ramp], lightKind=light[0], flameKind=light[1], decor=[n for n, _ in decor], hang=[n for n, _ in hang])
+    return dict(rects=rects, ramp=[hexs(c) for c in ramp], lightKind=light[0], flameKind=light[1], decor=[n for n, _ in decor], hang=[n for n, _ in hang], decals=[n for n, _ in decals], faceVar=nfv)
 
 def chars_sheet():
     S = Sheet(1024); meta = {}

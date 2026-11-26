@@ -19,7 +19,11 @@
 - `TILE_PX` is 32, so the viewport scale halves and the same number of tiles stay on screen (tests use device pixels).
 - Old 16 px paths (`sprites.ts`, `art.ts`, `weapons.ts` masks) remain as the fallback until the sheets decode.
 - Budget: 1024×768 at DPR 2 holds 60 fps in headless Chromium on floors 1 and 4 (median 16.7 ms frame, p95 ≤ 19 ms).
-- Not yet ported from the mocks: water reflections, crystal refraction, Crypt fog and falling grit.
+- Room dressing (`world32.ts` `dress`): corner clusters, back-wall furniture, side-wall clutter, a centrepiece per room
+  (Keep rosette or carpet, Crypt ledger stones, Catacombs bone mosaic, Deep rune seal or lava fissures) ringed by lit props,
+  weighted floor clutter; never within 2 tiles of doors/stairs or on chests/shrines. Lit props and glowing decals add lights.
+- `fx32.ts`: Crypt fog and falling grit (lit), Deep embers and refracting crystals (emissive), clipped to open tiles.
+  Keep/Crypt pools mirror nearby actors; pool corners are rounded.
 
 ## Layout and input (unchanged)
 - World camera and simulation remain continuous; drawing snaps to native pixels. Area-based zoom balances portrait/landscape.
@@ -32,5 +36,5 @@
 ## Checks
 - Review: `/dev/dungeon.html` (Live game; `floor=N` jumps to a floor, `manual=1` for captures).
 - `node scripts/dungeon-render-smoke.mjs` while Vite runs on 5173; captures go to `/tmp/dungeon-smoke/`.
-- typecheck, dungeon + inset tests (`light32.test.ts` covers occlusion, faces and shading).
+- typecheck, dungeon + inset tests (`light32.test.ts`: occlusion, faces, shading; `dress32.test.ts`: dressing rules).
 - Physical iPad/Bluefy is not covered by the browser checks.

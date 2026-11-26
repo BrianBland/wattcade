@@ -25,7 +25,7 @@ describe('#89 interval pacing', () => {
   }, 30_000);
   it('a floor takes about 7 minutes on z2 (5.5-9 min per floor, no deaths)', () => {
     let floors = 0, minutes = 0;
-    for (const seed of [11, 12]) {
+    for (const seed of [11, 12, 13, 14]) {   // 4 seeds: with 2 the average sat one floor from the limit, so any rng shift flipped it
       const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed, simOpts: { autopilot: true, skipCamp: true, invulnerable: true } });
       s.step(30 * 60 * 30);
       floors += Number(s.finish().gameSummary['Deepest floor']) - 1; minutes += 30;
@@ -33,5 +33,5 @@ describe('#89 interval pacing', () => {
     const perFloor = minutes / floors;
     expect(perFloor).toBeGreaterThan(5.5);
     expect(perFloor).toBeLessThan(9);
-  }, 30_000);
+  }, 60_000);
 });

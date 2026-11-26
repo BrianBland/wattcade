@@ -203,3 +203,61 @@ export function fillText(g: CanvasRenderingContext2D, text: string, x: number, y
 export function strokeText(g: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth = Infinity) {
   drawText(g, text, x, y, maxWidth, true);
 }
+/** Text with a one-pixel (one glyph unit) dark drop shadow, for HUD labels over busy art. */
+export function fillTextShadow(g: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth = Infinity, shadow = '#0b0910') {
+  const k = fontScale(Number(/([\d.]+)px/.exec(g.font)?.[1] ?? 10)), c = g.fillStyle;
+  g.fillStyle = shadow; drawText(g, text, x + k, y + k, maxWidth, false);
+  g.fillStyle = c; drawText(g, text, x, y, maxWidth, false);
+}
+
+// ---- Display face: a heavy capital style for titles, banners and boss names. Built from the same alphabet with each
+// stroke doubled to the right, filled top-lit to base to shaded, then a dark outline with a one-pixel drop.
+const mix = (a: string, b: string, k: number) => {
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), x = p(a), y = p(b);
+  return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * k).toString(16).padStart(2, '0')).join('');
+};
+const displayCache = new Map<string, HTMLCanvasElement>();
+const boldWidth = (c: string) => glyph(c).width + (c === ' ' ? 0 : 1);
+/** Width in screen pixels of `text` in the display face at integer `scale` (outline included). */
+export function displayWidth(text: string, scale: number): number {
+  let w = 0; for (const c of text.toUpperCase()) w += boldWidth(c) + 1;
+  return (Math.max(0, w - 1) + 2) * scale;
+}
+function displaySprite(text: string, color: string, outline: string): HTMLCanvasElement {
+  const key = `${color}|${outline}|${text}`; let cv = displayCache.get(key); if (cv) return cv;
+  const T = text.toUpperCase(), W = displayWidth(T, 1), H = 7 + 3;
+  const on = new Uint8Array(W * H);
+  let x0 = 1;
+  for (const c of T) {
+    const { rows, width } = glyph(c);
+    for (let y = 0; y < 7; y++) for (let x = 0; x <= width; x++) {
+      const a = rows[y]?.[x] === '1', b = x > 0 && rows[y]?.[x - 1] === '1';
+      if ((a || b) && c !== ' ') on[(y + 1) * W + x0 + x] = 1;
+    }
+    x0 += boldWidth(c) + 1;
+  }
+  cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d')!, lit = mix(color, '#ffffff', 0.45), dim = mix(color, '#000000', 0.3);
+  const at = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && on[y * W + x] === 1;
+  g.fillStyle = outline;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (at(x, y)) continue;
+    let near = false;
+    for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) if (at(x + dx, y + dy)) { near = true; break; }
+    if (near || at(x, y - 2) || at(x - 1, y - 2)) g.fillRect(x, y, 1, 1);    // outline plus a drop under the letters
+  }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (at(x, y)) {
+    const r = y - 1; g.fillStyle = r <= 1 ? lit : r >= 5 ? dim : color;
+    if (r === 0 && !at(x, y - 1) && at(x - 1, y)) g.fillStyle = mix(color, '#ffffff', 0.7);   // glint along the top edges
+    g.fillRect(x, y, 1, 1);
+  }
+  if (displayCache.size > 128) displayCache.delete(displayCache.keys().next().value!);
+  displayCache.set(key, cv); return cv;
+}
+/** Draw `text` in the display face with its top-left (or top-centre) at (x, y), at an integer `scale`. */
+export function displayText(g: CanvasRenderingContext2D, text: string, x: number, y: number, scale: number, color: string, center = false, outline = '#0b0910') {
+  const k = Math.max(1, Math.round(scale)), s = displaySprite(text, color, outline), w = s.width * k;
+  const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+  g.drawImage(s, Math.round(center ? x - w / 2 : x), Math.round(y), w, s.height * k);
+  g.imageSmoothingEnabled = sm; return w;
+}

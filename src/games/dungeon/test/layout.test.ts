@@ -10,24 +10,26 @@ describe('run layout', () => {
       const actions = scale({ x: 800, y: 690, w: 468, h: 32 });
       const L = runLayout(1280 * dpr, 800 * dpr, 110 * dpr, dpr, 2, [bar, actions]);
       expect(L.card.y + L.card.h).toBe(722 * dpr);
-      expect(L.stance.x + L.stance.w).toBeLessThan(actions.x);
+      expect(L.gear.x + L.gear.w).toBeLessThan(actions.x);
       expect(L.playH).toBeLessThan(actions.y);
       const crowded = runLayout(1280 * dpr, 800 * dpr, 110 * dpr, dpr, 2,
         [bar, { ...actions, x: 200 * dpr, w: 1068 * dpr }]);
       expect(crowded.card.y + crowded.card.h).toBeLessThan(actions.y);
     }
   });
-  for (const [W, H, inset, u] of [[1180, 820, 90, 1.2], [820, 1180, 120, 1.2], [2360, 1640, 180, 2.4], [640, 480, 60, 1]]) {
+  for (const [W, H, inset, u] of [[1180, 820, 90, 1.2], [820, 1180, 120, 1.2], [2360, 1640, 180, 2.4], [640, 480, 60, 1], [390, 844, 100, 1]]) {
     it(`${W}x${H} inset ${inset}: one slim stance row above the HUD inset, chips right of the card`, () => {
       const L = runLayout(W, H, inset, u);
-      for (const r of [L.card, L.stance]) {
+      for (const r of [L.card, L.stance, L.gear]) {
         expect(r.y + r.h).toBeLessThanOrEqual(H - inset + 1e-6);
         expect(r.x).toBeGreaterThanOrEqual(0); expect(r.x + r.w).toBeLessThanOrEqual(W + 1e-6);
         expect(r.h).toBeLessThanOrEqual(30 * u); // slim
       }
       expect(L.stance.x).toBeGreaterThanOrEqual(L.card.x + L.card.w);
-      expect(L.playH).toBeLessThanOrEqual(L.card.y);
-      expect((L.card.w + L.stance.w) * L.card.h / (W * H)).toBeLessThan(0.03); // under 3% of the screen
+      expect(L.playH).toBeLessThanOrEqual(Math.min(L.card.y, L.gear.y));
+      const overlap = (a: typeof L.card, b: typeof L.card) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+      expect(overlap(L.gear, L.card) || overlap(L.gear, L.stance)).toBe(false);
+      expect((L.card.w + L.stance.w + L.gear.w) * L.card.h / (W * H)).toBeLessThan(0.04); // the whole inventory row stays under 4% of the screen
     });
   }
 });

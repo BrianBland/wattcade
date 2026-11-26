@@ -1,5 +1,5 @@
 // All world art is drawn at this resolution, then enlarged by an INTEGER device-pixel scale.
-export const TILE_PX = 16;
+export const TILE_PX = 32;
 /** Area keeps actor size stable on rotation; the short-axis limit leaves room to see approaching enemies. */
 export function pixelViewport(width: number, height: number, zoomSteps = 0) {
   const short = Math.min(width, height);

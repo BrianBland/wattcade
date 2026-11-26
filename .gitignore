@@ -21,3 +21,4 @@ out
 # Purgatour review captures are reproducible and do not belong in source history.
 /docs/visual-polish/dungeon/*.png
 /docs/visual-polish/dungeon/*.gif
+__pycache__/

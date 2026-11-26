@@ -112,6 +112,11 @@ function pattern(g: G, j: JerseyLook, L: number, w: number, t: number) {
     case 'scrap': for (let u = 0.4; u < L; u += 1.6) for (let v = -h + 0.3; v < h; v += 1.4) rect(g, ink, u, v, 0.9, 0.7); break;
     case 'dynamo': { g.strokeStyle = ink; g.lineWidth = 0.4; g.beginPath(); g.arc(L * 0.6, 0, 1.6, t * 4, t * 4 + 4); g.stroke(); circle(g, ink, L * 0.6, 0, 0.4); break; }
     case 'chevrons': for (let u = 0.4; u < L; u += 2.2) poly(g, ink, [u, -h + 0.4], [u + 1.4, 0], [u, h - 0.4], [u + 0.5, h - 0.4], [u + 1.9, 0], [u + 0.5, -h + 0.4]); break;
+    case 'steps': { // Penrose Pedals: an isometric flight that climbs along the body and drops back to its foot
+      const tread = Math.min(1.6, (L - 1) / 4), rise = (2 * h - 0.6) / 4;
+      for (let i = 0; i < 4; i++) { const u = 0.5 + i * tread, top = h - (i + 1) * rise; g.fillStyle = ink; g.fillRect(u, top, tread, h - top); g.fillStyle = shade(ink, 1.35); g.fillRect(u, top, tread, 0.3); }
+      break;
+    }
     case 'bolt': poly(g, ink, [0.4, 0.6], [L * 0.5, -0.3], [L * 0.5, 0.5], [L - 0.5, -0.8], [L * 0.55, 0.9], [L * 0.55, 0.1]); break;
     case 'flames': for (let i = 0; i < 4; i++) { const v = -h + 0.5 + i * 0.9, len = 3 + Math.sin(t * 8 + i * 2) * 0.8 + (i % 2) * 1.5; poly(g, ink, [-0.5, v - 0.45], [len, v], [-0.5, v + 0.45]); } break;
   }

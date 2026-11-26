@@ -21,6 +21,8 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 - `kit.ts`: helpers games use in `src/games/<id>/achievements.ts` (`feat`, `tally`, `num`, `hasEvent`, `countEvents`). It must not
   import the registry (achievements.ts does; games import kit).
 
+- Games in `wipGames` (under construction) are left out of `ACHIEVEMENTS`/`ACHIEVEMENT_GAME`: no awards, no counters, until they ship.
+
 ## Conventions games must follow
 - Achievement ids are permanent; a rename needs an entry in `core/renames.ts` `RENAMED_ACHIEVEMENTS`. Achievements read summary keys/events: rename one → update `achievements.ts`;
   `scenarios.test.ts` runs real headless rides and fails if a key goes missing.

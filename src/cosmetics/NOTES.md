@@ -9,6 +9,8 @@ Shared cosmetic wardrobe; ships are selected inside Cadenza. Spec: SPEC §5.4b.
 - `rotation.ts`: old slot/id → replacement Item. One shared cosmetic per achievement;
   levels 2–50 give one reward, except every fifth level offers three different slots.
 - Exactly one active title per game (including Warm-up), three cross-game titles, no level titles.
+- `WIP_ITEMS` (catalog.ts): rewards for games still in `wipGames` (Penrose: 10 items incl. title Impossible and the new `steps` jersey pattern),
+  kept out of ITEMS until the game ships; the test fails once a shipped game's list is still there.
 - `migrate.ts`: remap old chosen picks without rerolling, remove retired equipment and old ownership
   snapshots. All profiles use current level/achievement/pick requirements; rotation 2 cleans earlier saves.
   ProfileStore persists migration on read; import/export also uses only current ownership rules.

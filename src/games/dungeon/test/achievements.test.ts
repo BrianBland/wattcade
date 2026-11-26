@@ -81,13 +81,14 @@ describe('the sim emits the achievement events', () => {
     const profile = testProfile({ gameData: { dungeon: { upgrades: { arcanist: 1, luck: 15 }, autoInvest: false } } });
     const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'hook-responsive' }, seed: 11,
       simOpts: { autopilot: true, actionBot: true, invulnerable: true } });
-    for (let i = 0; i < 25 * 60 * 30; i++) s.step(1);
+    // 35 sim minutes: this asserts the collection CAN be finished; when it lands depends on drop luck (seeds range ~20-31 min)
+    for (let i = 0; i < 35 * 60 * 30; i++) s.step(1);
     const r = s.finish();
     const completed = r.events.filter(e => e.type === 'fullArsenal');
     expect(completed).toHaveLength(1);
     expect(completed[0].data).toMatchObject({ stances: 4, minRarity: 3 });
     expect(feat('dg_full_arsenal', r)).toBe(true);
-  }, 30_000);
+  }, 45_000);
   it('includes a killing Strike in the boss-defeat exposure tally', () => {
     const profile = testProfile();
     const tuning = new TuningRegistry({ profileId: profile.id, storage: null });

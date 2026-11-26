@@ -260,6 +260,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let shrines: Shrine[] = [];
   let current = 0, safeRoom = 0, bossStarted = false, bossT = 0, hitT = 0;
   let bs: BossState = newBoss();
+  /** The Gear Masher's chainring flail: a yo-yo throw on its chain, a whirl while winding up, a slam for the big attack. */
+  type FlailMode = 'hand' | 'out' | 'back' | 'whirl' | 'slam' | 'rest';
+  const fl = { mode: 'hand' as FlailMode, t: 0, x: 0, y: 0, x0: 0, y0: 0, tx: 0, ty: 0, ang: 0, hitCd: 0, second: false, px: 0, py: 0, pvx: 0, pvy: 0 };
+  const FLAIL_OUT = 0.55, FLAIL_HOLD = 0.15, FLAIL_BACK = 0.6, FLAIL_REACH = 7, FLAIL_HIT_R = 0.5;
   let curse: { kind: CurseKind; left: number; total: number; s0: number } | null = null, cursesSurvived = 0;
   const cursed = (k: CurseKind) => curse?.kind === k;
   const bounty = () => (curse ? 1.5 : 1);
@@ -308,7 +312,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     boss = spawnEnemy('chaser', br.x0 + br.w / 2, br.y0 + br.h / 2 + 1, br.id);
     Object.assign(boss, { kind: 'boss', r: 1.1, hp, maxHp: hp, speed: 1.1, contact: 18 * dmgMul(), fireCd: 2, fireCd2: 1.2, xp: 120 * (1 + 0.3 * (floor - 1)), variant: (floor - 1) % BOSS_NAMES.length });
     shrines = world.rooms.filter((r) => r.shrine).map((r) => ({ room: r.id, kind: r.shrine!.kind, x: r.shrine!.x, y: r.shrine!.y, state: 'idle' as const, progress: 0, left: 0, s0: 0 }));
-    current = 0; safeRoom = 0; bossStarted = false; bossT = 0; bs = newBoss(); navPath = []; navKey = ''; flowKey = -1;
+    current = 0; safeRoom = 0; bossStarted = false; bossT = 0; bs = newBoss(); fl.mode = 'hand'; fl.px = P.x; fl.py = P.y; fl.pvx = fl.pvy = 0; navPath = []; navKey = ''; flowKey = -1;
     P.x = world.spawn.x; P.y = world.spawn.y;
     markSeen(world.rooms[0]);
   }
@@ -1192,7 +1196,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
 
     // --- enemies
-    if (bossStarted && boss.alive) { bossT += dt; bossTick(dt); }
+    if (bossStarted && boss.alive) { bossT += dt; bossTick(dt); if (boss.variant === 2) flailTick(dt); }
     updateFlow();
     const live = liveInRoom(current);
     for (const e of live) updateEnemy(e, dt, bike);
@@ -1328,7 +1332,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function bossTick(dt: number) {
     const cfg = bossCfg();
     for (const ev of stepBoss(bs, { dt, hpFrac: boss.hp / boss.maxHp, wardUp: P.ward > 0 }, cfg)) {
-      if (ev === 'windup') { boss.tell = cfg.windupS; toast('Big attack coming! Ward it, then punish', '#ff7a2a'); cue('bossStart'); }
+      if (ev === 'windup') { boss.tell = cfg.windupS; toast('Big attack coming! Ward it, then punish', '#ff7a2a'); cue('bossStart'); if (boss.variant === 2) flailWhirl(); }
       else if (ev === 'bigAttack') bigAttack(boss);
       else if (ev === 'exposed') {
         if (stance === 'arcanist') bs.left += 1; // the shield-breaker keeps it open longer
@@ -1336,12 +1340,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         if (bs.parried) toast(`Parried with Ward: exposed +${cfg.parryBonusS}s`, '#8fd8ff');
         cue('crit'); expWindows++; expHit = false; ctx.emit({ type: 'bossExposed', data: { floor, parried: bs.parried } });
       } else if (ev === 'phase') {
-        freeze(0.3); cue('bossStart');
+        freeze(0.3); cue('bossStart'); if (boss.variant === 2 && fl.mode !== 'hand') flailReel();
         for (const b of bullets) if (!b.friendly) b.life = 0;
         addFx({ kind: 'banner', x: boss.x, y: boss.y, life: 2.2, color: '#ff5a5a', text: `${BOSS_NAMES[boss.variant]}: PHASE ${bs.phase}` });
         addFx({ kind: 'boom', x: boss.x, y: boss.y, life: 0.6, color: '#ff5a5a', r: 2.5 });
         ctx.emit({ type: 'bossPhase', data: { floor, phase: bs.phase } });
-      } else if (ev === 'tide') { toast('The tide turns: the boss is tiring', '#7dff5a'); addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#7dff5a', text: 'TURNING TIDE' }); }
+      } else if (ev === 'exposedEnd' && boss.variant === 2 && fl.mode === 'rest') flailReel();
+      else if (ev === 'tide') { toast('The tide turns: the boss is tiring', '#7dff5a'); addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#7dff5a', text: 'TURNING TIDE' }); }
     }
   }
   /** The telegraphed big attack: one per boss, a bit meaner each phase. */
@@ -1351,13 +1356,77 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     switch (e.variant) {
       case 0: ring(e.x, e.y, 20 + 4 * ph, spd, 7, e.spin); for (let k = 0; k < ph; k++) spawnEnemy('chaser', e.x + (k - 1) * 1.2, e.y + 1.4, e.room).summoned = 1; break;
       case 1: for (let w = 0; w < 2; w++) ring(e.x, e.y, 14 + 2 * ph, spd - w, 7, e.spin + w * 0.2); break;
-      case 2: ring(e.x, e.y, 18 + 4 * ph, spd + 1, 9, e.spin); e.state = 1; e.tell = 0.6; { const a = Math.atan2(P.y - e.y, P.x - e.x); e.vx = Math.cos(a) * 8; e.vy = Math.sin(a) * 8; } break;
+      case 2: flailSlam(); return; // the ring and boom come from the impact point when the chainring lands
       case 3: ring(e.x, e.y, 24 + 4 * ph, spd, 7, e.spin); break;
       case 4: for (let k = 0; k < 4; k++) for (let j = 0; j < 4 + ph; j++) enemyShot(e.x, e.y, e.spin + k * Math.PI / 2, 3 + j * 0.8, 7); break; // bone cross
       default: for (let w = 0; w < 3; w++) ring(e.x, e.y, 10 + 2 * ph, 2.5 + w * 1.3, 7, e.spin + w * 0.3); // frost bloom
     }
     addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.5, color: e.variant === 5 ? '#9fe8ff' : '#ff7a2a', r: 3 });
     cue('explode'); freeze(0.1);
+  }
+  const flailHand = () => ({ x: boss.x + (P.x >= boss.x ? 0.7 : -0.7), y: boss.y - 0.4 });
+  /** Aim point: where the hero is heading, clipped to the chain's reach and the boss room. */
+  function flailAim(lead: number) {
+    const h = flailHand(), rm = world.rooms[boss.room];
+    let ax = P.x + fl.pvx * lead, ay = P.y + fl.pvy * lead;
+    const dx = ax - h.x, dy = ay - h.y, dd = Math.hypot(dx, dy);
+    if (dd > FLAIL_REACH) { ax = h.x + dx / dd * FLAIL_REACH; ay = h.y + dy / dd * FLAIL_REACH; }
+    return { x: clamp(ax, rm.x0 + 0.5, rm.x0 + rm.w - 0.5), y: clamp(ay, rm.y0 + 0.5, rm.y0 + rm.h - 0.5) };
+  }
+  function flailThrow(second: boolean) {
+    const h = flailHand(), a = flailAim(0.35);
+    Object.assign(fl, { mode: 'out', t: 0, x0: h.x, y0: h.y, x: h.x, y: h.y, tx: a.x, ty: a.y, second });
+    cue('shoot');
+  }
+  function flailWhirl() { Object.assign(fl, { mode: 'whirl', t: 0, x0: fl.x, y0: fl.y, ang: 0 }); }
+  function flailSlam() { const a = flailAim(0); Object.assign(fl, { mode: 'slam', t: 0, x0: fl.x, y0: fl.y, tx: a.x, ty: a.y }); }
+  function flailReel() { Object.assign(fl, { mode: 'back', t: 0, x0: fl.x, y0: fl.y }); }
+  function flailTick(dt: number) {
+    fl.hitCd -= dt; fl.t += dt;
+    if (dt > 0) { fl.pvx = clamp(fl.pvx * 0.8 + 0.2 * (P.x - fl.px) / dt, -8, 8); fl.pvy = clamp(fl.pvy * 0.8 + 0.2 * (P.y - fl.py) / dt, -8, 8); } fl.px = P.x; fl.py = P.y;   // hero velocity, smoothed, for leading throws
+    const h = flailHand(), ease = (k: number) => 1 - (1 - k) * (1 - k);
+    let lethal = true;
+    switch (fl.mode) {
+      case 'hand': fl.x = h.x; fl.y = h.y; lethal = false; break;
+      case 'out': {
+        const k = Math.min(1, fl.t / FLAIL_OUT);
+        fl.x = fl.x0 + (fl.tx - fl.x0) * ease(k); fl.y = fl.y0 + (fl.ty - fl.y0) * ease(k);
+        if (fl.t >= FLAIL_OUT + FLAIL_HOLD) flailReel();
+        break;
+      }
+      case 'back': {
+        const k = Math.min(1, fl.t / FLAIL_BACK), q = k * k;
+        fl.x = fl.x0 + (h.x - fl.x0) * q; fl.y = fl.y0 + (h.y - fl.y0) * q;
+        if (k >= 1) {
+          fl.mode = 'hand';
+          if (bs.phase === 3 && !fl.second && bs.cycle === 'idle') flailThrow(true);   // phase 3: a quick second throw
+        }
+        break;
+      }
+      case 'whirl': {   // round and round overhead, the circle widening: stay out of it
+        const r = 1.2 + Math.min(1, fl.t / 1.5) * 1.4;
+        fl.ang += dt * (7 + fl.t * 3);
+        fl.x = h.x + Math.cos(fl.ang) * r; fl.y = h.y + Math.sin(fl.ang) * r * 0.8;
+        if (fl.t < 0.25) { const k = fl.t / 0.25; fl.x = fl.x0 + (fl.x - fl.x0) * k; fl.y = fl.y0 + (fl.y - fl.y0) * k; }   // swung in from wherever it was
+        { const a = flailAim(0); fl.tx = a.x; fl.ty = a.y; }   // the slam lands where the hero stands when the wind-up ends
+        break;
+      }
+      case 'slam': {
+        const k = Math.min(1, fl.t / 0.3);
+        fl.x = fl.x0 + (fl.tx - fl.x0) * k * k; fl.y = fl.y0 + (fl.ty - fl.y0) * k * k;
+        if (k >= 1) {
+          const ph = bs.phase;
+          fl.mode = 'rest'; fl.t = 0; boss.spin += 0.4;
+          ring(fl.x, fl.y, 14 + 4 * ph, 4 + 0.5 * ph, 9, boss.spin);
+          addFx({ kind: 'boom', x: fl.x, y: fl.y, life: 0.5, color: '#ff7a2a', r: 2.6 });
+          cue('explode'); freeze(0.12);
+          if (Math.hypot(P.x - fl.x, P.y - fl.y) < 1.4 + PLAYER_R) hurtPlayer(18 * dmgMul());
+        }
+        break;
+      }
+      case 'rest': lethal = false; break;   // lies on the floor while the boss is exposed
+    }
+    if (lethal && fl.hitCd <= 0 && Math.hypot(P.x - fl.x, P.y - fl.y) < FLAIL_HIT_R + PLAYER_R) { hurtPlayer(12 * dmgMul()); fl.hitCd = 0.7; }
   }
   function bossAct(e: Enemy, dt: number, d: number, ux: number, uy: number) {
     if (bossStunned(bs) && e.state !== 1) return; // exposed or staggered: helpless
@@ -1379,7 +1448,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       const a = Math.atan2(uy, ux);
       switch (e.variant) {
         case 1: e.spin += 0.5; for (let k = 0; k < 4; k++) enemyShot(e.x, e.y, e.spin + k * Math.PI / 2, 4.5, 6); break;
-        case 2: if (d < 9) { e.state = 1; e.tell = 0.8; e.vx = ux * 7; e.vy = uy * 7; } break;
+        case 2: if (d < FLAIL_REACH + 2 && fl.mode === 'hand') { flailThrow(false); e.fireCd2 = 2.4 * pace; } else e.fireCd2 = 0.3; break;
         case 3: if (liveCount(e.room) < 5) { const s = spawnEnemy(rng() < 0.5 ? 'bat' : 'bomber', e.x, e.y + 1.5, e.room); s.summoned = 1; } break;
         case 4: if (liveCount(e.room) < 3 + bs.phase) { const s = spawnEnemy('archer', e.x + (rng() - 0.5) * 3, e.y + 1.5, e.room); s.summoned = 1; } else for (const o of [-0.2, 0.2]) enemyShot(e.x, e.y, a + o, 6, 7); break;
         case 5: for (let k = -3; k <= 3; k++) enemyShot(e.x, e.y, a + k * 0.12, 3.6, 6, 0.2); break; // frost breath
@@ -1464,6 +1533,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       curse: curse ? { kind: curse.kind, ...CURSES[curse.kind], left: Math.max(0, curse.left), total: curse.total } satisfies CurseView : null,
       fx: fx.slice(), toasts: toasts.filter((x) => t - x.t0 < 6), cues: cues.slice(),
       room: current, stairsOpen: !boss.alive, frozen: hitT > 0,
+      flail: bossStarted && boss.alive && boss.variant === 2 ? { x: fl.x, y: fl.y, mode: fl.mode, t: fl.t, ang: fl.ang, tx: fl.tx, ty: fl.ty } : null,
       boss: bossStarted ? { active: boss.alive, name: BOSS_NAMES[boss.variant], hp: Math.max(0, boss.hp), maxHp: boss.maxHp, phase: bs.phase, cycle: bs.cycle, left: bs.left, fightT: bs.fightT, tide: tideBonus(bs.fightT, bossCfg()), splits: bossCfg().phaseSplits } : null,
       stats: { roomsCleared, kills, deaths, damageDealt, output, fireT: fightT, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived },
       hooks: { boss: bossStarted && boss.alive, shielded: sh.shielded, swamp: P.onSwamp, seg: dir.seg, cadence: dir.seg === 'spinup' ? dirCfg().spinRpm + 6 : 90,

@@ -15,7 +15,7 @@ import { drawFlagstone, drawMarsh } from './terrain';
 import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut, charFrame, anim as anim32 } from './art32';
 import { drawStanceSwap, drawPoolLights, drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
 import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
-import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
+import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawFlail32, FLAIL_HAND, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
 
@@ -164,6 +164,7 @@ export function createRenderer(): GameRenderer {
   type HeroPin = { x: number; y: number; scale: number; angle: number; stance: string };
   let bossChip = 1, bossChipName = '';
   const flashAt = new Map<number, number>(), hpSeen = new Map<number, number>();
+  let lastFlail: DungeonSnapshot['flail'] = null;
   let hideHero = false, lastRun: { s: DungeonSnapshot; bike: Readonly<BikeState>; input: Readonly<InputState> } | null = null;
   let swapFx: { t0: number; c: string; from: string } | null = null, lastStance = '';
   let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
@@ -292,6 +293,23 @@ export function createRenderer(): GameRenderer {
     else if(!drawItem32(gg,d.slot!,x,y+1+bob))gearIcon(gg,d.slot!,x,y-5+bob,10,col);
   }
 
+  /** The Gear Masher's chain and chainring; the fist position matches the boss2.free sprite. */
+  function drawFlail(f: NonNullable<DungeonSnapshot['flail']>, b: EnemyView, TS: number) {
+    const foot = b.y * TS + b.r * TS * 0.9, hx = b.x * TS + FLAIL_HAND.x * b.face, hy = foot + FLAIL_HAND.y;
+    const handGround = { x: b.x + 0.7 * b.face, y: b.y - 0.4 };
+    let gx: number, gy: number, sag = 2, spin = f.t * 16, onFloor = false;
+    if (f.mode === 'whirl') {   // an overhead circle around the fist
+      const r = (f.x - handGround.x) * TS * 0.75, q = (f.y - handGround.y) * TS * 0.4;
+      gx = hx + r; gy = hy - 6 + q; spin = f.ang * 2;
+    } else {
+      const d = Math.hypot(f.x - handGround.x, f.y - handGround.y), lift = Math.min(1, d / 2.5);
+      gx = f.x * TS + (hx - handGround.x * TS) * (1 - lift);
+      gy = f.y * TS + (hy - handGround.y * TS) * (1 - lift) - (f.mode === 'rest' ? 4 : 10 * lift);
+      if (f.mode === 'rest') { sag = 12; spin = 0; onFloor = true; }
+      else if (f.mode === 'back') sag = 7;
+    }
+    drawFlail32(g!, { hx, hy, gx, gy, groundY: f.y * TS + 2, spin, sag, onFloor });
+  }
   function drawEnemy(e: EnemyView, TS: number, t: number) {
     const gg = g!, x = e.x * TS, y = e.y * TS + e.r * TS * 0.9;
     const isBoss = e.kind === 'boss', ba = isBoss ? BOSS_ART[e.variant % BOSS_ART.length] : undefined;
@@ -315,7 +333,7 @@ export function createRenderer(): GameRenderer {
     if (e.exposed) pixelRing(gg,x,y-e.r*TS,e.r*TS*1.9,'#ffe08a',true);
     if (e.exposed) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffe08a', x, y - e.r * TS, e.r * TS * 2.6, 0.75 + Math.sin(t * 9) * 0.2); gg.globalCompositeOperation = 'source-over'; }
     let artH = def.height * ps;
-    if (artReady()) artH = drawEnemy32(gg, x, y + (e.kind === 'bat' ? bob - TS * 0.35 : 0), { kind: e.kind, variant: e.variant, moving: mv, tell: e.tell, flash, face: e.face, t, id: e.id }) || artH;
+    if (artReady()) artH = drawEnemy32(gg, x, y + (e.kind === 'bat' ? bob - TS * 0.35 : 0), { kind: e.kind, variant: e.variant, moving: mv, tell: e.tell, flash, face: e.face, t, id: e.id, free: isBoss && !!lastFlail && lastFlail.mode !== 'hand' }) || artH;
     else {
     gg.save();
     drawCanvas(def, x, y, ps, e.face, bob);
@@ -548,10 +566,20 @@ export function createRenderer(): GameRenderer {
         gg.globalCompositeOperation = 'source-over';
       }
 
+      // Gear Masher telegraphs: where the slam (wind-up) or the throw will land
+      if (s.flail && (s.flail.mode === 'whirl' || (s.flail.mode === 'out' && s.flail.t < 0.55))) {
+        const f = s.flail, big = f.mode === 'whirl', fx_ = f.tx * TS, fy_ = f.ty * TS + 6;
+        const col = Math.floor(t * (big ? 8 : 14)) % 2 ? '#ff5a6e' : '#ffb0a0';
+        pixelRing(gg, fx_, fy_, (big ? 1.4 : 0.55) * TS, col, true, 0.5, big ? Math.min(1, f.t / 1.8) : 1);
+        if (big) pixelTarget(gg, fx_, fy_, TS * 0.3, col);
+      }
       // y-sorted actors
       type A = { y: number; d: () => void };
       eliteLabels.length = 0;
       const actors: A[] = s.enemies.map((e) => ({ y: e.y, d: () => drawEnemy(e, TS, t) }));
+      lastFlail = s.flail;
+      const fb = s.flail && s.enemies.find((e) => e.kind === 'boss');
+      if (s.flail && fb && artReady() && s.flail.mode !== 'hand') { const f = s.flail; actors.push({ y: Math.max(f.y, fb.y + 0.01), d: () => drawFlail(f, fb, TS) }); }
       actors.push({ y: p.y, d: () => { if (hideHero) return;
         const px = p.x * TS, py = p.y * TS + p.r * TS * 1.1, face = Math.cos(s.aim.angle) >= 0 ? 1 : -1;
         const bob = p.moving ? -Math.abs(Math.sin(t * 10)) * TS * 0.07 : 0;

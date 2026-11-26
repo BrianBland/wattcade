@@ -10,7 +10,7 @@
   void elsewhere, trims, torches, hangings, baked decor), animated lava, pool glints. `floorInfo` places torches/pillars/decor.
 - `actors32.ts`: hero (5 stance outfits × front/side/back × 4-frame walk, weapon gripped at the hand and rotated to the aim),
   enemies (Coneling, Saddle Sore, Gel Slime hop, Lost Rider, CO2 Gremlin, Wrench Troll, Directeur Sportif), 6 bosses
-  (+ Grim Sweeper exported, unused; `bosses2.py` repaints 5 of 7), shots, coins, items, shrines, sigils, puffs, per-stance DNF.
+  (+ Grim Sweeper exported, unused; `bosses2.py` repaints all 7), Gear Masher `boss2.free` + `flailgear` (chain drawn at runtime by `drawFlail32`), shots, coins, items, shrines, sigils, puffs, per-stance DNF.
 - `light32.ts` (pure): ambient per zone + lights falling off (1-d/r)², vertical distance ×1.25, stepped by 0.17 with Bayer
   dither on 2×2 blocks. Walls occlude via grid line of sight; a wall face is lit only by a light at or below its row that
   sees its foot; wall tops get a 30% spill. Buffer holds L/2 and is applied multiply + one additive pass (up to 2×).

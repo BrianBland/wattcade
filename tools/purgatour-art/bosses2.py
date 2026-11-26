@@ -490,6 +490,11 @@ def boneshaker(fr=0, atk=False):
 
 # ------------------------------------------------------------------ The Gear Masher: an ogre warchief with a chainring club and a bike-chain bandolier
 OGRE5 = R('#2a160e', '#50301c', '#7c4e2c', '#a87642', '#d4a266')
+def flail_gear():
+    """the Gear Masher's chainring on its own, for when it flies out on the chain (rotated at runtime)"""
+    cv = Cv(22, 22); chainring(cv, 11, 11, 8, IRON[1:5], 22, .5); cv.ell(11, 11, 2.6, 2.6, GOLD)
+    cv.set(11, 4, IRON[4]); return cv.done()
+
 def chain_line(cv, x0, y0, x1, y1):
     n = int(max(abs(x1 - x0), abs(y1 - y0)))
     for i in range(n + 1):
@@ -499,7 +504,8 @@ def chain_line(cv, x0, y0, x1, y1):
         cv.set(x, y + 1, IRON[1] if ph < 2 else C(0))
         if ph == 0: cv.set(x, y - 1, IRON[4])
 
-def gear_masher(fr=0, atk=False):
+def gear_masher(fr=0, atk=False, free=False):
+    """free=True: the chainring is out on its chain; the right fist is raised holding the chain end"""
     cv = Cv(64, 64); b = fr % 2
     O = OGRE5
     # stumpy legs with wrapped feet
@@ -563,7 +569,13 @@ def gear_masher(fr=0, atk=False):
         for t in (2, 4, 6): cv.line(gx + ux * t - uy * 2, gy + uy * t + ux * 2, gx + ux * t + uy * 2, gy + uy * t - ux * 2, LEATH[1])   # grip wrap
         chainring(cv, hx_, hy_, r, IRON[1:5], 22, .5)
         cv.ell(hx_, hy_, 2.6, 2.6, GOLD)                                        # the crank bolt
-    if not atk:
+    if free:   # fist raised to the right, a few links of chain wrapped round it
+        arm(15, 27 + b, 10, 42 + b)
+        cv.line(8, 43 + b, 12, 43 + b, O[0])
+        arm(49, 27 + b, 55, 13 + b)
+        for k in range(3): cv.set(52 + k * 2, 15 + b, IRON[3]); cv.set(53 + k * 2, 15 + b, IRON[1])
+        cv.set(55, 9 + b, IRON[4]); cv.set(56, 10 + b, IRON[2])
+    elif not atk:
         arm(15, 27 + b, 10, 42 + b)
         cv.line(8, 43 + b, 12, 43 + b, O[0])
         arm(49, 27 + b, 53, 40 + b)

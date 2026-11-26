@@ -47,11 +47,11 @@ export function drawHero32(g: CanvasRenderingContext2D, x: number, foot: number,
 
 /** Enemy kinds map to their own sheets; bosses use boss<variant>. */
 export function enemyAnim(kind: string, variant: number) { return kind === 'boss' ? `boss${((variant % 6) + 6) % 6}` : kind; }
-export interface EnemyLook { kind: string; variant: number; moving: boolean; tell: number; flash: boolean; face: number; t: number; id: number }
+export interface EnemyLook { kind: string; variant: number; moving: boolean; tell: number; flash: boolean; face: number; t: number; id: number; /** Gear Masher with its chainring out on the chain */ free?: boolean }
 /** Returns the drawn height (for labels and bars). */
 export function drawEnemy32(g: CanvasRenderingContext2D, x: number, foot: number, e: EnemyLook): number {
-  const base = enemyAnim(e.kind, e.variant), atk = e.tell > 0.05 && anim(base + '.atk');
-  const name = atk ? base + '.atk' : base, m = anim(name); if (!m) return 0;
+  const base = enemyAnim(e.kind, e.variant), free = e.free && anim(base + '.free'), atk = !free && e.tell > 0.05 && anim(base + '.atk');
+  const name = free ? base + '.free' : atk ? base + '.atk' : base, m = anim(name); if (!m) return 0;
   let fr = 0;
   if (!atk) {
     if (e.kind === 'bat') fr = Math.floor(e.t * 10 + e.id) % m.n;
@@ -62,6 +62,25 @@ export function drawEnemy32(g: CanvasRenderingContext2D, x: number, foot: number
   const c = charFrame(name, fr); if (!c) return 0;
   blit(g, e.flash ? flashOf(c) : c, x - m.ax, foot - m.ay, e.face < 0);
   return m.ay;
+}
+
+/** Where the Gear Masher's raised fist is, relative to its foot point (sprite pixels, facing right). */
+export const FLAIL_HAND = { x: 23, y: -49 };
+const LINK = ['#1a1720', '#565262', '#848094', '#bcb8c8'];
+export interface FlailLook { hx: number; hy: number; gx: number; gy: number; groundY: number; spin: number; sag: number; onFloor: boolean }
+/** The chain from the fist to the chainring (screen pixels), then the chainring, spun with nearest-neighbour rotation. */
+export function drawFlail32(g: CanvasRenderingContext2D, f: FlailLook): void {
+  const dx = f.gx - f.hx, dy = f.gy - f.hy, len = Math.hypot(dx, dy), n = Math.max(1, Math.round(len / 3.2));
+  if (!f.onFloor) { g.fillStyle = 'rgba(8,6,12,0.35)'; g.fillRect(Math.round(f.gx - 6), Math.round(f.groundY - 1), 12, 3); g.fillRect(Math.round(f.gx - 4), Math.round(f.groundY - 2), 8, 5); }
+  for (let i = 1; i < n; i++) {
+    const k = i / n, x = Math.round(f.hx + dx * k), y = Math.round(f.hy + dy * k + Math.sin(Math.PI * k) * f.sag);
+    g.fillStyle = LINK[0]; g.fillRect(x - 1, y - 1, 3, 3);
+    if (i % 2) { g.fillStyle = LINK[2]; g.fillRect(x - 1, y - 1, 2, 1); g.fillStyle = LINK[1]; g.fillRect(x - 1, y, 2, 1); }
+    else { g.fillStyle = LINK[3]; g.fillRect(x, y - 1, 1, 1); g.fillStyle = LINK[1]; g.fillRect(x, y, 1, 1); }
+  }
+  const c = charFrame('flailgear', 0); if (!c) return;
+  const r = rotated(c, f.spin, 11, 11);
+  g.drawImage(r.c, Math.round(f.gx - r.ox), Math.round(f.gy - r.oy));
 }
 
 const EL_BY_COLOR = new Map(Object.entries(ELEMENT_COLORS).map(([k, v]) => [v.toLowerCase(), k as Element]));

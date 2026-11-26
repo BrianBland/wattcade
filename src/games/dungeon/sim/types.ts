@@ -66,6 +66,8 @@ export interface DungeonSnapshot {
   room: number;
   stairsOpen: boolean;
   frozen: boolean;
+  /** The Gear Masher's chainring on its chain (tiles); null for every other boss. tx/ty = where a throw or slam lands. */
+  flail: { x: number; y: number; mode: 'hand' | 'out' | 'back' | 'whirl' | 'slam' | 'rest'; t: number; ang: number; tx: number; ty: number } | null;
   boss: { active: boolean; name: string; hp: number; maxHp: number; phase: 1 | 2 | 3; cycle: 'idle' | 'windup' | 'exposed' | 'stagger'; left: number; fightT: number; tide: number; splits: [number, number] } | null;
   stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; /** hero damage output while firing, normalised per weapon (sum of per-shot damage / weapon rate), and seconds spent firing */ output: number; fireT: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number };
   hooks: { boss: boolean; shielded: boolean; swamp: boolean; seg: string; cadence: number; powerFtp: number };

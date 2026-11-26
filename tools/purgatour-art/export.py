@@ -160,6 +160,8 @@ def chars_sheet():
     for i, (n, fn) in enumerate(BO.BOSSES):
         ay = {5: 54, 6: 93}.get(i, 61)
         strip(f'boss{i}', [fn(0), fn(1)], ay=ay); strip(f'boss{i}.atk', [fn(0, True)], ay=ay)
+    strip('boss2.free', [BO._B2.gear_masher(f, free=True) for f in (0, 1)], ay=61)   # chainring out on its chain
+    strip('flailgear', [BO._B2.flail_gear()], ax=11, ay=11)
     strip('puff', [CH.puff(i) for i in range(5)]); strip('down', [CH.hero_down(i) for i in range(3)])
     strip('goo', [CH.goo_trail(0)], ay=4)
     for k in ('fury', 'endurance', 'sprint', 'whirl'): strip(f'shrine.{k}', [SH.shrine(k, f) for f in range(4)], ay=38)

@@ -8,7 +8,7 @@ export interface RunLayout { playH: number; card: Rect; stance: Rect }
 export function bossHudLayout(W: number, H: number, insetBottom: number, hu: number): Rect {
   const pad = 14 * hu, compact = W < 700 * hu;
   const w = compact ? W - 2 * pad : Math.min(W * 0.4, 420 * hu);
-  const x = compact ? pad : Math.max(W / 2 - w / 2, pad + 162 * hu);
+  const x = compact ? pad : Math.max(W / 2 - w / 2, pad + 184 * hu);
   const h = 48 * hu, y = Math.max(0, Math.min(pad + (compact ? 80 * hu : 0), H - insetBottom - h));
   return { x, y, w: Math.max(0, Math.min(w, W - pad - x)), h };
 }

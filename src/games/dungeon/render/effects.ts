@@ -135,13 +135,16 @@ export function drawPixelFx(g: CanvasRenderingContext2D, f: Fx, t: number, TS: n
       }
     case 'boom':
       {
-        const radius = Math.round(r * (0.25 + k * 0.75));
-        pixelRing(g, x, y, radius, p.base, true);
-        if (phase === 0) pixelDisc(g, x, y, Math.min(5, radius), p.light);
-        for (let i = 0; i < 8; i++) {
-          const a = i * Math.PI / 4,
-            d = radius * (i % 2 ? 0.72 : 1);
-          pixelLine(g, x + Math.cos(a) * d, y + Math.sin(a) * d, x + Math.cos(a) * (d + 2), y + Math.sin(a) * (d + 2), i % 2 ? p.base : p.light, phase === 2 ? 1 : 2);
+        // a flattened shockwave on the floor (3/4 view): dark rim, coloured body, light inner edge; a core flash; flying chips
+        const e = 1 - (1 - k) * (1 - k), radius = Math.round(r * (0.2 + e * 0.8)), sq = 0.62;
+        if (phase === 0) { pixelDisc(g, x, y, Math.min(8, radius * 0.6), p.light, sq); pixelDisc(g, x, y, Math.min(4, radius * 0.3), '#ffffff', sq); }
+        if (phase < 2) pixelRing(g, x, y, radius + 1, p.dark, false, sq);
+        pixelRing(g, x, y, radius, p.base, phase === 2, sq);
+        if (phase < 2) pixelRing(g, x, y, radius - 1, p.light, phase === 1, sq);
+        for (let i = 0; i < 10; i++) {
+          const a = i * 2.39996 + f.t0 * 7, d = e * r * (0.5 + (i % 3) * 0.22), lift = Math.sin(Math.min(1, k * 1.4) * Math.PI) * (6 + (i % 4) * 3);
+          g.fillStyle = i % 3 ? p.base : p.light; const sz = phase === 2 ? 1 : 2;
+          g.fillRect(Math.round(x + Math.cos(a) * d), Math.round(y + Math.sin(a) * d * sq - lift), sz, sz);
         }
         break;
       }

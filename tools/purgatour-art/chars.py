@@ -298,7 +298,10 @@ def puff(fr, tint=None):
                 nx, ny = (x + .5 - bx) / R, (y + .5 - (by - rise)) / R
                 dd = nx * nx + ny * ny
                 if dd > 1: continue
-                if fr >= 3 and (x + y + fr) % (2 if fr == 4 else 3) == 0: continue   # thinning
+                if fr >= 3:   # thinning: the edges break up into 2x2 clusters first, then holes open in the core
+                    B4 = (0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5)[((y >> 1) & 3) * 4 + ((x >> 1) & 3)] / 16
+                    keep = (1 - dd) * (1.6 if fr == 3 else 0.9)
+                    if keep < B4: continue
                 c = shade_n(nx, ny, ramp) if fr > 0 else C(11)
                 px[x, y] = c
     if fr in (1, 2):

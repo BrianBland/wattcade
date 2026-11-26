@@ -91,7 +91,7 @@ export function drawCrystalFloor(g: CanvasRenderingContext2D, sheet: CanvasImage
   // what the glass shows: the lit room displaced, deepened to violet, with a cyan fringe the other way
   r.setTransform(1, 0, 0, 1, 0, 0); r.globalAlpha = 1; r.globalCompositeOperation = 'copy'; r.imageSmoothingEnabled = false;
   const wob = Math.round(Math.sin(t * 0.9) * 1);
-  r.drawImage(lit, lox - ox + 4 + wob, loy - oy - 6);
+  r.drawImage(lit, lox - ox + 3 + wob, loy - oy - 3);
   r.globalCompositeOperation = 'multiply'; r.fillStyle = '#b98cff'; r.fillRect(0, 0, W, H);
   r.globalCompositeOperation = 'lighter'; r.globalAlpha = 0.35; r.drawImage(lit, lox - ox - 3, loy - oy + 3 - wob); r.globalAlpha = 1;
   r.globalCompositeOperation = 'multiply'; r.globalAlpha = 0.4; r.fillStyle = '#8fe6ff'; r.fillRect(0, 0, W, H); r.globalAlpha = 1;
@@ -101,7 +101,7 @@ export function drawCrystalFloor(g: CanvasRenderingContext2D, sheet: CanvasImage
   for (let b = -H; b < W; b += period) for (let k = 0; k < 10; k += 2) { r.beginPath(); const x0 = b + off + k; r.moveTo(x0, 0); r.lineTo(x0 + 1, 0); r.lineTo(x0 + 1 + H * 0.6, H); r.lineTo(x0 + H * 0.6, H); r.fill(); }
   r.globalCompositeOperation = 'destination-in'; r.drawImage(cfM, 0, 0);
   r.globalCompositeOperation = 'source-over';
-  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.3; g.drawImage(cfR, 0, 0); g.restore();
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.2; g.drawImage(cfR, 0, 0); g.restore();
 }
 
 // ---------------------------------------------------------------- damage numbers

@@ -207,6 +207,9 @@ def grim_sweeper(fr=0, atk=False):
 
 BOSSES = [('King Gel', king_gel), ('The Boneshaker', boneshaker), ('The Gear Masher', gear_masher), ('The Lycra Lich', lycra_lich),
           ('King of the Mountains', king_of_mountains), ('The Headwind Wyrm', headwind_wyrm), ('The Grim Sweeper', grim_sweeper)]
+import bosses2 as _B2   # round 23 repaints replace the weaker four
+BOSSES = BOSSES[:3] + [('The Lycra Lich', _B2.lycra_lich), ('King of the Mountains', _B2.king_of_mountains),
+                       ('The Headwind Wyrm', _B2.headwind_wyrm), ('The Grim Sweeper', _B2.grim_sweeper)]
 if __name__ == '__main__':
     from PIL import Image
     o = Image.new('RGBA', (4 * 100 + 4, 7 * 100 + 4), C(3))

@@ -6,7 +6,7 @@ import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
 import { BOSS_ART, anim, heroPalette, sprite, sprite2, type AnimState } from './sprites';
-import { heldWeapon, gearSprite, weaponGrip, type WeaponLook } from './weapons';
+import { heldWeapon, gearSprite, weaponGrip, colorRamp, type WeaponLook } from './weapons';
 import { holdPose } from './hold';
 import { drawProjectile, drawPixelFx, flameSprite } from './effects';
 import { pixelPanel, pixelMeter, pixelText } from './chrome';
@@ -162,6 +162,7 @@ export function createRenderer(): GameRenderer {
   let pixelScale = 1;
   // the DNF beat: when a run ends, the last frame freezes, the hero crumples (3-frame fall) and the screen fades before camp
   type HeroPin = { x: number; y: number; scale: number; angle: number };
+  let bossChip = 1, bossChipName = '';
   let hideHero = false, lastRun: { s: DungeonSnapshot; bike: Readonly<BikeState>; input: Readonly<InputState> } | null = null;
   let swapFx: { t0: number; c: string; from: string } | null = null, lastStance = '';
   let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
@@ -301,7 +302,7 @@ export function createRenderer(): GameRenderer {
     const fr = anim(name, st, t + e.id * 0.13, e.kind === 'bat' ? 10 : 7);
     const def = sprite2(name, fr.state, fr.idx, pal, false, scale);
     const ps = 1; // all actor pixels are the same size as one background pixel
-    const flash = e.hurt < 0.06;
+    const flash = e.hurt < (isBoss ? 0.035 : 0.06);
     const bob = e.kind === 'bat' ? Math.sin(t * 14 + e.id) * TS * 0.12 : -Math.abs(Math.sin(t * 8 + e.id)) * TS * 0.05;
     shadow(x, y, e.r * TS * 0.9);
     if (e.elite) { gg.globalCompositeOperation = 'lighter'; glowAt(ELITE_COLORS[e.elite], x, y - e.r * TS, e.r * TS * (2 + Math.sin(t * 5 + e.id) * 0.2), 0.55); gg.globalCompositeOperation = 'source-over'; }
@@ -589,6 +590,16 @@ export function createRenderer(): GameRenderer {
       }
 
       const emissive = () => {
+        if (s.stairsOpen && bg32) { // the way down: light motes rise out of the stairwell and a gold arrow bobs above it
+          const sx = Math.floor(w.stairs.x) * TS, sy = Math.floor(w.stairs.y) * TS;
+          for (let i = 0; i < 14; i++) { const ph = (t * 0.45 + i * 0.071) % 1, x0 = sx + 6 + ((i * 7) % 20) + Math.round(Math.sin(t * 2 + i) * 2);
+            gg.globalAlpha = Math.sin(ph * Math.PI) * 0.9; gg.fillStyle = i % 3 ? '#ffd84a' : '#fff4c0'; gg.fillRect(x0, Math.round(sy + 26 - ph * 34), 1, i % 4 ? 1 : 2); }
+          gg.globalAlpha = 1;
+          const ay = Math.round(sy - 14 + Math.abs(Math.sin(t * 3)) * -4), ax = sx + 16;
+          for (let r = 0; r < 5; r++) { gg.fillStyle = '#0a0810'; gg.fillRect(ax - 5 + r - 1, ay + r - 1, (5 - r) * 2 + 3, 3); }
+          for (let r = 0; r < 5; r++) { gg.fillStyle = r < 2 ? '#fff4c0' : '#ffd84a'; gg.fillRect(ax - 5 + r, ay + r, (5 - r) * 2 + 1, 1); }
+          gg.fillStyle = '#0a0810'; gg.fillRect(ax - 3, ay - 7, 7, 8); gg.fillStyle = '#ffd84a'; gg.fillRect(ax - 2, ay - 6, 5, 6); gg.fillStyle = '#fff4c0'; gg.fillRect(ax - 2, ay - 6, 1, 6);
+        }
         if (swapFx) { const k = (t - swapFx.t0) / 0.5; if (k < 0 || k > 1) swapFx = null; else drawStanceSwap(gg, p.x * TS, p.y * TS + p.r * TS * 1.1, k, swapFx.c, swapFx.from, t); }
         for (const b of s.bullets) if (!(artReady() && drawShot32(gg, b, TS))) drawBullet(b, TS, t);
         for (const f of s.fx) {
@@ -840,12 +851,54 @@ export function createRenderer(): GameRenderer {
     gg.textAlign = 'left';
   }
 
-  function bar(x: number, y: number, w: number, h: number, frac: number, col: string, label: string) {
-    const gg = g!;
-    pixelPanel(gg,x-2*dpr,y-2*dpr,w+4*dpr,h+4*dpr,'#82718f','#171320ee',dpr);
-    pixelMeter(gg,x,y,w,h,frac,col,dpr);
-    gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(h * 0.75)); fillText(gg, label, x + 6, y + h * 0.78, w - 12);
+  /** Boss bar: gold name plate with phase pips, a framed crimson meter with a lagging damage chip and notched phase marks. */
+  function drawBossBar(gg: CanvasRenderingContext2D, x: number, y: number, w: number, hu: number, B: NonNullable<DungeonSnapshot['boss']>, t: number, exp: boolean, tide: boolean) {
+    const f = Math.max(0, Math.min(1, B.hp / B.maxHp)), q = Math.max(1, Math.round(hu));
+    if (bossChipName !== B.name) { bossChip = f; bossChipName = B.name; }
+    bossChip = f > bossChip ? f : bossChip + (f - bossChip) * 0.06;
+    // name plate
+    gg.save(); gg.textBaseline = 'alphabetic'; gg.textAlign = 'left'; gg.font = pixelFont(Math.round(12 * hu));
+    gg.fillStyle = '#0a0810'; fillText(gg, B.name.toUpperCase(), x + 2 * hu + q, y + 11 * hu + q, w * 0.7);
+    gg.fillStyle = exp ? '#fff4b0' : '#ffd84a'; fillText(gg, B.name.toUpperCase(), x + 2 * hu, y + 11 * hu, w * 0.7);
+    // phase pips (diamonds): filled for phases reached
+    const n = B.splits.length + 1;
+    for (let i = 0; i < n; i++) {
+      const cx = Math.round(x + w - 6 * hu - (n - 1 - i) * 11 * hu), cy = Math.round(y + 6 * hu), r = Math.round(3.5 * hu), on = i < B.phase;
+      gg.fillStyle = '#0a0810'; gg.beginPath(); gg.moveTo(cx, cy - r - q); gg.lineTo(cx + r + q, cy); gg.lineTo(cx, cy + r + q); gg.lineTo(cx - r - q, cy); gg.fill();
+      gg.fillStyle = on ? (exp ? '#ffe08a' : '#c23a3a') : '#3a3243'; gg.beginPath(); gg.moveTo(cx, cy - r); gg.lineTo(cx + r, cy); gg.lineTo(cx, cy + r); gg.lineTo(cx - r, cy); gg.fill();
+      if (on) { gg.fillStyle = '#ffffff66'; gg.fillRect(cx - q, cy - r + q, q, q); }
+    }
+    // frame + meter
+    const by = Math.round(y + 15 * hu), bh = Math.round(12 * hu), bx = Math.round(x), bw = Math.round(w);
+    pixelPanel(gg, bx - 2 * q, by - 2 * q, bw + 4 * q, bh + 4 * q, exp ? '#ffd84a' : '#82718f', '#120e18', q);
+    const ramp = exp ? ['#7a4a12', '#f0b030', '#ffe08a'] : tide ? ['#2e2140', '#7a4ab0', '#c08aff'] : ['#3a0e16', '#922430', '#e0504a'];
+    const fw = Math.round(bw * f), cw = Math.round(bw * Math.max(f, bossChip));
+    gg.fillStyle = '#f1e8d6'; gg.fillRect(bx + fw, by, cw - fw, bh);                         // damage chip
+    gg.fillStyle = ramp[1]; gg.fillRect(bx, by, fw, bh);
+    gg.fillStyle = ramp[2]; gg.fillRect(bx, by, fw, 2 * q);
+    gg.fillStyle = ramp[0]; gg.fillRect(bx, by + bh - 2 * q, fw, 2 * q);
+    if (exp) { gg.fillStyle = `rgba(255,255,255,${0.25 + 0.2 * Math.sin(t * 12)})`; gg.fillRect(bx, by, fw, bh); }
+    gg.fillStyle = '#0d0b1855'; for (let xx = 16 * q; xx < fw; xx += 16 * q) gg.fillRect(bx + xx, by + 2 * q, q, bh - 4 * q);
+    for (const sp of B.splits) {                                                               // notched phase marks
+      const mx = Math.round(bx + bw * sp);
+      gg.fillStyle = '#0a0810'; gg.fillRect(mx - q, by - 2 * q, 2 * q, bh + 4 * q);
+      gg.fillStyle = '#ffd84a'; gg.fillRect(mx - q, by - 3 * q, 2 * q, 2 * q); gg.fillRect(mx - q, by + bh + q, 2 * q, 2 * q);
+    }
+    gg.restore();
   }
+  function bar(x: number, y: number, w: number, h: number, frac: number, col: string, label: string) {
+    const gg = g!, q = Math.max(1, Math.round(dpr)), r = colorRamp(col);
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    pixelPanel(gg, x - 2 * q, y - 2 * q, w + 4 * q, h + 4 * q, '#82718f', '#120e18', q);
+    const fw = Math.round(w * Math.max(0, Math.min(1, frac)));
+    gg.fillStyle = r.base; gg.fillRect(x, y, fw, h);
+    gg.fillStyle = r.light; gg.fillRect(x, y, fw, Math.min(2 * q, h));
+    gg.fillStyle = r.dark; gg.fillRect(x, y + h - 2 * q, fw, 2 * q);
+    gg.fillStyle = '#0d0b1855'; for (let xx = 16 * q; xx < fw; xx += 16 * q) gg.fillRect(x + xx, y + 2 * q, q, h - 4 * q);
+    if (fw > 2 * q && fw < w) { gg.fillStyle = '#ffffff'; gg.fillRect(x + fw - q, y, q, h); }
+    if (label) { gg.font = pixelFont(Math.round(h * 0.75)); gg.fillStyle = '#0a0810'; fillText(gg, label, x + 6 + q, y + h * 0.78 + q, w - 12); gg.fillStyle = '#fff'; fillText(gg, label, x + 6, y + h * 0.78, w - 12); }
+  }
+
 
   /** Dev measurement: boxes the dungeon HUD covers this frame (device px); read by dev-shot to report HUD area. */
   function drawHud(s: DungeonSnapshot, W: number, H: number, _bike: Readonly<BikeState>) {
@@ -855,7 +908,7 @@ export function createRenderer(): GameRenderer {
     gg.textAlign = 'left';
     // compact status panel (top-left): thin HP + XP bars, then Lv/floor, coins, potions and the Second Wind pip on one line.
     // `hu` scales from CSS pixels, so the iPad's large device scale doesn't double it (and it clears the boss bar).
-    const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, PW = 150 * hu;
+    const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, PW = 172 * hu;
     {
       const x = L, y = L, hpLow = p.hp < p.maxHp * 0.4;
       pixelPanel(gg,x-3*hu,y-3*hu,PW+6*hu,38*hu,'#746481','#15111fee',dpr); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu);
@@ -867,7 +920,7 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = '#fff'; const lvTxt = `Lv${p.level} F${s.floor}`; fillText(gg, lvTxt, x, ly); const coinX = Math.max(x + 44 * hu, x + textW(gg, lvTxt) + 6 * hu);
       const cp = Math.max(0, 1 - (s.t - coinPulseT) / 0.25);
       if (cp > 0) { gg.save(); gg.font = pixelFont(Math.round(10 * hu * (1 + 0.35 * cp))); }
-      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillText(gg, `● ${p.coins}`, coinX, ly);
+      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillText(gg, `● ${p.coins}`, coinX, ly); const coinEnd = coinX + textW(gg, `● ${p.coins}`);
       if (cp > 0) gg.restore();
       const tx = coinX + 3 * hu, ty = ly - 3.5 * hu;
       for (let i = flyers.length - 1; i >= 0; i--) {
@@ -876,7 +929,8 @@ export function createRenderer(): GameRenderer {
         const e = k * k * (3 - 2 * k), fx2 = f.x + (tx - f.x) * e, fy2 = f.y + (ty - f.y) * e - Math.sin(k * Math.PI) * 40 * hu;
         drawSprite('coin', fx2, fy2 + 3 * hu, (1.4 - 0.6 * k) * hu);
       }
-      for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; if (!drawItem32(gg, 'potion', x + 86 * hu + k * 9 * hu, ly + 4 * hu, Math.max(1, Math.round(hu * 0.6)))) drawSprite('potion', x + 86 * hu + k * 9 * hu, ly - 3.5 * hu, 1.1 * hu); }
+      const potX = Math.max(x + 86 * hu, coinEnd + 9 * hu), potStep = Math.min(9 * hu, (x + PW - 32 * hu - potX) / Math.max(1, p.potionCap - 1));
+      for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; if (!drawItem32(gg, 'potion', potX + k * potStep, ly + 4 * hu, Math.max(1, Math.round(hu * 0.6)))) drawSprite('potion', potX + k * potStep, ly - 3.5 * hu, 1.1 * hu); }
       gg.globalAlpha = 1;
       // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
       const sw = p.secondWind, sx = x + PW - 26 * hu, sy = ly - 8 * hu, w = 26 * hu, h = 9 * hu, ready = sw >= 1;
@@ -1015,11 +1069,10 @@ export function createRenderer(): GameRenderer {
       const BR=bossHudLayout(W,H,insetCss*dpr,hu),bw=BR.w,bx=BR.x,by=BR.y;
       const B = s.boss, exp = B.cycle === 'exposed', wind = B.cycle === 'windup';
       hudBox(bx,by,bw,BR.h);
-      bar(bx, by, bw, 18 * hu, B.hp / B.maxHp, exp ? '#ffd84a' : B.tide > 0 ? '#9a5ab0' : '#c0a', `${B.name}  ·  phase ${B.phase}`);
-      gg.fillStyle = '#fff'; for (const sp of B.splits) gg.fillRect(bx + bw * sp - 1, by, 2,18*hu); // phase marks
-      gg.textAlign = 'center'; gg.font = pixelFont(Math.round(13 * u));
+      drawBossBar(gg, bx, by, bw, hu, B, s.t, exp, B.tide > 0);
+      gg.textAlign = 'center'; gg.font = pixelFont(Math.round(11 * u));
       gg.fillStyle = exp ? '#ffe08a' : wind ? '#ff7a2a' : B.tide > 0 ? '#7dff5a' : '#ddd';
-      fillText(gg, exp ? 'EXPOSED: x2 damage. Sprint and Strike now!' : wind ? 'Big attack coming: Ward to parry' : B.cycle === 'stagger' ? 'Staggered!' : B.tide > 0 ? `Turning Tide: boss takes +${Math.round(B.tide * 100)}%` : 'Watch for the big attack',bx+bw/2,by+36*hu,bw);
+      fillText(gg, exp ? 'EXPOSED: x2 damage. Sprint and Strike now!' : wind ? 'Big attack coming: Ward to parry' : B.cycle === 'stagger' ? 'Staggered!' : B.tide > 0 ? `Turning Tide: boss takes +${Math.round(B.tide * 100)}%` : 'Watch for the big attack',bx+bw/2,by+43*hu,bw);
       gg.textAlign = 'left';
     } else if (s.stairsOpen) {
       gg.fillStyle = '#ffd84a'; gg.textAlign = 'center'; gg.font = pixelFont(fs);

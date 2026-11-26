@@ -37,17 +37,37 @@ def stone_ramp(): return [pal.PAL[i] for i in range(12)]
 def hexs(c): return '#%02x%02x%02x' % c[:3]
 
 def stairs_img():
+    """a stairwell going down into the dark: coped rim, brick cheeks, seven treads with lit nosings, dithered to black"""
     im = Image.new('RGBA', (32, 32)); px = im.load(); C = pal.C
+    B4 = (0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5)
     for y in range(32):
-        for x in range(32): px[x, y] = C(1)
-    for i in range(6):
-        y = 2 + i * 5; t = [(7, 6, 4), (6, 5, 3), (5, 4, 2), (4, 3, 2), (3, 2, 1), (2, 1, 0)][i]
-        for x in range(3 + i // 2, 29 - i // 2):
-            px[x, y] = C(t[0]); px[x, y + 1] = C(t[1]); px[x, y + 2] = C(t[1]); px[x, y + 3] = C(t[2]); px[x, y + 4] = C(t[2])
-    for y in range(32):
-        for x in (0, 1, 2): px[x, y] = C((7, 6, 5)[x])
-        for x in (29, 30, 31): px[x, y] = C((3, 4, 2)[x - 29])
-    for x in range(32): px[x, 0] = C(7); px[x, 1] = C(5)
+        for x in range(32): px[x, y] = C(0)
+    for i in range(7):
+        y0 = 4 + i * 4; inset = 4 + i
+        dark = i / 6.5
+        for x in range(inset, 32 - inset):
+            for dy in range(4):
+                v = (7, 5, 4, 3)[dy] - round(dark * 4)
+                if dy == 0 and (x - inset) % 9 == 4: v -= 1                       # worn nick in the nosing
+                if dark > .45 and B4[((y0 + dy) & 3) * 4 + (x & 3)] / 16 < (dark - .45) * 1.8: v = 0
+                px[x, y0 + dy] = C(max(0, v))
+            if i < 4 and (x - inset) in (0,): px[x, y0] = C(max(0, 8 - i))
+    for y in range(3, 32):                                                       # brick cheeks narrowing with the steps
+        w = min(4 + (y - 4) // 4, 10)
+        for x in range(0, w):
+            brick = ((y // 3) + (x // 4)) % 2
+            v = (6 if x == 0 else 5 if brick else 4) - (y // 12)
+            if y % 3 == 0: v = 3
+            px[x, y] = C(max(1, v))
+        for x in range(32 - w, 32):
+            brick = ((y // 3) + (x // 4)) % 2
+            v = (3 if x == 31 else 4 if brick else 3) - (y // 12)
+            if y % 3 == 0: v = 2
+            px[x, y] = C(max(1, v))
+        px[w, y] = C(1); px[31 - w, y] = C(0)
+    for x in range(32):                                                          # coping on the near rim
+        px[x, 0] = C(9); px[x, 1] = C(8); px[x, 2] = C(6); px[x, 3] = C(2)
+        if x % 8 == 7: px[x, 1] = C(6); px[x, 2] = C(4)
     return im
 
 def zone_sheet(z):

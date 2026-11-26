@@ -351,10 +351,229 @@ def king_gel(fr=0, atk=False):
     chainring(cv, 32 + (5 if atk else 0), cy - ry - 3 + (2 if atk else 0), 8)   # the crown: a big chainring
     return cv.done()
 
+# ------------------------------------------------------------------ shared: volume-shade any polygon as if it were a rounded lump
+def lump(cv, pts, ramp, cx, cy, rx, ry, rim=True, clip=None):
+    """fill a polygon with sphere lighting taken from an ellipse (cx, cy, rx, ry); ramp has 4 or 5 steps"""
+    m = cv.mask(pts); n = len(ramp)
+    ins = lambda x, y: 0 <= x < cv.w and 0 <= y < cv.h and m[x, y]
+    for y in range(cv.h):
+        for x in range(cv.w):
+            if not m[x, y] or (clip and not clip(x, y)): continue
+            nx, ny = (x + .5 - cx) / rx, (y + .5 - cy) / ry; d = min(1, nx * nx + ny * ny)
+            l = -.55 * nx - .65 * ny + .52 * math.sqrt(1 - d)
+            k = 0 if l < -.05 else 1 if l < .3 else 2 if l < .62 else 3
+            if n == 5: k = 0 if l < -.2 else 1 if l < .12 else 2 if l < .42 else 3 if l < .7 else 4
+            if rim and (not ins(x - 1, y) or not ins(x, y - 1)) and l > -.2: k = min(n - 1, k + 1)
+            cv.set(x, y, ramp[k])
+    return ins
+
+def rust(cv, x0, y0, x1, y1, seed, want=None, amount=.16):
+    """rust and grime clusters (2x2) over steel pixels in a box"""
+    RUST = [hx('#3a1e14'), hx('#6a3420'), hx('#9a5a30')]
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            c = cv.get(x, y)
+            if c[3] == 0 or (want and c not in want): continue
+            r = h2(x // 2, y // 2, seed)
+            if r < amount: cv.set(x, y, RUST[0 if c in (STEEL[0], STEEL[1]) else 1 if r < amount * .6 else 2])
+
+# ------------------------------------------------------------------ The Boneshaker: a rattling skeleton knight with a wooden boneshaker wheel
+BONE5 = R('#4e4252', '#7d6f72', '#aba08f', '#d6ccb4', '#f6eedb')
+IRON = R('#1a1720', '#34303e', '#565262', '#848094', '#bcb8c8')
+LEATH = R('#24140e', '#462818', '#6e4226', '#9a6236')
+def boneshaker_wheel(cv, cx, cy, r, spin=0):
+    """an 1860s boneshaker wheel: iron tyre on a wooden felloe, 12 turned wooden spokes, a brass-capped hub"""
+    for y in range(int(cy - r - 2), int(cy + r + 3)):
+        for x in range(int(cx - r - 2), int(cx + r + 3)):
+            dx, dy = x + .5 - cx, y + .5 - cy; d = math.hypot(dx, dy); l = (-dx * .6 - dy * .75) / max(d, .01)
+            if r - 1.6 < d <= r:                                    # iron tyre, lit top-left, rusty underneath
+                k = 4 if l > .7 else 3 if l > .25 else 2 if l > -.3 else 1
+                if l < -.4 and h2(x // 2, y // 2, 41) < .35: k = 0
+                cv.set(x, y, IRON[k])
+            elif r - 4.2 < d <= r - 1.6:                           # wooden felloe with grain joints
+                k = 3 if l > .55 else 2 if l > 0 else 1 if l > -.6 else 0
+                a = (math.atan2(dy, dx) + spin) % (2 * math.pi)
+                if int(a / (2 * math.pi) * 6 * 8) % 8 == 0: k = 0      # six felloe joints
+                if d < r - 3.6: k = max(0, k - 1)                        # inner lip shadow
+                cv.set(x, y, WOOD[k])
+    for k in range(12):
+        a = k * math.pi / 6 + spin
+        for t in range(int(r * 10)):
+            q = 3.5 + (r - 7.5) * t / (r * 10)
+            px_, py_ = cx + math.cos(a) * q, cy + math.sin(a) * q
+            lit = math.cos(a) * -.6 + math.sin(a) * -.75
+            cv.set(px_, py_, WOOD[2] if lit > .3 else WOOD[1])
+            if abs(q - (r - 6)) < .4: cv.set(px_, py_, WOOD[3] if lit > 0 else WOOD[2])   # turned collar near the rim
+    cv.ell(cx, cy, 3.6, 3.6, [IRON[1], IRON[2], IRON[3], IRON[4]])
+    cv.ell(cx, cy, 1.8, 1.8, GOLD); cv.set(cx - 1, cy - 1, GOLD[3])
+
+def boneshaker(fr=0, atk=False):
+    cv = Cv(64, 64); b = fr % 2
+    B = BONE5
+    if atk: boneshaker_wheel(cv, 50, 13, 12.5, spin=fr * .26)                    # wheel cocked back behind the shoulder
+    def bone(x0, y0, x1, y1, w=3, knob=True):
+        cv.rod(x0, y0, x1, y1, [B[1], B[2], B[3]], w)
+        if knob:
+            for (x, y) in ((x0, y0), (x1, y1)): cv.ell(x, y, w * .6 + .4, w * .6 + .4, B[1:5])
+    # legs: femur, kneecap, shin, then iron sabatons that sit on the floor line
+    for side, (hx_, kx, fx) in ((-1, (27, 25, 24)), (1, (35, 38, 39))):
+        bone(hx_, 40 + b, kx, 48 + b, 3); bone(kx, 49 + b, fx, 56, 3, knob=False)
+        cv.ell(kx, 48 + b, 2.2, 2, B[1:5])
+        boot = [(fx - 4, 55), (fx + 3, 55), (fx + 5 + side, 58), (fx + 5 + side, 61), (fx - 5 + side, 61), (fx - 5, 58)]
+        lump(cv, boot, IRON, fx, 56, 7, 6)
+        cv.line(fx - 4, 58, fx + 4 + side, 58, IRON[1]); cv.set(fx - 2, 56, IRON[4])
+    # tattered red tabard hanging between the legs, under the belt
+    tab = [(26, 38 + b), (37, 38 + b), (36, 50 + b), (34, 47 + b), (32, 52 + b), (30, 47 + b), (27, 50 + b)]
+    lump(cv, tab, [RED[0], RED[1], RED[2], RED[3]], 29, 40, 9, 12)
+    cv.line(31, 41 + b, 31, 48 + b, RED[0])
+    # pelvis
+    cv.ell(31, 38 + b, 7, 3.2, B[1:5]); cv.set(29, 38 + b, B[0]); cv.set(33, 38 + b, B[0]); cv.set(31, 39 + b, B[0])
+    cv.line(23, 38 + b, 39, 38 + b, LEATH[1]); cv.ell(31, 37 + b, 2, 1.6, GOLD)   # sword belt + buckle
+    # ribcage: dark hollow behind, ribs arcing round with gaps, sternum down the middle
+    cv.ell(31, 27 + b, 9, 8.5, [C(0), C(1), C(2), C(2)], spec=False)
+    for i in range(5):
+        y = 21 + b + i * 3; w = 9 - i * .9
+        for t in range(-int(w * 4), int(w * 4) + 1):
+            xx = 31 + t / 4; yy = y + (t / 4 / w) ** 2 * 2.2
+            lit = t < 0
+            cv.set(xx, yy, B[3] if lit and i < 2 else B[2] if lit else B[1])
+            cv.set(xx, yy + 1, B[1] if lit else B[0])
+    cv.rod(31, 20 + b, 31, 34 + b, [B[2], B[3], B[1]], 2)
+    for y in range(31 + b, 38 + b, 2): cv.ell(31, y, 1.6, 1.1, B[1:5])          # lumbar vertebrae
+    # arms (behind the pauldrons) and the gear in them
+    if atk:   # wind-up: right arm back on the wheel, left arm thrown forward for balance
+        bone(40, 21 + b, 45, 17, 3); bone(45, 17, 47, 13, 3)
+        bone(22, 21 + b, 14, 25 + b, 3); bone(14, 25 + b, 9, 21 + b, 3)
+        cv.ell(8, 20 + b, 2.3, 2, B[1:5])
+    else:
+        bone(22, 21 + b, 17, 31 + b, 3); bone(17, 31 + b, 15, 39 + b, 3)
+        bone(40, 21 + b, 45, 30 + b, 3); bone(45, 30 + b, 46, 37 + b, 3)
+    # rusted pauldrons with a rivet row and a lit rim
+    for (cx, sgn) in ((22, -1), (40, 1)):
+        pts = [(cx - 7, 23 + b), (cx - 5, 17 + b), (cx, 15 + b), (cx + 5, 17 + b), (cx + 7, 23 + b), (cx, 21 + b)]
+        lump(cv, pts, IRON, cx - 1, 18 + b, 7, 5)
+        cv.line(cx - 6, 22 + b, cx, 20 + b, IRON[1]); cv.line(cx, 20 + b, cx + 6, 22 + b, IRON[1])
+        for rx_ in (-4, 0, 4): cv.set(cx + rx_, 18 + b + (1 if rx_ else 0), GOLD[2])
+    rust(cv, 14, 14 + b, 48, 25 + b, 7, want=IRON[1:4], amount=.13)
+    # skull: domed cranium, cheekbones, deep sockets with a pink-red ember, a gapped jaw
+    cv.ell(31, 10 + b, 7.5, 7, B[1:5]); cv.ell(31, 15 + b, 5, 2.8, B[1:5])
+    cv.set(26, 13 + b, B[4]); cv.set(25, 12 + b, B[3])                           # cheekbone catch-light
+    for ex in (28, 34):
+        cv.ell(ex, 11 + b, 2.2, 2.1, [C(0)] * 4, spec=False)
+        cv.set(ex, 11 + b, EYE_E if not atk else hx('#ffffff')); cv.set(ex - 1, 11 + b, RED[3] if atk else RED[2])
+    cv.set(31, 14 + b, C(0)); cv.set(30, 14 + b, B[0])                          # nasal hole
+    cv.line(27, 16 + b, 35, 16 + b, C(0))
+    for x in range(27, 36):
+        if x % 2: cv.set(x, 15 + b, B[4] if x < 31 else B[3]); cv.set(x, 17 + b, B[2])
+    if atk: cv.line(28, 17 + b, 34, 17 + b, C(0)); cv.line(28, 18 + b, 34, 18 + b, B[1])   # jaw drops open
+    cv.line(35, 6 + b, 33, 9 + b, B[0]); cv.set(34, 9 + b, B[0])                   # a crack in the crown
+    # old leather riding cap with ear flaps and brass goggles pushed up on it
+    cap = [(23, 8 + b), (25, 3 + b), (31, 1 + b), (37, 3 + b), (39, 8 + b), (39, 11 + b), (38, 11 + b), (37, 8 + b), (25, 8 + b), (24, 11 + b), (23, 11 + b)]
+    lump(cv, cap, LEATH, 29, 4 + b, 9, 6)
+    for x in range(24, 39, 3): cv.set(x, 4 + b + (x % 2), LEATH[0])              # stitched panels
+    for gx in (27, 35):
+        cv.ell(gx, 7 + b, 2.6, 2.2, GOLD); cv.set(gx, 7 + b, hx('#5aa0b4')); cv.set(gx - 1, 6 + b, hx('#d8f6ff'))
+    cv.line(29, 7 + b, 33, 7 + b, GOLD[1])
+    if atk: cv.ell(47, 13, 2.3, 2, B[1:5])                                     # hand on the rim
+    if not atk:
+        # the wheel as a tower shield, slightly overlapping the body
+        boneshaker_wheel(cv, 48, 41 + b, 13.5, spin=fr * .26)
+        cv.ell(46, 38 + b, 2.3, 2, B[1:5])                                     # hand gripping the hub
+        # crank-arm mace: a forged crank with a spiked pedal on the end
+        cv.rod(15, 39 + b, 9, 53 + b, IRON[1:5], 4)
+        cv.ell(14, 39 + b, 2.6, 2.3, B[1:5])
+        ped = [(4, 52 + b), (13, 52 + b), (14, 57 + b), (3, 57 + b)]
+        lump(cv, ped, IRON, 7, 53 + b, 6, 4)
+        for x in range(4, 14, 2): cv.set(x, 51 + b, IRON[4]); cv.set(x, 58 + b, IRON[2])   # pedal teeth
+        cv.line(5, 54 + b, 12, 54 + b, IRON[0]); cv.ell(9, 54 + b, 1.2, 1.2, GOLD)
+    return cv.done()
+
+# ------------------------------------------------------------------ The Gear Masher: an ogre warchief with a chainring club and a bike-chain bandolier
+OGRE5 = R('#2a160e', '#50301c', '#7c4e2c', '#a87642', '#d4a266')
+def chain_line(cv, x0, y0, x1, y1):
+    n = int(max(abs(x1 - x0), abs(y1 - y0)))
+    for i in range(n + 1):
+        x, y = x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n
+        ph = i % 4
+        cv.set(x, y, IRON[3] if ph == 0 else IRON[2] if ph == 1 else IRON[0] if ph == 2 else IRON[1])
+        cv.set(x, y + 1, IRON[1] if ph < 2 else C(0))
+        if ph == 0: cv.set(x, y - 1, IRON[4])
+
+def gear_masher(fr=0, atk=False):
+    cv = Cv(64, 64); b = fr % 2
+    O = OGRE5
+    # stumpy legs with wrapped feet
+    for lx in (23, 38):
+        lump(cv, [(lx - 5, 44 + b), (lx + 5, 44 + b), (lx + 5, 55), (lx - 5, 55)], O, lx - 2, 47, 7, 8)
+        lump(cv, [(lx - 7, 54), (lx + 6, 54), (lx + 7, 58), (lx + 7, 61), (lx - 7, 61)], LEATH, lx - 2, 56, 9, 6)
+        for y in (56, 59): cv.line(lx - 6, y, lx + 6, y, LEATH[0])
+        for t in (-5, -1, 3): cv.set(lx + t, 61, BONE5[2])                       # toenails peeking out
+    # massive torso: shoulders hunched up, belly hanging low
+    torso = [(14, 26 + b), (19, 18 + b), (27, 15 + b), (37, 15 + b), (45, 18 + b), (50, 26 + b), (51, 37 + b), (47, 46 + b), (32, 49 + b), (17, 46 + b), (13, 37 + b)]
+    lump(cv, torso, O, 28, 26 + b, 22, 20)
+    cv.ell(32, 39 + b, 12, 8, O[1:5])                                           # belly
+    cv.set(31, 40 + b, O[0]); cv.set(32, 40 + b, O[1])                            # navel
+    for (x0, y0, x1, y1) in ((21, 24, 27, 30), (24, 22, 29, 28), (39, 23, 43, 30)):   # old scars, pale lips
+        cv.line(x0, y0 + b, x1, y1 + b, O[0]); cv.line(x0 + 1, y0 + b, x1 + 1, y1 + b, O[3])
+    cv.line(32, 20 + b, 32, 30 + b, O[1]); cv.line(25, 21 + b, 31, 22 + b, O[1]); cv.line(33, 22 + b, 39, 21 + b, O[1])   # pecs
+    # bike-chain bandolier slung shoulder to hip
+    chain_line(cv, 17, 20 + b, 46, 44 + b)
+    # war kilt in team red, gold chainring belt plate, leather strips
+    kilt = [(15, 43 + b), (49, 43 + b), (49, 52 + b), (45, 50 + b), (41, 53 + b), (36, 50 + b), (32, 53 + b), (27, 50 + b), (23, 53 + b), (19, 50 + b), (15, 52 + b)]
+    lump(cv, kilt, [RED[0], RED[1], RED[2], RED[3]], 26, 44 + b, 20, 10)
+    for x in (21, 27, 37, 43): cv.line(x, 46 + b, x, 51 + b, RED[0])
+    cv.rod(14, 43 + b, 50, 43 + b, LEATH[1:4], 3)
+    chainring(cv, 32, 43 + b, 3.6, GOLD, 10, .4)
+    if atk:   # two-handed wind-up over the left shoulder, roaring
+        cv.rod(49, 27 + b, 22, 12, [O[3], O[2], O[1]], 6); cv.rod(15, 27 + b, 16, 13, [O[3], O[2], O[1]], 6)
+        cv.rod(22, 13, 10, 9, WOOD, 4); chainring(cv, 10, 9, 8.5, IRON[1:5], 22, .5); cv.ell(10, 9, 2.6, 2.6, GOLD)
+        for hx_ in (17, 22): cv.ell(hx_, 12, 3.4, 3, O[1:5])
+    # head: low brow, small eyes, underbite with tusks, sunk between the shoulders
+    cv.ell(32, 15 + b, 8.5, 7.5, O[1:5]); cv.ell(32, 19 + b, 7, 3.6, O[1:5])
+    cv.line(25, 13 + b, 30, 14 + b, O[0]); cv.line(34, 14 + b, 39, 13 + b, O[0])   # heavy brow
+    cv.line(25, 12 + b, 30, 13 + b, O[4] if not atk else O[3])
+    for ex in (28, 36):
+        cv.set(ex, 15 + b, C(0)); cv.set(ex + (1 if ex < 32 else -1), 15 + b, EYE_E)
+    cv.set(32, 17 + b, O[0]); cv.set(31, 17 + b, O[1]); cv.set(33, 17 + b, O[0])  # broad nose
+    mouth = 21 + b
+    if atk: cv.ell(32, mouth, 4, 2, [C(0), C(0), RED[1], RED[1]], spec=False)
+    else: cv.line(28, mouth, 36, mouth, C(0))
+    for tx in (28, 36): cv.set(tx, mouth - 1, BONE5[4]); cv.set(tx, mouth - 2, BONE5[3]); cv.set(tx, mouth, BONE5[2])   # tusks
+    # dented steel helm with a cheek guard and a red horsehair plume
+    helm = [(23, 12 + b), (24, 7 + b), (28, 4 + b), (36, 4 + b), (40, 7 + b), (41, 12 + b), (38, 11 + b), (26, 11 + b)]
+    lump(cv, helm, IRON, 29, 6 + b, 9, 6)
+    cv.line(24, 11 + b, 40, 11 + b, IRON[1]); cv.line(32, 4 + b, 32, 11 + b, IRON[3])
+    for x in (25, 29, 35, 39): cv.set(x, 10 + b, GOLD[2])
+    rust(cv, 22, 3 + b, 42, 12 + b, 13, want=IRON[1:4], amount=.12)
+    sw = 1 if b else 0
+    for i, (dx, dy) in enumerate(((0, 3), (1, 2), (2, 1), (3, 0), (5, 0), (7, 1), (8, 2))):
+        cv.line(32 + dx, 3 + b - dy, 33 + dx + sw, 4 + b - dy + 3, RED[2] if i < 4 else RED[1], 2)
+    cv.set(33, 0 + b, RED[3]); cv.set(34, 0 + b, RED[3])
+    # one spiked pauldron on the club arm
+    pd = [(40, 21 + b), (44, 16 + b), (50, 17 + b), (53, 22 + b), (50, 26 + b), (43, 25 + b)]
+    lump(cv, pd, IRON, 46, 18 + b, 7, 5)
+    for (sx, sy) in ((45, 15), (49, 15), (52, 19)): cv.set(sx, sy + b, IRON[4]); cv.set(sx, sy + b - 1, IRON[3])
+    def arm(x0, y0, x1, y1):
+        cv.rod(x0, y0, x1, y1, [O[3], O[2], O[1]], 6)
+        cv.ell(x1, y1, 3.6, 3.2, O[1:5])
+        cv.line(x1 - 2, y1 + 1, x1 + 2, y1 + 1, O[0])                           # knuckles
+    def club(gx, gy, hx_, hy_, r):
+        cv.rod(gx, gy, hx_, hy_, WOOD, 4)
+        L = math.hypot(hx_ - gx, hy_ - gy); ux, uy = (hx_ - gx) / L, (hy_ - gy) / L
+        for t in (2, 4, 6): cv.line(gx + ux * t - uy * 2, gy + uy * t + ux * 2, gx + ux * t + uy * 2, gy + uy * t - ux * 2, LEATH[1])   # grip wrap
+        chainring(cv, hx_, hy_, r, IRON[1:5], 22, .5)
+        cv.ell(hx_, hy_, 2.6, 2.6, GOLD)                                        # the crank bolt
+    if not atk:
+        arm(15, 27 + b, 10, 42 + b)
+        cv.line(8, 43 + b, 12, 43 + b, O[0])
+        arm(49, 27 + b, 53, 40 + b)
+        club(53, 41 + b, 56, 15 + b, 8.5)
+    return cv.done()
+
 if __name__ == '__main__':
     from PIL import Image
     from chars import flash
-    fns = [king_gel, king_of_mountains, headwind_wyrm, grim_sweeper, lycra_lich]
+    fns = [boneshaker, gear_masher, king_gel, king_of_mountains]
     o = Image.new('RGBA', (4 * 100 + 4, len(fns) * 100 + 4), C(3))
     for r, fn in enumerate(fns):
         for c, im in enumerate([fn(0), fn(1), fn(0, True), flash(fn(0))]): o.alpha_composite(im, (4 + c * 100, 4 + r * 100))

@@ -42,6 +42,8 @@ export interface PenroseEngine {
   machines(): MachineInfo[];
   /** Total machine load, 0..1, for trainer resistance. */
   load01(): number;
+  /** How far in the tide is, 0..1 (full at high tide), or null on a level without one. */
+  tide(): number | null;
   resize(): void;
   tick(dt: number): void;
   /** Advance the level without drawing (scripted checks). */

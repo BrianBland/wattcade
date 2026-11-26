@@ -56,6 +56,28 @@ export const ITEMS: Item[] = ORIGINAL_ITEMS.map(it => resourced(ROTATION[itemKey
     look: { kind: slot === 'bottoms' ? 'shorts' : 'none', base: '#22222b', ink: '#aab8c7' },
   })),
 ]);
+
+/**
+ * Rewards for games still in `wipGames`, by game id. Progression doesn't award those games' achievements yet, so their
+ * items stay out of ITEMS (and the Locker); each achievement still names exactly one (cosmetics.test.ts). When a game
+ * ships, move its list into ITEMS; the test fails while a shipped game's list is still here.
+ */
+export const WIP_ITEMS: Record<string, Item[]> = {
+  // Penrose Pedals (Nov 2026): the stair print is a new jersey pattern; the rest are recolours in the game's dusk, brass and sea palettes.
+  penrose: [
+    { slot: 'jersey', id: 'pp_steps', name: 'Penrose Steps', source: { achievement: 'pp_cartographer' }, look: { pattern: 'steps', base: '#ECE6F6', ink: '#8D82B6' } },
+    { slot: 'paint', id: 'pp_cube', name: 'The Cube', source: { achievement: 'pp_cube' }, look: { frame: '#B2A9D2', frame2: '#F7BE3E', kind: 'fade' } },
+    { slot: 'title', id: 't_impossible', name: 'Impossible', source: { achievement: 'pp_monument' } },
+    { slot: 'jersey', id: 'pp_grand_tour', name: 'Grand Tour', source: { achievement: 'pp_grand_tour' }, look: { pattern: 'chevrons', base: '#2A2640', ink: '#FF8E6E' } },
+    { slot: 'hands', id: 'pp_sure_grips', name: 'Sure grips', source: { achievement: 'pp_sure_wheel' }, flavor: 'Painted like the dusk wheel that never once left the road.', look: { kind: 'wheel', base: '#FF8E6E', ink: '#FFF4EC', accent: '#FFD15C' } },
+    { slot: 'feet', id: 'pp_clockwork', name: 'Brass clockwork shoes', source: { achievement: 'pp_unbroken' }, look: { kind: 'clockwork', base: '#2A1A08', ink: '#F7BE3E', accent: '#B1332A' } },
+    { slot: 'eyewear', id: 'pp_monocle', name: 'Own Eyes monocle', source: { achievement: 'pp_own_eyes' }, flavor: 'One lens, one view, no hints.', look: { kind: 'monocle', base: '#F7BE3E', ink: '#2A2640', accent: '#FF8E6E' } },
+    { slot: 'bottoms', id: 'pp_tide_waders', name: 'Spring tide waders', source: { achievement: 'pp_spring_tide' }, look: { kind: 'waders', base: '#3C7FA8', ink: '#BFEAFF', accent: '#2A2640' } },
+    { slot: 'paint', id: 'pp_escher', name: 'Escher', source: { achievement: 'pp_escher' }, look: { frame: '#ECE6F6', frame2: '#2A2640', kind: 'fade' } },
+    { slot: 'back', id: 'pp_parachute', name: 'Spare parachute', source: { achievement: 'pp_gravity' }, flavor: 'Gravity always wins. This is for next time.', look: { kind: 'chute', base: '#ECE6F6', ink: '#2A2640', accent: '#FF8E6E' } },
+  ],
+};
+
 const BY_ID = new Map(ITEMS.map(it => [itemKey(it), it]));
 export const item = (slot: Slot, id: string): Item | undefined => BY_ID.get(`${slot}:${id}`);
 export const DEFAULTS: Record<Slot, string> = { bike: 'road', hat: 'road', jersey: 'plain', paint: 'silver', pet: 'none', trail: 'none', ship: 'triad', title: 'none', bottoms: 'none', hands: 'none', feet: 'none', eyewear: 'none', back: 'none' };

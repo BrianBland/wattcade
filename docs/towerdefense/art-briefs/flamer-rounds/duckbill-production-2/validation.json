@@ -1,0 +1,27 @@
+{
+  "source": "duckbill-production-2/source/duckbill-l{1,3,5}.png",
+  "muzzles": {
+    "1": [
+      112,
+      56
+    ],
+    "3": [
+      112,
+      42
+    ],
+    "5": [
+      112,
+      42
+    ]
+  },
+  "glowByLevel": {
+    "1": 0.75,
+    "2": 1.0,
+    "3": 1.25,
+    "4": 1.55,
+    "5": 1.9
+  },
+  "poses": 120,
+  "flamerBytes": 113827,
+  "passed": true
+}

@@ -14,33 +14,33 @@
     "enabled": true,
     "part": "head"
   },
-  "view": "steep overhead with visible machinery depth, matching the approved concept",
+  "view": "steep overhead with visible machinery depth, matching the approved Round 1 duckbill concept",
   "inGameDiameterPx": 68,
   "padDiameterPx": 136,
   "paddingPx": 4,
   "angleConvention": "clockwise degrees in image coordinates; zero aims up",
   "coordinates": "offset, pivot and anchor position are absolute assembled rest-frame pixels; inherit parent transforms",
   "glowBlend": "additive RGB weighted by alpha; base art remains complete without glow",
-  "upgrades": "Cumulative L1 head + L3 shield/supplies + L5 reinforced casing/gauges; retain all unlocked parts.",
+  "upgrades": "Duckbill burner: L1-2 twin tanks, L3-4 heat-shield cowl, L5 big tanks and gauges; L2/L4 add base fittings; glowByLevel heats the mouth every level.",
   "anchors": {
     "muzzle": {
       "parent": "nozzle",
       "position": [
         112,
-        64
+        56
       ],
       "positionsByLevel": {
         "1": [
           112,
-          64
+          56
         ],
         "3": [
           112,
-          51
+          42
         ],
         "5": [
           112,
-          44
+          42
         ]
       }
     },
@@ -149,8 +149,8 @@
       "file": "parts/head.png",
       "glow": "parts/head_glow.png",
       "offset": [
-        92,
-        79
+        60,
+        64
       ],
       "pivot": [
         112,
@@ -163,15 +163,16 @@
       "mountPosition": [
         112,
         112
-      ]
+      ],
+      "maxLevel": 2
     },
     {
       "name": "nozzle",
       "file": "parts/nozzle.png",
       "glow": "parts/nozzle_glow.png",
       "offset": [
-        100,
-        57
+        70,
+        48
       ],
       "pivot": [
         112,
@@ -185,72 +186,99 @@
           0,
           1
         ],
-        "distancePx": 2.5
-      }
+        "distancePx": 1.5
+      },
+      "maxLevel": 2
     },
     {
-      "name": "upgrade_l3",
-      "file": "parts/upgrade_l3.png",
-      "glow": "parts/upgrade_l3_glow.png",
+      "name": "head_l3",
+      "file": "parts/head_l3.png",
+      "glow": "parts/head_l3_glow.png",
       "offset": [
-        63,
-        59
-      ],
-      "pivot": [
-        112,
-        112
-      ],
-      "parent": "head",
-      "z": 45,
-      "minLevel": 3
-    },
-    {
-      "name": "nozzle_l3",
-      "file": "parts/nozzle_l3.png",
-      "glow": "parts/nozzle_l3_glow.png",
-      "offset": [
-        102,
-        42
-      ],
-      "pivot": [
-        112,
-        112
-      ],
-      "parent": "nozzle",
-      "z": 50,
-      "minLevel": 3
-    },
-    {
-      "name": "upgrade_l5",
-      "file": "parts/upgrade_l5.png",
-      "glow": "parts/upgrade_l5_glow.png",
-      "offset": [
-        54,
-        55
-      ],
-      "pivot": [
-        112,
-        112
-      ],
-      "parent": "head",
-      "z": 55,
-      "minLevel": 5
-    },
-    {
-      "name": "nozzle_l5",
-      "file": "parts/nozzle_l5.png",
-      "glow": "parts/nozzle_l5_glow.png",
-      "offset": [
-        101,
+        60,
         34
       ],
       "pivot": [
         112,
         112
       ],
-      "parent": "nozzle",
+      "parent": "base",
+      "z": 45,
+      "minLevel": 3,
+      "aims": true,
+      "mountPosition": [
+        112,
+        112
+      ],
+      "maxLevel": 4
+    },
+    {
+      "name": "nozzle_l3",
+      "file": "parts/nozzle_l3.png",
+      "glow": "parts/nozzle_l3_glow.png",
+      "offset": [
+        68,
+        33
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "head_l3",
+      "z": 50,
+      "minLevel": 3,
+      "recoil": {
+        "axis": [
+          0,
+          1
+        ],
+        "distancePx": 1.5
+      },
+      "maxLevel": 4
+    },
+    {
+      "name": "head_l5",
+      "file": "parts/head_l5.png",
+      "glow": "parts/head_l5_glow.png",
+      "offset": [
+        58,
+        33
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 55,
+      "minLevel": 5,
+      "aims": true,
+      "mountPosition": [
+        112,
+        112
+      ]
+    },
+    {
+      "name": "nozzle_l5",
+      "file": "parts/nozzle_l5.png",
+      "glow": "parts/nozzle_l5_glow.png",
+      "offset": [
+        68,
+        33
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "head_l5",
       "z": 60,
-      "minLevel": 5
+      "minLevel": 5,
+      "recoil": {
+        "axis": [
+          0,
+          1
+        ],
+        "distancePx": 1.5
+      }
     }
   ],
   "animations": {
@@ -304,25 +332,25 @@
         "file": "effects/passive.png",
         "frames": 4,
         "frameSize": [
-          24,
-          24
+          68,
+          21
         ],
         "offset": [
-          100,
+          79,
           50
         ],
         "offsetsByLevel": {
           "1": [
-            100,
+            79,
             50
           ],
           "3": [
-            100,
-            37
+            79,
+            36
           ],
           "5": [
-            100,
-            30
+            79,
+            36
           ]
         },
         "parent": "nozzle",
@@ -391,30 +419,37 @@
         "file": "effects/attack.png",
         "frames": 4,
         "frameSize": [
-          24,
-          24
+          68,
+          21
         ],
         "offset": [
-          100,
+          79,
           50
         ],
         "offsetsByLevel": {
           "1": [
-            100,
+            79,
             50
           ],
           "3": [
-            100,
-            37
+            79,
+            36
           ],
           "5": [
-            100,
-            30
+            79,
+            36
           ]
         },
         "parent": "nozzle",
         "blend": "additive"
       }
     }
+  },
+  "glowByLevel": {
+    "1": 0.75,
+    "2": 1.0,
+    "3": 1.25,
+    "4": 1.55,
+    "5": 1.9
   }
 }

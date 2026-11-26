@@ -1,0 +1,51 @@
+name: Live
+
+# Live updates (src/live/NOTES.md): every push to main is published as its own Worker version, without waiting for CI
+# and without deploying it. The prod app (Settings → Live updates) reads the feed and can load any version's games
+# mid-ride, and roll them back. Production itself still deploys only through deploy.yml.
+#
+#   c-<sha8>  alias: this version, at https://c-<sha8>-wattcade.<subdomain>.workers.dev/ (its game chunks, manifest, a full app)
+#   live      alias: the newest version, whose live/feed.json lists the recent ones
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: live-feed # one at a time, so each version appends to the feed the previous one published
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  WORKERS_HOST: wattcade.brian-t-bland.workers.dev # <worker>.<account subdomain>; keep in sync with FEED_URL in src/live/client.ts
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Skip without Cloudflare credentials
+        if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == ''
+        run: echo "::notice title=Live publish skipped::Set the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets."
+      - uses: actions/checkout@v4
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+      - uses: actions/setup-node@v4
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build and publish this version
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: |
+          set -euo pipefail
+          npm ci
+          ALIAS="c-${GITHUB_SHA::8}"
+          export LIVE_BASE="https://${ALIAS}-${WORKERS_HOST}/"
+          export LIVE_SHA="$GITHUB_SHA" LIVE_MESSAGE="$(git log -1 --format=%s)" LIVE_TIME="$(git log -1 --format=%ct)" LIVE_PREV_FEED=prev-feed.json
+          curl -fsS "https://live-${WORKERS_HOST}/live/feed.json" -o prev-feed.json || echo '{"versions":[]}' > prev-feed.json
+          npx vite build
+          npx tsx scripts/live/manifest.ts dist
+          npx wrangler versions upload --preview-alias "$ALIAS" --message "live ${GITHUB_SHA::8}: ${LIVE_MESSAGE:0:80}"
+          npx wrangler versions upload --preview-alias live --message "live feed at ${GITHUB_SHA::8}"
+          echo "::notice title=Live version::${LIVE_BASE}"

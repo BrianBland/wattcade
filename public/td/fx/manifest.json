@@ -1,0 +1,112 @@
+{
+ "flame-start": {
+  "w": 224,
+  "h": 300,
+  "n": 6
+ },
+ "flame-sustain": {
+  "w": 224,
+  "h": 300,
+  "n": 12
+ },
+ "flame-out": {
+  "w": 224,
+  "h": 300,
+  "n": 6
+ },
+ "fireball-ball": {
+  "w": 64,
+  "h": 64,
+  "n": 8
+ },
+ "fireball-trail": {
+  "w": 128,
+  "h": 64,
+  "n": 6
+ },
+ "fireball-impact": {
+  "w": 256,
+  "h": 256,
+  "n": 10
+ },
+ "mortar-shell": {
+  "w": 48,
+  "h": 48,
+  "n": 8
+ },
+ "mortar-impact": {
+  "w": 256,
+  "h": 256,
+  "n": 10
+ },
+ "mortar-crater": {
+  "w": 128,
+  "h": 128,
+  "n": 3
+ },
+ "mortar-gravel": {
+  "w": 40,
+  "h": 40,
+  "n": 8
+ },
+ "mortar-shrapnel": {
+  "w": 40,
+  "h": 40,
+  "n": 6
+ },
+ "ignite-burst": {
+  "w": 192,
+  "h": 192,
+  "n": 8
+ },
+ "ember": {
+  "w": 16,
+  "h": 16,
+  "n": 6
+ },
+ "ground-flare": {
+  "w": 192,
+  "h": 192,
+  "n": 8
+ },
+ "ground-tuft-0": {
+  "w": 64,
+  "h": 128,
+  "n": 16
+ },
+ "ground-tuft-1": {
+  "w": 64,
+  "h": 128,
+  "n": 16
+ },
+ "ground-tuft-2": {
+  "w": 64,
+  "h": 128,
+  "n": 16
+ },
+ "ground-tuft-3": {
+  "w": 64,
+  "h": 128,
+  "n": 16
+ },
+ "ground-dying-0": {
+  "w": 64,
+  "h": 128,
+  "n": 8
+ },
+ "ground-dying-1": {
+  "w": 64,
+  "h": 128,
+  "n": 8
+ },
+ "ground-dying-2": {
+  "w": 64,
+  "h": 128,
+  "n": 8
+ },
+ "ground-dying-3": {
+  "w": 64,
+  "h": 128,
+  "n": 8
+ }
+}

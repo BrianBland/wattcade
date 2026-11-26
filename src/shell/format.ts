@@ -9,8 +9,6 @@ export function formatDuration(totalS: number): string {
 export function formatNum(n: number | null | undefined, digits = 0): string {
   return n == null || !Number.isFinite(n) ? '--' : n.toFixed(digits);
 }
-export function formatWatts(n: number | null | undefined): string { return n == null ? '-- W' : `${Math.round(n)} W`; }
-export function formatPct(frac: number, digits = 0): string { return `${(frac * 100).toFixed(digits)}%`; }
 /** Fractions per zone summing to 1 (all zeros when no data). */
 export function zoneFractions(zoneSeconds: number[]): number[] {
   const total = zoneSeconds.reduce((a, b) => a + b, 0);

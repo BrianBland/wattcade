@@ -11,8 +11,9 @@ describe('penrose sim (bike ↔ engine bridge)', () => {
     const profile = testProfile(); if (saved) profile.gameData.penrose = saved;
     let next: InputState | null = null; const base = new NullInput();
     const input = { beginTick: (dt: number) => base.beginTick(dt), state: () => next ?? base.state() };
-    const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1 });
-    return { s, profile, press: (b: string) => { next = press(b); s.step(1); next = null; } };
+    let last: unknown;
+    const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1, onSave: (d) => { last = d; } });
+    return { s, profile, saved: () => last, press: (b: string) => { next = press(b); s.step(1); next = null; } };
   };
 
   it('resumes at the saved level', () => {
@@ -64,4 +65,52 @@ describe('penrose sim (bike ↔ engine bridge)', () => {
     s.step(2);
     expect(grade()).toBeGreaterThan(lo);
   });
+
+  describe('mastery tracking for achievements', () => {
+    const lv = (index: number, chapter: number, id = `L${index}`) => ({ type: 'level', index, id, name: id, machines: [], chapter });
+    const won = (index: number, id = `L${index}`) => ({ type: 'won', index, id, solved: false });
+    const feed = (s: ReturnType<typeof mk>['s'], ...as: unknown[]) => { for (const a of as) { s.sim.receive!(a); s.step(1); } };
+
+    it('a fall or a hint on a visit spoils the clean clear; falls carry over the reload of the same level', () => {
+      const { s, saved } = mk();
+      feed(s, { type: 'catalog', chapters: [[], [], ['L0', 'L1', 'L2']] });
+      feed(s, lv(0, 2), won(0));                                       // clean
+      feed(s, lv(1, 2), { type: 'fell', index: 1 }, lv(1, 2), won(1));  // fell, level reloads, then clears
+      feed(s, lv(2, 2), { type: 'cmd', kind: 'hint' }, won(2));         // peeked
+      expect(s.sim.summary()).toMatchObject({ cleanLevels: 1, levelsRidden: 3, chaptersDone: 0b100 });
+      expect((saved() as { clean: string[] }).clean).toEqual(['L0']);
+    });
+
+    it('a run of clean clears from chapter 4 on breaks on a skip, a fall or a solve', () => {
+      const { s } = mk();
+      feed(s, lv(0, 3), won(0), lv(1, 3), won(1), lv(2, 3));
+      feed(s, lv(3, 3), won(3));                                        // L2 was skipped: the run starts again
+      feed(s, lv(4, 3), won(4), lv(5, 3), won(5));
+      expect(s.sim.summary().bestStreak).toBe(3);
+      feed(s, lv(6, 0), won(6));                                        // chapter 1 doesn't extend it
+      expect(s.sim.summary().bestStreak).toBe(3);
+    });
+
+    it('a chapter cleared unaided in one ride counts once; solves never count', () => {
+      const { s } = mk();
+      const ch = 4, ids = ['A', 'B'];
+      feed(s, { type: 'catalog', chapters: [[], [], [], [], ids] });
+      feed(s, lv(0, ch, 'A'), { type: 'won', index: 0, id: 'A', solved: true }, lv(1, ch, 'B'), won(1, 'B'));
+      expect(s.sim.summary()).toMatchObject({ unaidedChapters: 0, levelsRidden: 1 });
+      feed(s, lv(0, ch, 'A'), won(0, 'A'));
+      expect(s.sim.summary().unaidedChapters).toBe(1);
+      expect(s.sim.summary().chaptersDone).toBe(1 << ch);
+    });
+
+    it('times the tide fully in while pedalling', () => {
+      const { s } = mk();
+      feed(s, lv(0, 4), { type: 'tide', v: 1 });
+      s.step(5 * 60);
+      expect(Number(s.sim.summary().tideFullS)).toBeGreaterThanOrEqual(4);
+      feed(s, lv(1, 4));                                                // a new level starts with the tide out
+      const before = Number(s.sim.summary().tideFullS); s.step(120);
+      expect(Number(s.sim.summary().tideFullS)).toBe(before);
+    });
+  });
 });
+

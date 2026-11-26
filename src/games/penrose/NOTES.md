@@ -12,7 +12,8 @@ Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws t
   (restart, watch a solve, skip, back) become numbered `cmds` in the snapshot; the renderer applies each id once.
   Snapshot carries cadence3s, gear and `effort` = ftpFraction × `effortAtFtp` (tide: rises above 100, full at 140).
   Trainer: sim grade `gradeBase + gradePerLoad × load`, with `load` reported by the renderer. Virtual gears on.
-  Save `{ done: levelIds[], at }`; autopilot solves never count as clears.
+  Save `{ done: levelIds[], at, clean? }`; autopilot solves never count as clears.
+  Achievements (`achievements.ts`, 10, 850 XP; off while in `wipGames`): per level visit the sim counts falls (kept over the reload) and aid (hint/solve), and reports `levelsRidden`, `cleanLevels` (saved, ch 3+), `bestStreak` (ch 4+, a skip breaks it), `unaidedChapters` (5–8), `chaptersDone` (bitmask from the renderer's `catalog`) and `tideFullS` (engine `tide()`); thresholds in `MASTERY`.
 - `engine/`: the prototype's level player and generators, untyped (`// @ts-nocheck`), as modules sharing one scope
   (`install($scope)`, order in `engine/index.ts`): `core` (materials, view, wheel, themes, roads, makeLevel and the
   level flow, wheel-over-roads overlay pass; art rules: `DECKS` keep the road the lightest surface, ground is `groundPal`-quieted,
@@ -34,7 +35,6 @@ Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws t
 ## Known gaps (next PRs)
 - The level logic lives in the renderer, so it is not deterministic and the headless runner can't play levels
   (no `scenarios.ts` yet). Plan: move `Road`, the wheel stepper and machine state into `sim/` as pure math
-  (the screen joins only need the iso projection per camera yaw), leaving three.js meshes in `render/`.
-- The engine is untyped and uses its own frame-dt. Hints are prose; no achievements or sound yet.
+  (the screen joins only need the iso projection per camera yaw), leaving three.js meshes in `render/`. The engine is untyped and uses its own frame-dt. Hints are prose; no sound yet.
 Checked: all levels solve on the engine autopilot (same times as the prototype); vitest and `tsc` pass.
 - Loading: the renderer builds the campaign's level list between frames (`createPenroseEngine(..., { sliced: true })`, `ready()` = `whenReady`), and `campaign.ts` `PLAN_SUB` gives each generated level the sub-seed that plans, so it isn't searched for (same levels; was ~5 s of CPU). Re-take `PLAN_SUB` (the sweep prints `sub`) when gen9 changes.

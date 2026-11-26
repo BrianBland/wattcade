@@ -18,7 +18,7 @@ export type JerseyPattern =
   | 'plain' | 'vstripes' | 'hoops' | 'dots' | 'band' | 'checker' | 'sash' | 'bolt' | 'flames' | 'tiger' | 'zebra' | 'camo'
   | 'galaxy' | 'stars' | 'tux' | 'cape' | 'floral' | 'retro' | 'mail' | 'bones' | 'hazard' | 'suit' | 'hamster' | 'coat'
   | 'eq' | 'disco' | 'waves' | 'overalls' | 'rainbow' | 'argyle' | 'tiedye' | 'leopard' | 'plaid' | 'bee' | 'pajamas'
-  | 'circuit' | 'neon' | 'marble' | 'royal' | 'lighthouse' | 'embers' | 'scrap' | 'dynamo' | 'chevrons';
+  | 'circuit' | 'neon' | 'marble' | 'royal' | 'lighthouse' | 'embers' | 'scrap' | 'dynamo' | 'chevrons' | 'steps';
 /** `base`/`ink` 'rider' = the profile colour. */
 export type TopCut = 'jersey' | 'tank' | 'crop' | 'bikini' | 'hoodie' | 'vest' | 'mesh' | 'knotted' | 'coat' | 'jacket' | 'robe';
 export interface JerseyLook { pattern: JerseyPattern; base: string; ink: string; cut?: TopCut }

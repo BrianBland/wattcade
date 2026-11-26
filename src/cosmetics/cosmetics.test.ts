@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Profile } from '../contracts';
 import { ACHIEVEMENTS, defaultProfile } from '../progression';
-import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item, itemsIn } from './catalog';
+import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, WIP_ITEMS, item, itemKey, itemsIn } from './catalog';
+import { allGames, isWip } from '../games/registry';
 import { choosePick, equip, isPickLevel, isUnlocked, loadout, newUnlocks, nextReward, pendingPicks, pickOptions, riderLook, titleOf, unlockedItems, withItem } from './unlocks';
 import { BIKES } from './draw/bikes';
 import { HATS } from './draw/hats';
@@ -31,6 +32,23 @@ describe('catalogue rules', () => {
       by.set(it.source.achievement, (by.get(it.source.achievement) ?? 0) + 1);
     }
     for (const a of ACHIEVEMENTS) expect(by.get(a.id) ?? 0, a.id).toBe(1);
+  });
+  it('games under construction keep one reward per achievement (and one title) aside until they ship', () => {
+    const live = new Set(ITEMS.map(itemKey));
+    for (const [game, items] of Object.entries(WIP_ITEMS)) {
+      const g = allGames.find((x) => x.id === game);
+      expect(g && isWip(game), `${game} shipped: move its WIP_ITEMS into ITEMS`).toBe(true);
+      const by = new Map<string, number>();
+      for (const it of items) {
+        expect(live.has(itemKey(it)), itemKey(it)).toBe(false);
+        expect('achievement' in it.source, it.id).toBe(true);
+        if ('achievement' in it.source) by.set(it.source.achievement, (by.get(it.source.achievement) ?? 0) + 1);
+      }
+      for (const a of g!.achievements ?? []) expect(by.get(a.id) ?? 0, a.id).toBe(1);
+      expect(by.size).toBe((g!.achievements ?? []).length);
+      expect(items.filter((it) => it.slot === 'title'), game).toHaveLength(1);
+      expect(new Set(items.map(itemKey)).size).toBe(items.length);
+    }
   });
   it('one reward per level up to the last, three at each pick level', () => {
     for (let l = 2; l <= LAST_LEVEL; l++) {

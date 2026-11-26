@@ -25,6 +25,7 @@ import { cancelPrewarm, prewarmGame } from './game/prewarm';
 import { Delayed } from './components/Delayed';
 import { MediaPicker } from './media/MediaPicker';
 import { Toasts, toast } from './components/Toasts';
+import { live } from '../live/client';
 import { FullscreenButton } from './components/FullscreenButton';
 import { setMenuGate } from './menuInput';
 import { handleChannelPress, loadDriveIn, setDriveInVisible } from './drivein/store';
@@ -58,6 +59,7 @@ export function App() {
   const [profile, setProfileState] = useState<Profile | null>(null);
   const profileRef = useRef<Profile | null>(null);
   const setProfile = (p: Profile | null) => { profileRef.current = p; setProfileState(p); };
+  useEffect(() => live.setEnabled(profile?.settings?.liveUpdates === true), [profile?.settings?.liveUpdates]); // src/live
   const [draft, setDraft] = useState<Profile | null>(null);
   const [lobby, setLobby] = useState<SessionLike | null>(null);
   const [restartKey, setRestartKey] = useState(0);

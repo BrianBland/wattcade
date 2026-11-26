@@ -27,6 +27,9 @@ function snapshot(): TdSnapshot {
   // ?row=<i> highlights a workshop option; ?rich=1 shows every option as affordable (review only).
   const s = s0.workshop && (q.has('row') || q.has('rich')) ? { ...s0, scrap: q.has('rich') ? 999 : s0.scrap, workshop: { ...s0.workshop,
     row: q.has('row') ? Number(q.get('row')) : s0.workshop.row, rows: s0.workshop.rows.map((r) => q.has('rich') ? { ...r, affordable: true } : r) } } : s0;
+  // ?towers=flamer puts that tower on every built pad at levels 1–5 in turn (?fire=1: the even ones are firing).
+  const only = q.get('towers') as TdSnapshot['towers'][number]['kind'] | null;
+  if (!stress && only) return { ...s, grid: 1.1, towers: s.towers.map((tw, i) => ({ ...tw, kind: only, level: 1 + i % 5, firedAt: q.has('fire') && i % 2 === 0 ? s.t - 0.05 : s.t - 99 })) };
   if (!stress) return s;
   const enemies: EnemyView[] = Array.from({ length: stress }, (_, i) => {
     const kind = i === stress - 1 ? 'boss' : i % 50 < 30 ? 'mini' : i % 50 < 38 ? 'dart' : kinds[2 + i % 5], def = KINDS[kind];

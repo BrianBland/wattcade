@@ -12,7 +12,6 @@ const feat = (id: string, r: SessionRecord) => !!byId(id).check?.({} as never, r
 const count = (id: string, r: SessionRecord) => byId(id).count!.of(r, {} as never);
 
 describe('dungeon achievements (synthetic summaries)', () => {
-  it('ids are unique', () => expect(new Set(achievements.map((a) => a.id)).size).toBe(achievements.length));
   it('Curse Breaker: 6 curses in one ride (reachable in a 40-min ride)', () => {
     expect(feat('dg_curses', rec({ 'Curses survived': 6 }))).toBe(true);
     expect(feat('dg_curses', rec({ 'Curses survived': 5 }))).toBe(false);

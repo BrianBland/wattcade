@@ -51,37 +51,6 @@ function put(out: Uint8ClampedArray, i: number, r: number, g: number, b: number,
   out[i] = r; out[i + 1] = g; out[i + 2] = b; out[i + 3] = a * 255;
 }
 
-/** Flame frames per loop; the loop is seamless (frame N wraps to frame 0). */
-export const FLAME_FRAMES = 16;
-export const FLAME_W = 48, FLAME_H = 96;
-/**
- * One frame (`phase` in [0, 1)) of a rising flame: a tapering column of fractal heat scrolling upward, domain-warped
- * so tongues lick and tear off at the top. Base at the bottom centre. Looping uses two noise samples a period apart.
- */
-export function flameFrame(phase: number, seed: number, w = FLAME_W, h = FLAME_H): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(w * h * 4);
-  const field = (u: number, v: number, t: number) => {
-    const warp = (fbm(u * 2.4 + 5, v * 1.8 - t * 1.8, seed + 40, 3) - 0.5) * 0.7;
-    return smooth(0.22, 0.78, fbm((u + warp) * 4.2, v * 2.6 - t * 2.6, seed, 4));
-  };
-  for (let y = 0; y < h; y++) {
-    const v = 1 - (y + 0.5) / h; // 0 at the base, 1 at the top
-    const half = 0.5 * Math.pow(1 - v, 0.85) * smooth(-0.06, 0.16, v);
-    for (let x = 0; x < w; x++) {
-      const u = (x + 0.5) / w - 0.5;
-      const n = field(u, v, phase) * (1 - phase) + field(u, v, phase - 1) * phase;
-      const lean = (n - 0.5) * 0.22 * v; // the upper flame sways with the noise
-      const d = Math.abs(u - lean) / Math.max(1e-3, half);
-      const body = clamp01(1 - d * d) * (1 - v * 0.4);
-      // Noise carves the column into separate tongues that tear off as they rise.
-      const heat = clamp01(body * 1.25 - (1 - n) * (0.45 + 1.1 * v) - 0.05);
-      const [r, g, b, a] = heatColor(heat);
-      put(out, (y * w + x) * 4, r, g, b, a * smooth(0.02, 0.1, heat));
-    }
-  }
-  return out;
-}
-
 /** Ground textures are square, S×S, centred on the burn. */
 export const GROUND_S = 128;
 /** Ragged disc mask in [0, 1]: 1 inside, feathering to 0 at a noisy edge. */

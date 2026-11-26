@@ -1,6 +1,5 @@
 // Weapon & gear generation. Pure; uses only the supplied rng.
 export type Rarity = 0 | 1 | 2 | 3 | 4 | 5; // common, magic, rare, epic, legendary, unique
-export const RARITY_NAMES = ['Common', 'Magic', 'Rare', 'Epic', 'Legendary', 'Unique'];
 export const RARITY_COLORS = ['#d8d8d8', '#5aa9ff', '#ffd84a', '#c77dff', '#ff8c2a', '#ff4fd8'];
 const RARITY_MULT = [1, 1.12, 1.26, 1.42, 1.62, 1.75];
 

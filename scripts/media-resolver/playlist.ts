@@ -2,7 +2,7 @@ import { COMMON, mapTrack, problemText, runExtractor, trackProblem, type OnlineT
 
 /** Playlist metadata only (no audio). Single-track resolution stays in service.ts with --no-playlist. */
 /** Owner decision: imports cap at 100 tracks; raise here (health advertises it). Entries past the cap are dropped and `truncated` is set. */
-export const MAX_PLAYLIST_ITEMS = 100, DEFAULT_PLAYLIST_ITEMS = MAX_PLAYLIST_ITEMS;
+export const MAX_PLAYLIST_ITEMS = 100;
 const YT_HOSTS = ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com'];
 
 export type PlaylistChoice = 'playlist' | 'track';
@@ -53,7 +53,7 @@ const skipText: Record<SkipReason, string> = { ...problemText, unavailable: 'del
 
 export async function playlist(value: string, opts: { choice?: PlaylistChoice; limit?: number; signal?: AbortSignal } = {}, run: RunExtractor = runExtractor): Promise<PlaylistResult> {
   const target = playlistUrl(value, opts.choice);
-  const limit = opts.limit ?? DEFAULT_PLAYLIST_ITEMS;
+  const limit = opts.limit ?? MAX_PLAYLIST_ITEMS;
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PLAYLIST_ITEMS) throw new Error(`Playlist limit must be 1–${MAX_PLAYLIST_ITEMS} tracks.`);
   const args = [...COMMON.filter((a) => a !== '--no-playlist'), '--yes-playlist', '--flat-playlist', '--dump-single-json', '--skip-download',
     '--playlist-items', `1:${limit + 1}`, '--', target.url];

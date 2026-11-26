@@ -200,9 +200,8 @@ export function artChars(name: string): Set<string> {
 }
 
 export { heldWeapon } from './weapons';
-import { heldWeapon, weaponArt, WEAPON_STYLES } from './weapons';
+import { weaponArt, WEAPON_STYLES } from './weapons';
 export const WEAPON_ART = Object.fromEntries(WEAPON_STYLES.map(base => [base, weaponArt({ base })]));
-export const weaponSprite = (style: string) => heldWeapon({ base: style as import('../sim/loot').WeaponStyle });
 
 function shade(hex: string, f: number): string {
   const n = parseInt(hex.slice(1), 16);

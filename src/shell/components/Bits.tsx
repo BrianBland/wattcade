@@ -11,7 +11,6 @@ export function Btn(p: { children: ComponentChildren; onClick: () => void; prima
   );
 }
 export function Dot({ on, busy }: { on: boolean; busy?: boolean }) { return <span class={`dot${on ? ' on' : ''}${busy ? ' busy' : ''}`} />; }
-export function Avatar({ color, big }: { color: string; big?: boolean }) { return <span class={`avatar${big ? ' big' : ''}`} style={{ background: color, color }} />; }
 export function XpBar({ lv, compact }: { lv: LevelView; compact?: boolean }) {
   if (compact) {
     return (

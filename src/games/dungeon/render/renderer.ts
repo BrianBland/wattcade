@@ -13,7 +13,7 @@ import { pixelPanel, pixelMeter, pixelText } from './chrome';
 import { fillText, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
 import { drawFlagstone, drawMarsh } from './terrain';
 import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut } from './art32';
-import { drawFog, drawGrit, drawEmbers, drawRefracting } from './fx32';
+import { drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor } from './fx32';
 import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
 import { wicks, drawItem32, drawHero32, drawEnemy32, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
@@ -148,6 +148,7 @@ export function createRenderer(): GameRenderer {
   let bg: FloorBg | null = null, bgFor: unknown = null;
   let bg32: FloorBg32 | null = null, info: FloorInfo | null = null;
   const losCache = new Map<string, Los>();
+  let litAt: { x: number; y: number } | null = null;
   let litC: HTMLCanvasElement | null = null, lightImg: ImageData | null = null;
   /** zone light colours: wall torches, PILLAR light props, pools (lava only) */
   const ZL: Record<string, { torch: [number, number, number]; prop: [number, number, number]; amb: [number, number, number] }> = {
@@ -380,14 +381,14 @@ export function createRenderer(): GameRenderer {
       if (bg32) { bg32.draw(gg, Math.max(0, cx), Math.max(0, cy), W, H); bg32.prefill(3, cx + W / 2, cy + H / 2); }
       else { if (sw > 0 && sh > 0) bg!.draw(gg, sx, sy, sw, sh, k); bg!.prefill(3, sx + sw / 2, sy + sh / 2); }
       // a path over the visible open (non-wall) tiles: atmosphere stays inside rooms and corridors, never over solid rock
-      const openFloorClip = () => { gg.beginPath();
+      const openFloorClip = (c: CanvasRenderingContext2D = gg) => { c.beginPath();
         for (let ty = Math.max(0, Math.floor(cy / TS)); ty <= Math.min(w.h - 1, Math.floor((cy + H) / TS)); ty++) {
           let run = -1;
           for (let tx = Math.max(0, Math.floor(cx / TS)); tx <= Math.min(w.w, Math.floor((cx + W) / TS) + 1); tx++) {
             const open = tx < w.w && w.tiles[ty * w.w + tx] !== TILE.WALL;
-            if (open && run < 0) run = tx; else if (!open && run >= 0) { gg.rect(run * TS, ty * TS, (tx - run) * TS, TS); run = -1; }
+            if (open && run < 0) run = tx; else if (!open && run >= 0) { c.rect(run * TS, ty * TS, (tx - run) * TS, TS); run = -1; }
           }
-          if (run >= 0) gg.rect(run * TS, ty * TS, (Math.min(w.w, Math.floor((cx + W) / TS) + 2) - run) * TS, TS);
+          if (run >= 0) c.rect(run * TS, ty * TS, (Math.min(w.w, Math.floor((cx + W) / TS) + 2) - run) * TS, TS);
         } };
       const isSwamp = (x: number, y: number) => x >= 0 && y >= 0 && x < w.w && y < w.h && w.tiles[y * w.w + x] === TILE.SWAMP;
       const inView = (q: { x: number; y: number }, m = 1) => q.x >= Math.floor(cx / TS) - m && q.x <= Math.ceil((cx + W) / TS) + m && q.y >= Math.floor(cy / TS) - m && q.y <= Math.ceil((cy + H) / TS) + m;
@@ -405,6 +406,10 @@ export function createRenderer(): GameRenderer {
           for (const r of who) { gg.save(); gg.translate(Math.round(Math.sin(t * 3 + r.fy) * 1), 2 * r.fy + 1); gg.scale(1, -1); r.d(); gg.restore(); }
           gg.restore();
         }
+      }
+      { // Deep crystal slabs in the floor show the (previous frame's) lit room through the glass, under everything standing on them
+        const cm = Zr.rects.crystalMask, zsheet = sheetImage(Zn);
+        if (bg32 && cm && zsheet && litC && litAt) drawCrystalFloor(gg, zsheet, cm, litC, litAt.x, litAt.y, Math.round(cx), Math.round(cy), W, H, t, (c) => openFloorClip(c));
       }
       // doors, stairs, chests
       const x0 = Math.max(0, Math.floor(cx / TS)), x1 = Math.min(w.w, Math.ceil((cx + W) / TS));
@@ -592,6 +597,7 @@ export function createRenderer(): GameRenderer {
         const lc = lightC.getContext('2d')!; if (!lightImg) lightImg = lc.createImageData(BW, BH);
         shade({ grid, ts: TS, rise: 16, ox, oy, W, H, amb, lights: L }, lightImg.data);
         lc.putImageData(lightImg, 0, 0);
+        litAt = { x: ox, y: oy };
         if (!litC) litC = document.createElement('canvas');
         if (litC.width !== W || litC.height !== H) { litC.width = W; litC.height = H; }
         const lg = litC.getContext('2d')!; lg.imageSmoothingEnabled = false; lg.globalCompositeOperation = 'source-over';

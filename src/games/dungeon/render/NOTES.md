@@ -22,7 +22,7 @@
 - Room dressing (`world32.ts` `dress`): corner clusters, back-wall furniture, side-wall clutter, a centrepiece per room
   (Keep rosette or carpet, Crypt ledger stones, Catacombs bone mosaic, Deep rune seal or lava fissures) ringed by lit props,
   weighted floor clutter; never within 2 tiles of doors/stairs or on chests/shrines. Lit props and glowing decals add lights.
-- `fx32.ts`: Crypt fog and falling grit (lit), Deep embers and refracting crystals (emissive), clipped to open tiles.
+- `fx32.ts`: Crypt fog, grit (lit); Deep embers, refracting crystals, crystal floor slabs (`crystalMask`), clipped to open tiles.
   Keep/Crypt pools mirror nearby actors; pool corners are rounded.
 
 ## Layout and input (unchanged)

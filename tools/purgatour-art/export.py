@@ -65,7 +65,7 @@ def zone_sheet(z):
         fl = zones.floor_catacombs(TEX, TEX); face = zones.wall_catacombs(TEX, wheels=(240,))
         door_open, door_locked = zones.door_catacombs('open'), zones.door_catacombs('locked')
     else:
-        fl = zones.floor_deep(TEX, TEX); face = zones.wall_deep(TEX)
+        fl, cmask = zones.floor_deep(TEX, TEX, crystal=True); face = zones.wall_deep(TEX)
         door_open, door_locked = zones.door_deep('open')[0], zones.door_deep('locked')[0]
     every = lambda x, y: 0 <= x < TEX and 0 <= y < TEX
     compose.compose(fl, ramp, every, lambda x, y: 99, seed=len(z) * 7)
@@ -78,6 +78,7 @@ def zone_sheet(z):
     top = Image.new('RGBA', (TEX, TEX), ramp[1]); compose.tops(top, ramp, lambda tx, ty: True, lambda tx, ty: False)
     S = Sheet(TEX * 3)
     S.add('floor', fl); S.add('floorDark', dark); S.add('top', top); S.add('face', face)
+    if z == 'deep': S.add('crystalMask', cmask)   # where the floor is crystal: the renderer refracts the scene through it
     S.add('doorOpen', door_open); S.add('doorLocked', door_locked); S.add('stairs', stairs_img()); S.add('chest', keep.chest())
     # the zone's light source on PILLAR tiles, its wall torch, decor scattered by the renderer, and wall hangings
     light = {'keep': ('brazier', 'flame'), 'crypt': ('brazier', 'gflame'), 'catacombs': ('skullCandle', 'candle'), 'deep': ('crystal', 'crystal')}[z]

@@ -84,8 +84,10 @@ def floor_catacombs(w, hg, seed=4, path=None):
                     if 0 <= x + c < w: px[x + c, y + len(s)] = C(1)
     return im
 
-def floor_deep(w, hg, seed=6):
-    """natural rock: irregular flat cells with a lit top-left lip and dark cracks between them."""
+def floor_deep(w, hg, seed=6, crystal=False):
+    """natural rock: irregular flat cells with a lit top-left lip and dark cracks between them.
+    crystal=True turns clusters of cells into flat crystal slabs (facets, cracks, bright lip) and also returns
+    a mask of their glassy interiors for the renderer to refract through."""
     im = Image.new('RGBA', (w, hg)); px = im.load(); rnd = random.Random(seed)
     S = 19; seeds = {}
     for gy in range(-1, hg // S + 2):
@@ -110,12 +112,47 @@ def floor_deep(w, hg, seed=6):
             elif up != k or lf != k: c = t[1]
             elif (y + 2 < hg and cell[y + 2][x] != k) or (x + 2 < w and cell[y][x + 2] != k): c = t[2]
             px[x, y] = C(c)
+    mask = None
+    if crystal:
+        V = [hexc(h) for h in CRY]; cr = random.Random(seed + 11)
+        veins = [(cr.uniform(0, w), cr.uniform(0, hg), cr.uniform(26, 46)) for _ in range(max(3, w * hg // 40000))]
+        def near_vein(sx, sy):
+            for (vx, vy, vr) in veins:
+                for ox in (-w, 0, w):
+                    for oy in (-hg, 0, hg):
+                        if (sx - vx - ox) ** 2 + (sy - vy - oy) ** 2 < vr * vr: return True
+            return False
+        glass = {k for k, (sx, sy, t) in seeds.items() if near_vein(sx, sy) and cr.random() < .75}
+        facets = {k: (cr.uniform(0, math.pi), cr.choice((2, 3, 3, 4))) for k in glass}
+        mask = Image.new('RGBA', (w, hg)); mp = mask.load()
+        for y in range(hg):
+            for x in range(w):
+                k = cell[y][x]
+                if k not in glass: continue
+                up = cell[y - 1][x] if y else k; lf = cell[y][x - 1] if x else k
+                dn = cell[y + 1][x] if y + 1 < hg else k; rt = cell[y][x + 1] if x + 1 < w else k
+                if dn != k or rt != k: px[x, y] = V[0]; continue                    # dark seam
+                if up != k or lf != k: px[x, y] = V[3] if (x + y) % 4 else V[4]; continue   # bright lip
+                sx, sy, _ = seeds[k]; a0, n = facets[k]
+                ang = (math.atan2((y - sy) * 1.3, x - sx) - a0) % (2 * math.pi); sec = int(ang / (2 * math.pi / n))
+                edge = abs(((ang + 1e-6) % (2 * math.pi / n)) - 0) < .09 and (x - sx) ** 2 + (y - sy) ** 2 > 4
+                D = hexc('#3e1c70')
+                c = V[1] if sec == 0 else D if sec % 2 else hexc('#4a2286')
+                if edge: c = V[2]
+                px[x, y] = c; mp[x, y] = (255, 255, 255, 255)
+        for _ in range(len(glass) // 2):                                           # cracks across some slabs
+            k = cr.choice(sorted(glass)); x, y = int(seeds[k][0]), int(seeds[k][1]); dx = cr.choice((-1, 1))
+            for _s in range(cr.randrange(5, 11)):
+                if 0 <= x < w and 0 <= y < hg and cell[y][x] == k:
+                    px[x, y] = V[0]; mp[x, y] = (0, 0, 0, 0)
+                    if y + 1 < hg and cell[y + 1][x] == k: px[x, y + 1] = V[4]
+                x += dx; y += cr.choice((-1, 0, 0, 1))
     for _ in range(w * hg // 500):
         x, y = rnd.randrange(w - 3), rnd.randrange(hg - 3); p = rnd.choice(PEB)
         for r, row in enumerate(p):
             for c, ch in enumerate(row):
-                if ch != '.' and px[x + c, y + r] not in (C(1),): px[x + c, y + r] = C({'h': 6, 'f': 4, 'd': 2}[ch])
-    return im
+                if ch != '.' and px[x + c, y + r] not in (C(1),) and (mask is None or mask.getpixel((x + c, y + r))[3] == 0): px[x + c, y + r] = C({'h': 6, 'f': 4, 'd': 2}[ch])
+    return (im, mask) if crystal else im
 
 # ================================================================== wall faces (whole-width strips, 48 px tall)
 def coping(px, width, rnd, rough=False):

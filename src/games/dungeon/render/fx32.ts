@@ -75,3 +75,31 @@ export function drawRefracting(g: CanvasRenderingContext2D, sprite: HTMLCanvasEl
   g.globalAlpha = 0.28; g.globalCompositeOperation = 'lighter'; g.drawImage(sprite, Math.round(x), Math.round(y));
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
 }
+
+let cfM: HTMLCanvasElement | null = null, cfR: HTMLCanvasElement | null = null;
+/** Deep crystal floor slabs: the lit scene seen through the glass (shifted, violet), plus a slow sheen sweeping across.
+ *  Drawn under the actors, so it uses the previous frame's lit view (origin lox, loy). `mask` is the 512 px floor-crystal mask (tiled like the floor texture); `clip` adds the open-tile path in world px. */
+export function drawCrystalFloor(g: CanvasRenderingContext2D, sheet: CanvasImageSource, mask: [number, number, number, number], lit: HTMLCanvasElement, lox: number, loy: number,
+  ox: number, oy: number, W: number, H: number, t: number, clip: (c: CanvasRenderingContext2D) => void) {
+  const mk = (c: HTMLCanvasElement | null) => { const n = c ?? document.createElement('canvas'); if (n.width !== W || n.height !== H) { n.width = W; n.height = H; } return n; };
+  cfM = mk(cfM); cfR = mk(cfR);
+  const m = cfM.getContext('2d')!, r = cfR.getContext('2d')!, S = mask[2];
+  m.setTransform(1, 0, 0, 1, 0, 0); m.clearRect(0, 0, W, H); m.imageSmoothingEnabled = false;
+  m.save(); m.translate(-ox, -oy); clip(m); m.clip();
+  for (let y = Math.floor(oy / S) * S; y < oy + H; y += S) for (let x = Math.floor(ox / S) * S; x < ox + W; x += S) m.drawImage(sheet, mask[0], mask[1], S, mask[3], x, y, S, mask[3]);
+  m.restore();
+  // what the glass shows: the lit room displaced, deepened to violet, with a cyan fringe the other way
+  r.setTransform(1, 0, 0, 1, 0, 0); r.globalAlpha = 1; r.globalCompositeOperation = 'copy'; r.imageSmoothingEnabled = false;
+  const wob = Math.round(Math.sin(t * 0.9) * 1);
+  r.drawImage(lit, lox - ox + 4 + wob, loy - oy - 6);
+  r.globalCompositeOperation = 'multiply'; r.fillStyle = '#b98cff'; r.fillRect(0, 0, W, H);
+  r.globalCompositeOperation = 'lighter'; r.globalAlpha = 0.35; r.drawImage(lit, lox - ox - 3, loy - oy + 3 - wob); r.globalAlpha = 1;
+  r.globalCompositeOperation = 'multiply'; r.globalAlpha = 0.4; r.fillStyle = '#8fe6ff'; r.fillRect(0, 0, W, H); r.globalAlpha = 1;
+  // a sheen: a band of 1 px diagonal lines drifting across the glass
+  r.globalCompositeOperation = 'lighter'; r.fillStyle = '#5a3a8a';
+  const period = 260, off = ((t * 40) % period + period) % period;
+  for (let b = -H; b < W; b += period) for (let k = 0; k < 10; k += 2) { r.beginPath(); const x0 = b + off + k; r.moveTo(x0, 0); r.lineTo(x0 + 1, 0); r.lineTo(x0 + 1 + H * 0.6, H); r.lineTo(x0 + H * 0.6, H); r.fill(); }
+  r.globalCompositeOperation = 'destination-in'; r.drawImage(cfM, 0, 0);
+  r.globalCompositeOperation = 'source-over';
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.3; g.drawImage(cfR, 0, 0); g.restore();
+}

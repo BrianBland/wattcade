@@ -516,13 +516,14 @@ def paint_pool(px, sx, ex, sy, ey, rx, ry, seed=5):
     return water
 
 CRY = ['#2a1048', '#5a2a9a', '#9a5ae0', '#d6a8ff', '#f6eaff']
-def crystal_big(seed=0):
+def crystal_big(seed=0, s=1.0):
     """large violet cluster made of flat-faceted prisms: left face (lit), front face, right face (shade), bright tip edges.
     Each face is one flat colour so the page can refract a different slice of the scene through every facet."""
     V = [hexc(h) for h in CRY]
-    w, hg = 30, 38; im = Image.new('RGBA', (w, hg)); px = im.load(); rnd = random.Random(seed)
+    w, hg = round(30 * s), round(38 * s); im = Image.new('RGBA', (w, hg)); px = im.load(); rnd = random.Random(seed)
     # (base x, base y, half width, height, lean) drawn back to front
     shards = [(9, 34, 3.5, 22, -.22), (21, 35, 3.5, 20, .25), (15, 37, 5.0, 34, .02), (5, 37, 2.5, 11, -.35), (25, 37, 2.6, 13, .4)]
+    shards = [(round(bx * s), min(hg - 1, round(by * s)), hw * s, round(ht * s), ln) for (bx, by, hw, ht, ln) in shards]
     for (bx, by, hw, hgt, lean) in shards:
         tip = hw * 1.6
         for y in range(by - hgt, by + 1):
@@ -538,3 +539,30 @@ def crystal_big(seed=0):
         for x in range(int(bx - hw), int(bx + hw) + 1):
             if 0 <= x < w and px[x, by][3]: px[x, by] = V[0]
     return selout(pad(im))
+
+def shard_floor(seed=0, W=60, H=30, n=16):
+    """Deep: a bed of crystal shards grown flat through the floor, each a small faceted lozenge (lit face, front face,
+    shade face) so the renderer can refract the scene through them. Low profile, 3/4 view."""
+    V = [hexc(h) for h in CRY]
+    im = Image.new('RGBA', (W, H)); px = im.load(); rnd = random.Random(seed)
+    pts = []
+    for _ in range(n * 4):
+        if len(pts) >= n: break
+        dx, dy = rnd.uniform(-1, 1), rnd.uniform(-1, 1)
+        if dx * dx + dy * dy > 1: continue
+        k = (dx * dx + dy * dy) ** .25; dx, dy = dx * k, dy * k   # pull toward the middle: a dense heart, sparse rim
+        pts.append((W / 2 + dx * (W / 2 - 6), H / 2 + 4 + dy * (H / 2 - 8)))
+    pts.sort(key=lambda q: q[1])
+    for (cx, cy) in pts:
+        mid = 1 - min(1, math.hypot((cx - W / 2) / (W / 2), (cy - H / 2) / (H / 2)))
+        L = rnd.uniform(4, 7) + mid * rnd.uniform(4, 9); hw = rnd.uniform(1.6, 2.4) + mid * 1.2; lean = rnd.uniform(-.55, .55)
+        for k in range(int(L) + 1):                 # a short prism standing up from the floor, leaning
+            y = int(cy) - k; xc = cx + lean * k
+            tip = hw * 1.5; half = hw if k < L - tip else max(.3, hw * (L - k) / tip)
+            for x in range(int(xc - half - .5), int(xc + half + .5) + 1):
+                if 0 <= x < W and 0 <= y < H:
+                    u = (x + .5 - xc) / max(.6, half)
+                    px[x, y] = V[4] if (k >= L - tip and u < -.1) or abs(u + .3) < .12 else V[3] if u < -.3 else V[2] if u < .35 else V[1]
+        for x in range(int(cx - hw), int(cx + hw) + 1):   # dark socket where it breaks through the stone
+            if 0 <= x < W and 0 <= int(cy) + 1 < H and px[x, int(cy) + 1][3] == 0: px[x, int(cy) + 1] = V[0]
+    return im

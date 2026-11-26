@@ -16,6 +16,7 @@ export interface Decal { name: string; px: number; py: number; ch?: number }
 /** Floor pieces that glow (lava fissures, rune seals): redrawn over the lighting. */
 export const GLOW_DECALS: Record<string, { c: [number, number, number]; r: number; i: number }> = {
   fissure: { c: [255, 120, 40], r: 70, i: 0.9 }, fissure2: { c: [255, 120, 40], r: 60, i: 0.85 }, rune: { c: [190, 120, 255], r: 90, i: 0.9 },
+  shards: { c: [180, 130, 255], r: 70, i: 0.7 }, shards2: { c: [180, 130, 255], r: 56, i: 0.6 }, shards3: { c: [180, 130, 255], r: 90, i: 0.8 },
 };
 /** A prop that gives off its own light. */
 export interface PropLight { key: string; x: number; y: number; r: number; c: [number, number, number]; i: number; name: string; cx: number; foot: number }
@@ -28,14 +29,15 @@ const DRESS: Record<ZoneId, { big: string[]; small: string[] }> = {
   keep: { big: ['barrel', 'crate', 'barrel', 'pillar', 'borne'], small: ['candelabra', 'crate', 'barrel'] },
   crypt: { big: ['sarcophagus', 'tomb', 'coffin', 'urn'], small: ['urn', 'candles', 'urn'] },
   catacombs: { big: ['skulls', 'sack', 'skulls', 'borne'], small: ['skullCandle', 'sack', 'skullCandle'] },
-  deep: { big: ['stalagmite0', 'stalagmite1', 'stalagmite2', 'crystalM'], small: ['glowcaps', 'crystalS', 'glowcaps'] },
+  deep: { big: ['stalagmite0', 'crystalL', 'stalagmite1', 'crystalM', 'stalagmite2', 'crystalL'], small: ['glowcaps', 'crystalS', 'glowcaps'] },
 };
 export const PROP_LIGHT: Record<string, { c: [number, number, number]; r: number; i: number; glow: boolean }> = {
   candelabra: { c: [255, 200, 120], r: 70, i: 0.75, glow: false },
   candles: { c: [255, 200, 120], r: 62, i: 0.7, glow: false },
   skullCandle: { c: [255, 190, 110], r: 64, i: 0.7, glow: false },
   crystalS: { c: [170, 110, 255], r: 80, i: 0.85, glow: true },
-  crystalM: { c: [170, 110, 255], r: 90, i: 0.9, glow: true },
+  crystalM: { c: [170, 110, 255], r: 100, i: 0.95, glow: true },
+  crystalL: { c: [180, 120, 255], r: 130, i: 1.05, glow: true },
   glowcaps: { c: [90, 230, 200], r: 50, i: 0.65, glow: true },
 };
 export function floorInfo(w: World): FloorInfo {
@@ -120,8 +122,16 @@ function dress(w: World, zone: ZoneId, at: (x: number, y: number) => number): { 
       if (big) centre((x, y) => place('mosaic', x, y) && (ring('skullCandle', x, y, 40, 26), true));
       if (roll < 0.4) centre((x, y) => place('chalk', x + 70, y + 40));
     } else if (zone === 'deep') {
-      if (big && roll < 0.45 && centre((x, y) => place('rune', x, y) && (ring('crystalS', x, y, 40, 26), true))) { /* rune room */ }
+      if (big && roll < 0.45 && centre((x, y) => place('rune', x, y) && (ring('crystalM', x, y, 46, 30), true))) { /* rune room */ }
       else { centre((x, y) => place('fissure', x, y) && (ring('glowcaps', x, y, 56, 30), true)); if (big) centre((x, y) => place('fissure2', x + 60, y + 64)); }
+      // beds of crystal shards breaking through the floor, scattered over the open space
+      const beds = big ? 3 : 1;
+      for (let k = 0, got = 0; k < 30 && got < beds; k++) {
+        const name = k % 3 === 0 && big ? 'shards3' : k % 2 ? 'shards2' : 'shards', rc = size(name); if (!rc) continue;
+        const x = (r.x0 + 1) * T32 + Math.floor(hash(r.x0 + k, r.y0 * 3 + 1) * Math.max(1, (r.w - 2) * T32 - rc[2])) + (rc[2] >> 1);
+        const y = (r.y0 + 1) * T32 + Math.floor(hash(r.x0 * 5, r.y0 + k * 7) * Math.max(1, (r.h - 2) * T32 - rc[3])) + (rc[3] >> 1);
+        if (place(name, x, y)) got++;
+      }
     }
     // floor details on open floor tiles that nothing stands on (weighted toward the zone's common clutter)
     const weights: Record<string, number> = { rubble: 3, broken: 1, bones: 2, bonesF: 2, wheel: 0.4, frame: 0.4 };

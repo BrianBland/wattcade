@@ -81,7 +81,7 @@ def zone_sheet(z):
     S.add('doorOpen', door_open); S.add('doorLocked', door_locked); S.add('stairs', stairs_img()); S.add('chest', keep.chest())
     # the zone's light source on PILLAR tiles, its wall torch, decor scattered by the renderer, and wall hangings
     light = {'keep': ('brazier', 'flame'), 'crypt': ('brazier', 'gflame'), 'catacombs': ('skullCandle', 'candle'), 'deep': ('crystal', 'crystal')}[z]
-    if z == 'deep': S.add('light', zones.crystal_big(3))
+    if z == 'deep': S.add('light', zones.crystal_big(3, 1.5))
     elif z == 'catacombs':
         base = Image.new('RGBA', (16, 22)); base.alpha_composite(zones.skull_candle(), (4, 0)); base.alpha_composite(keep.pillar().crop((6, 48, 22, 62)).resize((16, 13)), (0, 9))
         S.add('light', zones.skull_candle())
@@ -92,7 +92,7 @@ def zone_sheet(z):
         'keep': [('barrel', keep.barrel()), ('crate', keep.crate()), ('candelabra', keep.candelabra()), ('pillar', keep.pillar()), ('borne', motifs.borne(23))],
         'crypt': [('urn', zones.urn()), ('candles', zones.candles()), ('sarcophagus', zones.sarcophagus()), ('tomb', zones.sarcophagus(True)), ('coffin', zones.coffin())],
         'catacombs': [('skulls', zones.skull_pile()), ('sack', zones.sack()), ('skullCandle', zones.skull_candle()), ('borne', motifs.borne(21))],
-        'deep': [('stalagmite0', zones.stalagmite(0)), ('stalagmite1', zones.stalagmite(1)), ('stalagmite2', zones.stalagmite(2)), ('glowcaps', zones.mushrooms()), ('crystalS', zones.crystal(2)), ('crystalM', zones.crystal(4))],
+        'deep': [('stalagmite0', zones.stalagmite(0)), ('stalagmite1', zones.stalagmite(1)), ('stalagmite2', zones.stalagmite(2)), ('glowcaps', zones.mushrooms()), ('crystalS', zones.crystal(2)), ('crystalM', zones.crystal_big(4)), ('crystalL', zones.crystal_big(6, 1.6))],
     }[z]
     for n, im in decor: S.add('decor:' + n, im)
     hang = {'keep': [('banner', keep.banner()), ('wheel', motifs.wall_wheel())], 'crypt': [('cobweb', zones.cobweb())], 'catacombs': [], 'deep': []}[z]
@@ -104,7 +104,7 @@ def zone_sheet(z):
         'keep': common + [('grate', keep.decal_grate()), ('carpet', keep.carpet(44, 320)), ('rosette', inlays.rosette())],
         'crypt': common + [('bones', zones.bones_decal()), ('bonesF', flip(zones.bones_decal())), ('ledger', inlays.ledger(True, 1)), ('ledger2', inlays.ledger(False, 2))],
         'catacombs': common + [('bones', zones.bones_decal()), ('bonesF', flip(zones.bones_decal())), ('chalk', motifs.chalk('ALLEZ', 9, seed=2)), ('mosaic', inlays.mosaic())],
-        'deep': common + [('wheel', zones.wheel_relic()), ('frame', motifs.frame_relic()), ('fissure', inlays.fissure()), ('fissure2', inlays.fissure(7, 60, 26)), ('rune', inlays.rune())],
+        'deep': common + [('wheel', zones.wheel_relic()), ('frame', motifs.frame_relic()), ('fissure', inlays.fissure()), ('fissure2', inlays.fissure(7, 60, 26)), ('rune', inlays.rune()), ('shards', zones.shard_floor(1, 60, 36, 14)), ('shards2', zones.shard_floor(5, 44, 30, 9)), ('shards3', zones.shard_floor(9, 84, 48, 22))],
     }[z]
     for n, im in decals: S.add('decal:' + n, im)
     # wall-face variants: whole 32 x 48 face tiles with a feature built into the masonry

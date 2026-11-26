@@ -559,13 +559,13 @@ export function createRenderer(): GameRenderer {
         // Stepped per-pixel lighting with wall occlusion (light32.ts), then the emissive layer on top.
         const dark = s.curse?.kind === 'darkness', zl = ZL[Zn], ox = Math.round(cx), oy = Math.round(cy);
         const grid = { w: w.w, h: w.h, wall: (x: number, y: number) => x < 0 || y < 0 || x >= w.w || y >= w.h || w.tiles[y * w.w + x] === TILE.WALL };
-        const L: Array<Light & { los: Los }> = [];
+        const L: Array<Light & { los: Los }> = [], statics = new Set<object>();
         const add = (key: string | null, x: number, y: number, r: number, c: readonly [number, number, number], i: number) => {
           if (x + r < ox || x - r > ox + W || y + r < oy || y - r > oy + H) return;
           const tx = Math.floor(x / TS), ty = Math.floor(y / TS), rt = Math.ceil(r / TS);
           let los = key ? losCache.get(key) : undefined;
           if (!los) { los = lineOfSight(grid, tx, ty, rt); if (key) losCache.set(key, los); }
-          L.push({ x, y, r, c, i, los });
+          const e = { x, y, r, c, i, los }; L.push(e); if (key) statics.add(e);
         };
         const fl = (k: number) => 1 + Math.sin(t * 9 + k * 2) * 0.04 + Math.sin(t * 23 + k) * 0.03;
         add(null, p.x * TS, p.y * TS - 12, TS * (dark ? 2.2 : 3.2), [255, 236, 210], 0.55);
@@ -579,6 +579,12 @@ export function createRenderer(): GameRenderer {
         let nb = 0;
         for (const b of s.bullets) if (b.friendly && nb++ < 10) add(null, b.x * TS, b.y * TS, TS * 1.6, hexRgb(b.color.length === 7 ? b.color : '#ffd84a'), 0.8);
         for (const f of s.fx) if ((f.kind === 'boom' || f.kind === 'muzzle') && t - f.t0 < f.life) add(null, f.x * TS, f.y * TS, TS * 2.2 * (1 - (t - f.t0) / f.life), hexRgb(f.color.length === 7 ? f.color : '#ffb04a'), 1.2);
+        // budget: every dynamic light, plus the 24 static lights nearest the middle of the view
+        if (statics.size > 24) {
+          const mx = ox + W / 2, my = oy + H / 2, d2 = (l: Light) => (l.x - mx) ** 2 + (l.y - my) ** 2;
+          const keep = new Set([...L].filter((l) => statics.has(l)).sort((a, b) => d2(a) - d2(b)).slice(0, 24));
+          for (let i = L.length - 1; i >= 0; i--) if (statics.has(L[i]) && !keep.has(L[i])) L.splice(i, 1);
+        }
         const amb = dark ? [zl.amb[0] * 0.35, zl.amb[1] * 0.35, zl.amb[2] * 0.4] as const : zl.amb;
         const BW = Math.ceil(W / 2), BH = Math.ceil(H / 2);
         if (!lightC) lightC = document.createElement('canvas');
@@ -603,6 +609,8 @@ export function createRenderer(): GameRenderer {
         }
         if (Zn === 'deep') { const lr = zonePropSize(Zn, 'light'), sp = cut(Zn, 'light'); if (lr && sp && litC) for (const q of info.pillars) if (inView(q)) drawRefracting(gg, sp, q.x * TS + 16 - (lr.w >> 1), q.y * TS + 28 - lr.h, litC, ox, oy, t); gg.save(); openFloorClip(); gg.clip(); drawEmbers(gg, ox, oy, W, H, t); gg.restore(); }
         for (const d of info.glow) { const gr = Zr.rects['decal:' + d.name]; if (!gr || d.px > ox + W || d.px + gr[2] < ox || d.py > oy + H || d.py + gr[3] < oy) continue;
+          const sp = d.name.startsWith('shards') ? cut(Zn, 'decal:' + d.name) : null;
+          if (sp && litC) { drawRefracting(gg, sp, d.px, d.py, litC, ox, oy, t); continue; }
           gg.globalAlpha = 0.7 + 0.3 * Math.sin(t * 1.7 + d.px * 0.05); drawZoneProp(gg, Zn, 'decal:' + d.name, d.px, d.py); gg.globalAlpha = 1; }
         for (const q of info.lit) { // glowing props shine through the dark; candles get flickering flames
           if (q.cx < ox - 40 || q.cx > ox + W + 40 || q.foot < oy - 40 || q.foot > oy + H + 60) continue;

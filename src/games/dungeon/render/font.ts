@@ -203,3 +203,9 @@ export function fillText(g: CanvasRenderingContext2D, text: string, x: number, y
 export function strokeText(g: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth = Infinity) {
   drawText(g, text, x, y, maxWidth, true);
 }
+/** Text with a one-pixel (one glyph unit) dark drop shadow, for HUD labels over busy art. */
+export function fillTextShadow(g: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth = Infinity, shadow = '#0b0910') {
+  const k = fontScale(Number(/([\d.]+)px/.exec(g.font)?.[1] ?? 10)), c = g.fillStyle;
+  g.fillStyle = shadow; drawText(g, text, x + k, y + k, maxWidth, false);
+  g.fillStyle = c; drawText(g, text, x, y, maxWidth, false);
+}

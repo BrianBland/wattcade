@@ -9,13 +9,13 @@ import { BOSS_ART, anim, heroPalette, sprite, sprite2, type AnimState } from './
 import { heldWeapon, gearSprite, weaponGrip, colorRamp, type WeaponLook } from './weapons';
 import { holdPose } from './hold';
 import { drawProjectile, drawPixelFx, flameSprite } from './effects';
-import { pixelPanel, pixelMeter, pixelText } from './chrome';
-import { fillText, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
+import { pixelPanel, pixelMeter, pixelText, pixelSocket, pixelGem, mixHex } from './chrome';
+import { fillText, fillTextShadow, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
 import { drawFlagstone, drawMarsh } from './terrain';
 import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut, charFrame, anim as anim32 } from './art32';
 import { drawStanceSwap, drawPoolLights, drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
 import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
-import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawFlail32, FLAIL_HAND, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
+import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawFlail32, weaponArt, FLAIL_HAND, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
 
@@ -270,6 +270,20 @@ export function createRenderer(): GameRenderer {
     gg.globalAlpha=1;gg.textAlign='left';
   }
 
+  /** Draw a sprite centred at (cx, cy), at the largest whole-pixel scale that fits maxW x maxH (min 1). */
+  function iconFit(gg: CanvasRenderingContext2D, c: HTMLCanvasElement | null | undefined, cx: number, cy: number, maxW: number, maxH: number, silhouette = false) {
+    if (!c) return;
+    const k = Math.max(1, Math.floor(Math.min(maxW / c.width, maxH / c.height))), src = silhouette ? silhouetteOf(c) : c;
+    gg.imageSmoothingEnabled = false;
+    gg.drawImage(src, Math.round(cx - c.width * k / 2), Math.round(cy - c.height * k / 2), c.width * k, c.height * k);
+  }
+  const silCache = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+  function silhouetteOf(c: HTMLCanvasElement) {
+    let o = silCache.get(c); if (o) return o;
+    o = document.createElement('canvas'); o.width = c.width; o.height = c.height; const x = o.getContext('2d')!;
+    x.drawImage(c, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#d8cfe0'; x.fillRect(0, 0, c.width, c.height);
+    silCache.set(c, o); return o;
+  }
   function weaponIcon(gg: CanvasRenderingContext2D, w: WeaponLook, x: number, y: number, size: number, _col: string) {
     const c=heldWeapon(w),sc=Math.max(1,Math.floor(size/14));gg.drawImage(c,Math.round(x-c.width*sc/2),Math.round(y-c.height*sc/2),c.width*sc,c.height*sc);
   }
@@ -948,13 +962,13 @@ export function createRenderer(): GameRenderer {
       pixelPanel(gg,x-3*hu,y-3*hu,PW+6*hu,38*hu,'#746481','#15111fee',dpr); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu);
       pixelMeter(gg,x,y,PW,11*hu,p.hp/p.maxHp,hpLow?'#e96d75':'#68ba78',dpr);
       gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(9 * hu));
-      fillText(gg, `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
+      fillTextShadow(gg, `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
       pixelMeter(gg,x,y+13*hu,PW,3*hu,p.xp/p.xpNext,'#b58ad9',dpr);
       const ly = y + 28 * hu; gg.font = pixelFont(Math.round(10 * hu));
-      gg.fillStyle = '#fff'; const lvTxt = `Lv${p.level} F${s.floor}`; fillText(gg, lvTxt, x, ly); const coinX = Math.max(x + 44 * hu, x + textW(gg, lvTxt) + 6 * hu);
+      gg.fillStyle = '#fff'; const lvTxt = `Lv${p.level} F${s.floor}`; fillTextShadow(gg, lvTxt, x, ly); const coinX = Math.max(x + 44 * hu, x + textW(gg, lvTxt) + 6 * hu);
       const cp = Math.max(0, 1 - (s.t - coinPulseT) / 0.25);
       if (cp > 0) { gg.save(); gg.font = pixelFont(Math.round(10 * hu * (1 + 0.35 * cp))); }
-      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillText(gg, `● ${p.coins}`, coinX, ly); const coinEnd = coinX + textW(gg, `● ${p.coins}`);
+      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillTextShadow(gg, `● ${p.coins}`, coinX, ly); const coinEnd = coinX + textW(gg, `● ${p.coins}`);
       if (cp > 0) gg.restore();
       const tx = coinX + 3 * hu, ty = ly - 3.5 * hu;
       for (let i = flyers.length - 1; i >= 0; i--) {
@@ -973,56 +987,69 @@ export function createRenderer(): GameRenderer {
       if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = Math.max(1, hu); gg.strokeRect(sx - 1, sy - 1, w + 2, h + 2); }
       gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = pixelFont(Math.round(7 * hu)); gg.textAlign = 'center'; fillText(gg, '2nd W', sx + w / 2, sy + h - 2 * hu); gg.textAlign = 'left';
     }
-    // slim stance row (bottom-left): [stance badge][weapon icon] Lv · element, then tiny chips for the other stances.
+    // inventory row (bottom-left): the active stance card, chips for the other stances, then the gear sockets.
     // Actions and cooldowns live in the shell HUD; use its occupied shape to share the row.
     const LY = runLayout(W, H, insetCss * dpr, u, s.stance.list.length - 1,
       W > H && W / dpr > 700 && H / dpr > 500
         ? hudOcclusions?.map(r => ({ x: r.x * dpr, y: r.y * dpr, w: r.w * dpr, h: r.h * dpr })) : undefined);
     actionHits = [];
     {
-      const st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], R = LY.card, cy = R.y + R.h / 2;
-      pixelPanel(gg,R.x,R.y,R.w,R.h,st.color,'#171320ee',dpr); hudBox(R.x, R.y, R.w, R.h);
-
-      // stance badge: its colour with the initial; swapping shows the pick's colour
-      const pickC = st.swapping ? s.stance.list.find((x) => x.id === st.swapping)?.color ?? st.color : st.color;
-      gg.fillStyle = pickC; gg.fillRect(R.x + 2 * u, R.y + 2 * u, R.h - 4 * u, R.h - 4 * u);
-      gg.fillStyle = '#0a0810'; gg.font = pixelFont(Math.round(13 * u)); gg.textAlign = 'center';
-      pixelText(gg,(st.swapping?s.stance.list.find(x=>x.id===st.swapping)?.name??st.name:st.name)[0],R.x+R.h/2,cy-7*dpr,2*dpr,'#15111f',true);
-      weaponIcon(gg, s.weapon, R.x + R.h + 11 * u, cy, 16 * u, wcol);
-      gg.textAlign = 'left'; gg.fillStyle = '#eee'; gg.font = pixelFont(Math.round(11 * u));
-      const elem = ` ${s.weapon.element}`;
-      // weapon name (rarity colour, ellipsized to fit) then Lv/element
-      const tail = ` Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''}${elem}${st.styleOn ? ' ✓' : ''}`;
-      const tx = R.x + R.h + 23 * u, room = R.x + R.w - 4 * u - tx;
-      gg.font = pixelFont(Math.round(10.5 * u)); const tw = textW(gg, tail);
-      gg.font = pixelFont(Math.round(11 * u));
-      const nameRoom = Math.max(0, room - tw), name = fitPixelText(s.weapon.name, fontScale(Math.round(11 * u)), nameRoom);
-      gg.fillStyle = wcol; fillText(gg, name, tx, cy + 4 * u);
-      const nx = tx + textW(gg, name);
-      gg.font = pixelFont(Math.round(10.5 * u)); gg.fillStyle = '#ccc'; fillText(gg, tail, nx, cy + 4 * u, Math.max(1, R.x + R.w - 4 * u - nx));
-      // other stances: weapon icon + level; the D-pad pick fills, the AI suggestion pulses
+      const q = Math.max(1, Math.round(dpr * Math.max(1, u / dpr))), st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], R = LY.card;
+      pixelPanel(gg, R.x, R.y, R.w, R.h, mixHex(st.color, '#3a3243', 0.35), '#171320f0', q); hudBox(R.x, R.y, R.w, R.h);
+      // stance crest: its colour with the initial; swapping shows the pick's colour
+      const pick = st.swapping ? s.stance.list.find((x) => x.id === st.swapping) : undefined, pickC = pick?.color ?? st.color;
+      const bs = R.h - 4 * q, bx = R.x + 2 * q, by = R.y + 2 * q;
+      pixelPanel(gg, bx, by, bs, bs, mixHex(pickC, '#000000', 0.25), pickC, q);
+      const ls = Math.max(1, Math.floor((bs - 6 * q) / 7)), letter = (pick?.name ?? st.name)[0];
+      pixelText(gg, letter, bx + bs / 2, by + (bs - 7 * ls) / 2, ls, '#15111f', true);
+      // weapon in a socket, as big as fits in whole pixels
+      const sw = Math.round(bs * 1.45), sx = bx + bs + q;
+      pixelSocket(gg, sx, by, sw, bs, q);
+      iconFit(gg, weaponArt(s.weapon)?.c, sx + sw / 2, by + bs / 2, sw - 3 * q, bs - 3 * q);
+      pixelGem(gg, sx + sw - 4 * q, by + 4 * q, wcol, q);
+      // name (rarity colour) over Lv · element
+      const tx = sx + sw + 3 * q, room = R.x + R.w - 3 * q - tx;
+      const f1 = Math.round(11 * u), sc1 = fontScale(f1), twoLines = R.h - 4 * q >= 16 * sc1;
+      gg.textAlign = 'left'; gg.font = pixelFont(f1);
+      const name = fitPixelText(s.weapon.name, sc1, room), tail = `Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''} ${s.weapon.element}${st.styleOn ? ' ✓' : ''}`;
+      if (twoLines) {
+        const top = R.y + (R.h - 16 * sc1) / 2 + 7 * sc1;
+        gg.fillStyle = wcol; fillTextShadow(gg, name, tx, top);
+        gg.fillStyle = '#c8bfcc'; fillTextShadow(gg, tail, tx, top + 9 * sc1, room);
+        gg.fillStyle = ELEMENT_COLORS[s.weapon.element] ?? '#fff';
+        gg.fillRect(Math.round(tx + textW(gg, tail.split(' ')[0] + ' ') - 2 * sc1), Math.round(top + 9 * sc1 - 4 * sc1), sc1, sc1);
+      } else {
+        gg.fillStyle = wcol; fillTextShadow(gg, name, tx, R.y + R.h / 2 + 3.5 * sc1);
+      }
+      // other stances: a socket with their weapon and level; the D-pad pick lights up, the AI suggestion pulses
       const others = s.stance.list.filter((x) => x.id !== st.id), C = LY.stance, n = Math.max(1, others.length);
       const cw = (C.w - (n - 1) * 3 * u) / n;
       others.forEach((o, k) => {
         const x = C.x + k * (cw + 3 * u), picked = st.swapping === o.id, sug = st.suggest === o.id;
         hudBox(x, C.y, cw, C.h);
-        pixelPanel(gg,x,C.y,cw,C.h,o.color,picked?o.color:'#171320ee',dpr);
-        gg.globalAlpha = sug && !picked ? 0.6 + 0.4 * Math.sin(s.t * 5) : 1;
-        if(sug||picked){gg.fillStyle=o.color;gg.fillRect(Math.round(x+cw/2)-2*dpr,C.y+2*dpr,4*dpr,dpr);}
-        if (o.base) weaponIcon(gg, {base:o.base as Weapon['base'],element:o.element,rarity:o.rarity as Weapon['rarity'],variant:o.variant,unique:o.unique,plus:o.plus}, x + cw * 0.36, C.y + C.h / 2, C.h * 0.55, picked ? '#0a0810' : o.color);
-        gg.fillStyle = picked ? '#0a0810' : '#fff'; gg.font = pixelFont(Math.round(9 * u)); gg.textAlign = 'right';
-        fillText(gg, o.level ? String(o.level) : '–', x + cw - 2 * u, C.y + C.h - 3 * u); gg.textAlign = 'left'; gg.globalAlpha = 1;
+        gg.globalAlpha = sug && !picked ? 0.7 + 0.3 * Math.sin(s.t * 5) : 1;
+        pixelPanel(gg, x, C.y, cw, C.h, picked ? o.color : mixHex(o.color, '#3a3243', 0.45), picked ? mixHex(o.color, '#171320', 0.55) : '#171320f0', q);
+        gg.fillStyle = o.color; gg.fillRect(Math.round(x + 2 * q), Math.round(C.y + 2 * q), Math.round(cw - 4 * q), q);   // stance stripe
+        if (o.base) iconFit(gg, weaponArt({ base: o.base as Weapon['base'], element: o.element, rarity: o.rarity as Weapon['rarity'], variant: o.variant, unique: o.unique, plus: o.plus })?.c,
+          x + cw / 2, C.y + C.h / 2 + q / 2, cw - 6 * q, C.h - 7 * q);
+        gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(9 * u)); gg.textAlign = 'right';
+        fillTextShadow(gg, o.level ? String(o.level) : '–', x + cw - 3 * q, C.y + C.h - 3 * q); gg.textAlign = 'left'; gg.globalAlpha = 1;
       });
-      // equipped gear: slot icon + item level, border/tint in the item's rarity colour
-      let gx = C.x + C.w + 6 * u;
+      // equipped gear: the item's own art in a socket, a rarity gem, and its level
+      const G = LY.gear; let gx = G.x;
       for (const sl of SLOTS) {
-        const it = s.gear[sl]; if (!it) continue;
-        const gw = C.h, rc = RARITY_COLORS[it.rarity];
-        hudBox(gx, C.y, gw, C.h);
-        pixelPanel(gg,gx,C.y,gw,C.h,rc,'#171320ee',dpr);
-        gearIcon(gg, sl, gx + gw * 0.4, C.y + C.h * 0.42, C.h * 0.5, rc);
-        gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(8.5 * u)); gg.textAlign = 'right';
-        fillText(gg, String(it.level), gx + gw - 2 * u, C.y + C.h - 2.5 * u); gg.textAlign = 'left';
+        const it = s.gear[sl], gw = G.h;
+        hudBox(gx, G.y, gw, G.h);
+        pixelPanel(gg, gx, G.y, gw, G.h, it ? mixHex(RARITY_COLORS[it.rarity], '#3a3243', 0.4) : '#3a3243', '#171320e0', q);
+        if (it) {
+          const rc = RARITY_COLORS[it.rarity];
+          iconFit(gg, charFrame('item.' + sl, 0), gx + gw / 2, G.y + G.h / 2, gw - 6 * q, G.h - 6 * q);
+          pixelGem(gg, gx + 5 * q, G.y + 5 * q, rc, q);
+          gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(8.5 * u)); gg.textAlign = 'right';
+          fillTextShadow(gg, String(it.level), gx + gw - 3 * q, G.y + G.h - 3 * q); gg.textAlign = 'left';
+        } else {   // empty socket shows a faint silhouette of what goes there
+          gg.globalAlpha = 0.18; iconFit(gg, charFrame('item.' + sl, 0), gx + gw / 2, G.y + G.h / 2, gw - 6 * q, G.h - 6 * q, true); gg.globalAlpha = 1;
+        }
         gx += gw + 3 * u;
       }
     }

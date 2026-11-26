@@ -17,7 +17,7 @@
 - `shade` works per light over its bounding box (cost ∝ lit area). Static LOS cached; ≤24 nearest statics + all dynamic.
 - Emissive layer after lighting: flames, crystal glow, relics, shots, muzzle flashes, pixel damage numbers, stance swap, pool
   light streaks, open-stairs motes. Fog over unseen rooms on top. Death plays a DNF beat before the camp guardroom.
-- HUD: framed boss bar (phase pips, damage chip), crisp whole-pixel minimap; hit flash per real hit (DoT ticks ignored).
+- HUD: bevelled `pixelPanel` frames, inventory row of sockets with real 32 px item/weapon art + rarity gems (gear wraps above on narrow screens), shadowed text, framed boss bar, whole-pixel minimap; hit flash per real hit.
 - Old 16 px paths (`sprites.ts`, `art.ts`, `weapons.ts` masks) remain as the fallback until the sheets decode.
 - Budget: 1024×768 DPR 2 headless Chromium: median 16.7 ms on floors 1/2/4, p95 ≤ 21 ms. Floor textures tile seamlessly.
 - Room dressing (`world32.ts` `dress`): corner clusters, back-wall furniture, side-wall clutter, a centrepiece per room

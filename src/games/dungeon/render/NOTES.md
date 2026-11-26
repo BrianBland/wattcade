@@ -1,40 +1,36 @@
-# Pixel combat and boss art
+# Purgatour render
 
-- Native world canvas: 16 px tiles/actors, dedicated 32 px art for all six bosses; integer device-pixel upscale.
+## 32 px art (current)
+- All art is hand-authored in `tools/purgatour-art/*.py` (32-colour master palette in `pal.py`, outlined characters).
+- `python3 tools/purgatour-art/export.py` (Pillow) writes `art32/`: `zone-{keep,crypt,catacombs,deep}.png`, `chars.png`,
+  `arsenal.png`, `atlas.json`. The game never generates art; it crops, flips, rotates (32 steps) and hit-flashes.
+- `world.theme` 0..3 → Keep / Crypt / Catacombs / Deep; zones swap 12 stone colours plus their own walls, doors, props, light.
+- `art32/index.ts`: atlas loading (`loadArt`, `artReady`), `cut`, `charFrame`, `anim` (anchors ax/ay), `rotated`, `mirrored`, `flashOf`.
+- `world32.ts`: background chunks (floor composition, damp band, 48 px wall faces rising 16 px, capstone tops only beside rooms,
+  void elsewhere, trims, torches, hangings, baked decor), animated lava, pool glints. `floorInfo` places torches/pillars/decor.
+- `actors32.ts`: hero (5 stance outfits × front/side/back × 4-frame walk, weapon gripped at the hand and rotated to the aim),
+  enemies (Coneling, Saddle Sore, Gel Slime hop, Lost Rider, CO2 Gremlin, Wrench Troll, Directeur Sportif), 6 bosses
+  (+ Grim Sweeper exported, unused), shots, coins, items (bidon, helmet, jersey, shoe, ring), shrines, curse sigils, puffs.
+- `light32.ts` (pure): ambient per zone + lights falling off (1-d/r)², vertical distance ×1.25, stepped by 0.17 with Bayer
+  dither on 2×2 blocks. Walls occlude via grid line of sight; a wall face is lit only by a light at or below its row that
+  sees its foot; wall tops get a 30% spill. Buffer holds L/2 and is applied multiply + one additive pass (up to 2×).
+- Static light LOS is cached per light; dynamic lights are the hero, up to 10 friendly shots and muzzle/boom flashes.
+- Emissive layer after lighting: flames, crystal glow, shrine relics, shots, puffs. Fog over unseen rooms on top.
+- `TILE_PX` is 32, so the viewport scale halves and the same number of tiles stay on screen (tests use device pixels).
+- Old 16 px paths (`sprites.ts`, `art.ts`, `weapons.ts` masks) remain as the fallback until the sheets decode.
+- Budget: 1024×768 at DPR 2 holds 60 fps in headless Chromium on floors 1 and 4 (median 16.7 ms frame, p95 ≤ 19 ms).
+- Not yet ported from the mocks: water reflections, crystal refraction, Crypt fog and falling grit.
+
+## Layout and input (unchanged)
 - World camera and simulation remain continuous; drawing snaps to native pixels. Area-based zoom balances portrait/landscape.
-- Display canvas retains readable HUD/damage text and the shell's bottom-inset layout.
-- `pixel.ts`: native geometry, nearest-neighbour mask rotation, centered masks, viewport sizing.
-- `weapons.ts`: ten families × three silhouettes; the item name tier is the visual tier.
-- Normal steel / arcane purple / fire orange / frost cyan / venom green / storm yellow weapon and shot colors.
-- Rarity colors fittings; unique weapons get crest pixels; shrine upgrades add a rune.
-- Held weapon, drop and stance chip use the same item metadata and cached art.
-- `hold.ts`: the facing hand grips the handle and the weapon points out along the aim; up-aims draw behind the hero.
-- Dagger (fast, piercing) → Skirmisher; axe (slow, piercing) → Vanguard; spear (long, piercing) → Ranger.
-- Thrown alternatives share 20% of the corresponding pellet/arrow/star family roll; no extra RNG samples.
-- `effects.ts`: outlined projectiles, separated trail pixels, three-step bursts, lightning, broken shields and warning rings.
-- Torch/brazier/camp fires are animated native masks. Ambient light uses restrained pixel bands.
-- `bossArt.ts`: Slime Monarch, Bone Lord, Ogre Warchief and Arch Necromancer native drawings and wind-ups.
-- Bone King and Frost Wyrm retain dedicated art. No enlarged minion placeholders or vector crowns.
-- Boss `tell` now publishes the wind-up cycle; hurt flashes do not hide attack poses.
-- Terrain uses flat flagstones, faint single-pixel joints, distributed scuffs and rare hairline wear; marsh shores connect.
-- Review: `/dev/dungeon.html` (Armory, Bosses, Terrain, Effects, Typography, Live game; `manual=1` for captures).
-- Capture/check: `node scripts/dungeon-render-smoke.mjs` while Vite runs on port 5173.
-- Generated captures: `/tmp/dungeon-smoke/` (outside git); includes all six modifier palettes and six boss idle/attack pairs.
-- Checks: typecheck, production build, dungeon/inset tests, browser landscape/iPad DPR2/portrait/phone/rotation/unmount.
-- Physical iPad/Bluefy and the opt-in long balance suite are not covered by the browser smoke check.
+- Display canvas keeps readable HUD/damage text and the shell's bottom-inset layout.
+- `pixel.ts`: geometry, nearest-neighbour mask rotation, viewport sizing, paddle/pinch zoom with hysteresis and limits.
+- Camera focus eases toward the hero/boss midpoint; only new floors reset it.
+- `font.ts`: original 5×7 alphabet; pixel chrome uses stepped frames and segmented meters.
+- Weapon classes: Wand, Scattergun, Bow, Blaster, Boltcaster, Orb, Shuriken, Dagger, Axe, Spear; 3 tiers, 6 elements, 6 rarities.
 
-- Class names: Wand, Scattergun, Bow, Blaster, Boltcaster, Orb, Shuriken, Dagger, Axe, Spear.
-- Normal takes 20% of the same modifier roll, consumes no extra RNG and has no elemental on-hit effect.
-- Shuriken tiers share solid-hub, four-pointed masks; all projectile types animate glints or shape frames.
-- Pixel chrome: stepped frames, segmented meters and a shared bitmap font for all in-game text.
-- Effects tab and `projectiles.gif` show four animation phases without changing shot collision bounds.
-- Pacing scenario checks spin-up opportunities across its seeds, since boss priority can preempt one seed’s calls.
-- Normal Boltcaster uses the same animated arc masks as elemental versions, colored silver.
-- Short one-word item variants accompany shared `WEAPON_CLASS_NAMES` armory headings; quality/element affixes remain separate.
-- `font.ts`: original 5×7 alphabet, lowercase/descenders, tabular digits and HUD symbols; no font download or system fallback.
-- Native cached text rasters upscale at integer steps; fitting ellipsizes rather than squashing glyphs.
-- HUD/camp sizing uses CSS dimensions before DPR; compact camp puts descriptions on a second line.
-- Elite labels and damage text draw at display resolution; typography/camp captures are generated under `/tmp/dungeon-smoke/`.
-- Camera focus eases exponentially toward the hero/boss midpoint; only new floors reset it, with no distance-triggered snap.
-- Zoom: either signed paddle axis steps in/out with hysteresis; opposing inputs cancel. Room/boss changes never override it.
-- Two-finger pinch/spread zooms on the canvas; captures clear on cancel, blur, resize and unmount. Legend: Zoom ± / pinch.
+## Checks
+- Review: `/dev/dungeon.html` (Live game; `floor=N` jumps to a floor, `manual=1` for captures).
+- `node scripts/dungeon-render-smoke.mjs` while Vite runs on 5173; captures go to `/tmp/dungeon-smoke/`.
+- typecheck, dungeon + inset tests (`light32.test.ts` covers occlusion, faces and shading).
+- Physical iPad/Bluefy is not covered by the browser checks.

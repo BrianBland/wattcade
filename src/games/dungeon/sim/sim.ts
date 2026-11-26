@@ -38,7 +38,7 @@ const ENEMY_DEF: Record<EnemyKind, { hp: number; speed: number; r: number; conta
 };
 const ELITES: EliteMod[] = ['undying', 'splitting', 'shielded', 'swift', 'volatile'];
 const SEG_BANNER: Partial<Record<string, string>> = { warmup: 'WARM UP', explore: 'EXPLORE · ZONE 2', recover: 'RECOVER', cooldown: 'COOL DOWN' };
-const BOSS_NAMES = ['Slime Monarch', 'Bone Lord', 'Ogre Warchief', 'The Lich', 'Bone King', 'Frost Wyrm'];
+const BOSS_NAMES = ['King Gel', 'The Boneshaker', 'The Gear Masher', 'The Lycra Lich', 'King of the Mountains', 'The Headwind Wyrm'];
 export const BOSS_COUNT = BOSS_NAMES.length;
 const SHRINES: Record<ShrineKind, { label: string; window: number; color: string }> = {
   fury: { label: 'Shrine of Fury: ride power Z3+ for 20s', window: 50, color: '#ff8c2a' },
@@ -48,13 +48,13 @@ const SHRINES: Record<ShrineKind, { label: string; window: number; color: string
 };
 // Curses: temporary difficulty spikes. While cursed you earn +50% coins/XP; surviving (or breaking it with a sprint) pays a bounty.
 const CURSES: Record<CurseKind, { name: string; desc: string; color: string; dur: number }> = {
-  frenzy:   { name: 'Curse of Frenzy',   desc: 'enemies move 40% faster',        color: '#ff5a5a', dur: 60 },
-  hexed:    { name: 'Hex of Frailty',    desc: 'you take 40% more damage',       color: '#c77dff', dur: 60 },
-  swarm:    { name: 'Curse of the Swarm', desc: 'rooms spawn extra foes',        color: '#ffb02a', dur: 75 },
-  darkness: { name: 'Curse of Darkness', desc: 'the torchlight shrinks',         color: '#6a6aff', dur: 60 },
-  mire:     { name: 'Curse of the Mire', desc: '+2% grade, slower feet',         color: '#7a9a3a', dur: 45 },
-  fragile:  { name: 'Curse of Thirst',   desc: 'no zone-2 healing',              color: '#ff6b8a', dur: 60 },
-  bulwark:  { name: 'Curse of Iron',     desc: 'enemies take 35% less damage',   color: '#9aa3b5', dur: 60 },
+  frenzy:   { name: 'Attack!',          desc: 'enemies move 40% faster',        color: '#ff5a5a', dur: 60 },
+  hexed:    { name: 'Road Rash',        desc: 'you take 40% more damage',       color: '#c77dff', dur: 60 },
+  swarm:    { name: 'The Peloton',      desc: 'rooms spawn extra foes',        color: '#ffb02a', dur: 75 },
+  darkness: { name: 'Tunnel Vision',    desc: 'the torchlight shrinks',         color: '#6a6aff', dur: 60 },
+  mire:     { name: 'Headwind',         desc: '+2% grade, slower feet',         color: '#7a9a3a', dur: 45 },
+  fragile:  { name: 'The Bonk',         desc: 'no zone-2 healing',              color: '#ff6b8a', dur: 60 },
+  bulwark:  { name: 'Carbon Plating',   desc: 'enemies take 35% less damage',   color: '#9aa3b5', dur: 60 },
 };
 const CURSE_KINDS = Object.keys(CURSES) as CurseKind[];
 const PLAYER_R = 0.35, MAX_FX = 140;
@@ -155,7 +155,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const uniquePct = tn.num('uniqueDropPct', 0.6, 0, 100, 0.1, '% of item drops that are uniques (elites x1.5, bosses x10)');
   const eliteBase = tn.num('eliteChance', 0.05, 0, 1, 0.01, 'elite chance on floor 1 (+1.5%/floor, max 25%)');
   const curseChance = tn.num('curseChance', 0.08, 0, 1, 0.01, 'chance per uncleared room entered (+1%/floor, max 20%)');
-  const curseGrade = tn.num('gradeCurseMire', 2, 0, 8, 0.5, 'extra grade during Curse of the Mire');
+  const curseGrade = tn.num('gradeCurseMire', 2, 0, 8, 0.5, 'extra grade during the Headwind curse');
   const sprintHeal = tn.num('sprintHealFrac', 0.45, 0, 1, 0.05, 'a sprint heals this fraction of max HP (Second breath)');
   const sprintGuard = tn.num('sprintGuard', 0.6, 0, 1, 0.05, 'damage taken is cut by this fraction while sprinting');
   const sprintBreakS = tn.num('bossSprintBreakS', 4, 0, 10, 0.5, 'a sprint started while the boss is idle exposes it for this long');

@@ -25,7 +25,8 @@ const profile = testProfile({
     seed: Number(q.get('seed') ?? 11),
     simOpts: {
       autopilot: true,
-      invulnerable: true
+      invulnerable: true,
+      ...(q.has('floor') ? { floor: Number(q.get('floor')), skipCamp: true } : {})
     }
   });
 session.step(Number(q.get('sec') ?? 150) * 30);

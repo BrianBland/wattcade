@@ -12,6 +12,10 @@ import { drawProjectile, drawPixelFx, flameSprite } from './effects';
 import { pixelPanel, pixelMeter, pixelText } from './chrome';
 import { fillText, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
 import { drawFlagstone, drawMarsh } from './terrain';
+import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect } from './art32';
+import { buildBackground32, floorInfo, drawLava, drawPoolGlints, type FloorBg32, type FloorInfo } from './world32';
+import { drawItem32, drawHero32, drawEnemy32, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
+import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
 
 const ACTION_COLOR: Record<string, string> = { strike: '#ffd84a', ward: '#7fe7ff', rally: '#8fd8ff', potion: '#ff6b8a' };
@@ -29,7 +33,7 @@ const AURA: Array<{ c: string; a: number; r: number } | null> = [null, null,
 const ENEMY_TINT: Record<string, string> = { chaser: '#e66', bat: '#a7f', spitter: '#5d5', archer: '#eee', brute: '#c84', bomber: '#f72', summoner: '#a5f', boss: '#c0a' };
 const ELITE_COLORS: Record<EliteMod, string> = { undying: '#7dff5a', splitting: '#ffd84a', shielded: '#66ccff', swift: '#ff5af0', volatile: '#ff7a2a' };
 const ELITE_LABEL: Record<EliteMod, string> = { undying: 'Undying', splitting: 'Splitting', shielded: 'Warded', swift: 'Swift', volatile: 'Volatile' };
-const KIND_LABEL: Record<string, string> = { chaser: 'Goblin', bat: 'Bat', spitter: 'Slime', archer: 'Skeleton', brute: 'Ogre', bomber: 'Bomber', summoner: 'Necromancer' };
+const KIND_LABEL: Record<string, string> = { chaser: 'Coneling', bat: 'Saddle Sore', spitter: 'Gel Slime', archer: 'Lost Rider', brute: 'Wrench Troll', bomber: 'CO2 Gremlin', summoner: 'Directeur Sportif' };
 const SHRINE_COLORS = { fury: '#ff8c2a', endurance: '#5aa9ff', sprint: '#ffd84a', whirl: '#8fd8ff' } as const;
 // rate limits (s) for spammy sound cues
 const CUE_GAP: Partial<Record<SfxName, number>> = { shoot: 0.06, shootHeavy: 0.08, zap: 0.06, flame: 0.1, hit: 0.05, crit: 0.08, coin: 0.05, kill: 0.04, explode: 0.08, hurt: 0.2, door: 0.2 };
@@ -141,6 +145,13 @@ export function createRenderer(): GameRenderer {
   let g: CanvasRenderingContext2D | null = null;
   let color = '#4cc9f0';
   let bg: FloorBg | null = null, bgFor: unknown = null;
+  let bg32: FloorBg32 | null = null, info: FloorInfo | null = null;
+  const losCache = new Map<string, Los>();
+  let litC: HTMLCanvasElement | null = null, lightImg: ImageData | null = null;
+  /** zone light colours: wall torches, PILLAR light props, pools (lava only) */
+  const ZL: Record<string, { torch: [number, number, number]; prop: [number, number, number]; amb: [number, number, number] }> = {
+    keep: { torch: [255, 170, 90], prop: [255, 160, 80], amb: [0.58, 0.55, 0.68] }, crypt: { torch: [90, 230, 210], prop: [90, 230, 210], amb: [0.5, 0.54, 0.68] },
+    catacombs: { torch: [255, 190, 110], prop: [255, 190, 110], amb: [0.56, 0.5, 0.48] }, deep: { torch: [170, 110, 255], prop: [170, 110, 255], amb: [0.4, 0.37, 0.48] } };
   let mini: HTMLCanvasElement | null = null;
   let pillars: Array<{ x: number; y: number }> = [];
   let worldCanvas: HTMLCanvasElement | null = null;
@@ -255,15 +266,18 @@ export function createRenderer(): GameRenderer {
 
   function drawDrop(d: DropView, TS: number, t: number) {
     const gg=g!,x=Math.round(d.x*TS),y=Math.round(d.y*TS),bob=Math.floor(Math.sin(t*4+d.id)*1.2);
+    if(d.kind==='coin'&&drawCoin32(gg,x,y+bob,t,d.id))return;
     if(d.kind==='coin'){
       const c=sprite('coin'),edge=Math.floor(t*5+d.id)%4===0,w=edge?2:c.width;
       gg.drawImage(c,x-Math.floor(w/2),y-c.height+bob,w,c.height);return;
     }
+    if(d.kind==='potion'&&drawItem32(gg,'potion',x,y+2+bob))return;
     if(d.kind==='potion'){drawSprite('potion',x,y,1,1,false,undefined,bob);return;}
     const col=RARITY_COLORS[d.rarity];
     if(d.rarity>=2){pixelRing(gg,x,y,6,col,true,0.4);gg.fillStyle=col;gg.fillRect(x-1,y-13+bob,1,2);if(d.rarity===5){gg.fillRect(x-4,y-18+bob,1,1);gg.fillRect(x+4,y-16-bob,1,1);}}
+    if(d.kind==='weapon'&&drawWeaponIcon32(gg,{base:d.style!,element:d.element,rarity:d.rarity,variant:d.variant,unique:d.unique,plus:d.plus},x,y-8+bob))return;
     if(d.kind==='weapon')weaponIcon(gg,{base:d.style!,element:d.element,rarity:d.rarity,variant:d.variant,unique:d.unique,plus:d.plus},x,y-5+bob,14,col);
-    else gearIcon(gg,d.slot!,x,y-5+bob,10,col);
+    else if(!drawItem32(gg,d.slot!,x,y+1+bob))gearIcon(gg,d.slot!,x,y-5+bob,10,col);
   }
 
   function drawEnemy(e: EnemyView, TS: number, t: number) {
@@ -284,26 +298,30 @@ export function createRenderer(): GameRenderer {
     if (e.tell > 0) { gg.globalCompositeOperation = 'lighter'; glowAt(e.kind === 'bomber' ? '#ff7a2a' : '#ff3b3b', x, y - e.r * TS, e.r * TS * (1.5 + e.tell), 0.3 + e.tell * 0.6); gg.globalCompositeOperation = 'source-over'; }
     if (e.exposed) pixelRing(gg,x,y-e.r*TS,e.r*TS*1.9,'#ffe08a',true);
     if (e.exposed) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffe08a', x, y - e.r * TS, e.r * TS * 2.6, 0.75 + Math.sin(t * 9) * 0.2); gg.globalCompositeOperation = 'source-over'; }
+    let artH = def.height * ps;
+    if (artReady()) artH = drawEnemy32(gg, x, y + (e.kind === 'bat' ? bob - TS * 0.35 : 0), { kind: e.kind, variant: e.variant, moving: mv, tell: e.tell, flash, face: e.face, t, id: e.id }) || artH;
+    else {
     gg.save();
     drawCanvas(def, x, y, ps, e.face, bob);
     if (flash) { gg.globalAlpha = 0.4; drawCanvas(sprite2(name, fr.state, fr.idx, pal, true, scale), x, y, ps, e.face, bob); gg.globalAlpha = 1; }
     gg.restore();
+    }
     if(e.shieldFrac>0)pixelRing(gg,x,y-e.r*TS,e.r*TS*1.5,'#7fe7ff',false,1,e.shieldFrac);
     if (e.elite) {
-      eliteLabels.push({ x, y: y - def.height * ps - 3,
+      eliteLabels.push({ x, y: y - artH - 3,
         text: `${ELITE_LABEL[e.elite]} ${KIND_LABEL[e.kind] ?? ''}`, color: ELITE_COLORS[e.elite] });
     }
-    if (e.slowed) { gg.fillStyle = 'rgba(127,231,255,0.25)'; gg.fillRect(x - e.r * TS, y - e.r * TS * 2.2, e.r * TS * 2, e.r * TS * 2.2); }
+    if (e.slowed) { gg.fillStyle = '#7fe7ff'; for (let i = 0; i < 5; i++) { const a2 = i * 1.26 + t * 2; gg.fillRect(Math.round(x + Math.cos(a2) * e.r * TS), Math.round(y - 2 + Math.sin(a2) * e.r * TS * 0.35), i % 2 ? 1 : 2, 1); } }
     if (e.dot && Math.floor(t * 8) % 2) { gg.globalCompositeOperation = 'lighter'; glowAt('#7dff5a', x, y - e.r * TS * 1.8, TS * 0.2, 0.8); gg.globalCompositeOperation = 'source-over'; }
     if (!isBoss && e.hp < e.maxHp) {
-      const bw=12,by=Math.round(y-def.height*ps-3);gg.fillStyle='#100d1c';gg.fillRect(Math.round(x-bw/2)-1,by-1,bw+2,3);
+      const bw=16,by=Math.round(y-artH-3);gg.fillStyle='#100d1c';gg.fillRect(Math.round(x-bw/2)-1,by-1,bw+2,3);
       gg.fillStyle='#ef7070';gg.fillRect(Math.round(x-bw/2),by,Math.round(bw*Math.max(0,e.hp)/e.maxHp),1);
     }
   }
 
   return {
     mount(container: HTMLElement, c: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
-      color = c.profile.color; send = c.send; insetCss = c.insets?.bottom ?? 0;
+      color = c.profile.color; send = c.send; insetCss = c.insets?.bottom ?? 0; loadArt();
       hudOcclusions = c.insets?.occlusions;
       canvas = document.createElement('canvas');
       canvas.style.cssText = 'width:100%;height:100%;display:block;background:#07060b;touch-action:none';
@@ -341,8 +359,9 @@ export function createRenderer(): GameRenderer {
       const gg=g,W=V.width,H=V.height,TS=TILE_PX;
       gg.imageSmoothingEnabled = false;
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
-      if (bgFor !== w) {
-        bgFor = w; bg?.release(); bg = buildBackground(w); mini = null; pillars = [];
+      if (bgFor !== w || (!bg32 && artReady())) {
+        if (bgFor !== w) { bg?.release(); bg = buildBackground(w); mini = null; }
+        bgFor = w; pillars = []; bg32?.release(); info = floorInfo(w); bg32 = buildBackground32(w, info); losCache.clear();
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
       const uiU=(Math.max(1,Math.min(OW,OH)/dpr/600)*0.75+0.25)*dpr;
@@ -356,14 +375,26 @@ export function createRenderer(): GameRenderer {
       // background (visible part only)
       const k = TS / BT;
       const sx = Math.max(0, cx / k), sy = Math.max(0, cy / k), sw = Math.min(w.w * BT - sx, W / k + 1), sh = Math.min(w.h * BT - sy, H / k + 1);
-      if (sw > 0 && sh > 0) bg!.draw(gg, sx, sy, sw, sh, k);
-      bg!.prefill(3, sx + sw / 2, sy + sh / 2); // fill in off-screen chunks, nearest the camera first, a little each frame
+      const Zn = info?.zone ?? 'keep', Zr = ATLAS.zones[Zn];
+      if (bg32) { bg32.draw(gg, Math.max(0, cx), Math.max(0, cy), W, H); bg32.prefill(3, cx + W / 2, cy + H / 2); }
+      else { if (sw > 0 && sh > 0) bg!.draw(gg, sx, sy, sw, sh, k); bg!.prefill(3, sx + sw / 2, sy + sh / 2); }
+      const isSwamp = (x: number, y: number) => x >= 0 && y >= 0 && x < w.w && y < w.h && w.tiles[y * w.w + x] === TILE.SWAMP;
+      const inView = (q: { x: number; y: number }, m = 1) => q.x >= Math.floor(cx / TS) - m && q.x <= Math.ceil((cx + W) / TS) + m && q.y >= Math.floor(cy / TS) - m && q.y <= Math.ceil((cy + H) / TS) + m;
+      if (bg32 && info) { const vis = info.swamp.filter((q) => inView(q, 0)); if (Zn === 'deep') drawLava(gg, vis, isSwamp, t); else drawPoolGlints(gg, Zn, vis, t); }
       // doors, stairs, chests
       const x0 = Math.max(0, Math.floor(cx / TS)), x1 = Math.min(w.w, Math.ceil((cx + W) / TS));
       const y0 = Math.max(0, Math.floor(cy / TS)), y1 = Math.min(w.h, Math.ceil((cy + H) / TS));
       for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
         const kk = w.tiles[y * w.w + x];
-        if (kk === TILE.DOOR) {
+        if (kk === TILE.DOOR && bg32) {
+          const locked = w.rooms[w.doorRoom[y * w.w + x]]?.locked, wallAt = (dx: number) => w.tiles[y * w.w + x + dx] === TILE.WALL;
+          if (wallAt(-1) && wallAt(1)) drawZoneProp(gg, Zn, locked ? 'doorLocked' : 'doorOpen', x * TS, y * TS - 16);
+          else if (locked) { gg.fillStyle = Zr.ramp[2]; gg.fillRect(x * TS, y * TS, TS, 3); for (let i = 2; i < TS; i += 5) { gg.fillStyle = Zr.ramp[8]; gg.fillRect(x * TS + i, y * TS - 12, 2, TS + 10); gg.fillStyle = Zr.ramp[4]; gg.fillRect(x * TS + i + 2, y * TS - 12, 1, TS + 10); } }
+          if (locked) { gg.globalCompositeOperation = 'lighter'; glowAt('#ff3b3b', x * TS + TS / 2, y * TS + TS / 2, TS * 0.8, 0.35); gg.globalCompositeOperation = 'source-over'; }
+        } else if (kk === TILE.STAIRS && bg32) {
+          drawZoneProp(gg, Zn, 'stairs', x * TS, y * TS);
+          if (s.stairsOpen) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffd84a', x * TS + TS / 2, y * TS + TS / 2, TS * (1.2 + Math.sin(t * 3) * 0.2), 0.7); gg.globalCompositeOperation = 'source-over'; }
+        } else if (kk === TILE.DOOR) {
           const locked = w.rooms[w.doorRoom[y * w.w + x]]?.locked;
           if (locked) {
             gg.fillStyle = '#3a2a1a'; gg.fillRect(x * TS, y * TS, TS, TS);
@@ -376,7 +407,10 @@ export function createRenderer(): GameRenderer {
           if (s.stairsOpen) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffd84a', x * TS + TS / 2, y * TS + TS / 2, TS * (1.2 + Math.sin(t * 3) * 0.2), 0.7); gg.globalCompositeOperation = 'source-over'; }
         }
       }
-      for(const r of w.rooms)if(r.chest){
+      for(const r of w.rooms)if(r.chest&&bg32){
+        const x=Math.round(r.chest.x*TS),y=Math.round(r.chest.y*TS);shadow(x,y,11);drawZoneProp(gg,Zn,'chest',x-12,y-15);
+        if(r.chest.opened){gg.fillStyle='#211820';gg.fillRect(x-11,y-16,22,4);}
+      } else if(r.chest){
         const x=Math.round(r.chest.x*TS),y=Math.round(r.chest.y*TS);
         gg.fillStyle='#35251f';gg.fillRect(x-7,y-10,14,10);gg.fillStyle='#975f38';gg.fillRect(x-6,y-9,12,8);
         gg.fillStyle='#c48b50';gg.fillRect(x-5,y-9,10,2);gg.fillStyle='#e8bf65';gg.fillRect(x-6,y-5,12,1);gg.fillRect(x-1,y-6,2,3);
@@ -387,11 +421,12 @@ export function createRenderer(): GameRenderer {
       for (const r of w.rooms) if (!r.seen) gg.fillRect((r.x0 - 1) * TS, (r.y0 - 1) * TS, (r.w + 2) * TS, (r.h + 2) * TS);
 
       // Authored 8px flame frames replace blurry torch and brazier dots.
-      for(const q of pillars){if(q.x<x0-1||q.x>x1||q.y<y0-1||q.y>y1)continue;const f=flameSprite(t+q.x*.13);gg.drawImage(f,q.x*TS+3,q.y*TS-3);}
-      for(const q of torches){if(q.x<x0-1||q.x>x1||q.y<y0-1||q.y>y1)continue;const f=flameSprite(t+q.y*.17);gg.drawImage(f,q.x*TS+3,q.y*TS-1);}
+      if(!bg32)for(const q of pillars){if(q.x<x0-1||q.x>x1||q.y<y0-1||q.y>y1)continue;const f=flameSprite(t+q.x*.13);gg.drawImage(f,q.x*TS+3,q.y*TS-3);}
+      if(!bg32)for(const q of torches){if(q.x<x0-1||q.x>x1||q.y<y0-1||q.y>y1)continue;const f=flameSprite(t+q.y*.17);gg.drawImage(f,q.x*TS+3,q.y*TS-1);}
       for(const sh of s.shrines){
         if(!w.rooms[sh.room].seen)continue;
         const x=Math.round(sh.x*TS),y=Math.round(sh.y*TS),col=sh.state==='failed'?'#777080':SHRINE_COLORS[sh.kind];
+        if(artReady()){pixelRing(gg,x,y,16,col,true,0.4);if(sh.state==='active')pixelRing(gg,x,y-20,22,col,false,1,sh.progress);continue;}
         pixelRing(gg,x,y,12,col,true,0.4);gg.fillStyle='#2d293d';gg.fillRect(x-5,y-3,11,5);gg.fillStyle='#675b79';gg.fillRect(x-3,y-15,7,13);gg.fillRect(x-1,y-18,3,3);
         gg.fillStyle='#8a7b9e';gg.fillRect(x-3,y-15,1,11);gg.fillStyle=col;gg.fillRect(x,y-12,1,6);
         if(sh.state==='active')pixelRing(gg,x,y-8,15,col,false,1,sh.progress);
@@ -449,6 +484,14 @@ export function createRenderer(): GameRenderer {
         const shot = s.bullets.some((b) => b.friendly && b.age < 0.12 && Math.hypot(b.x - p.x, b.y - p.y) < 1.6);
         const held = holdPose(p.x * TS, p.y * TS, s.aim.angle, weaponGrip(s.weapon), shot ? 1 : 0);
         const drawHeld = () => { const ws = heldWeapon(s.weapon, s.aim.angle); gg.drawImage(ws, Math.round(held.x) - Math.floor(ws.width / 2), Math.round(held.y + bob) - Math.floor(ws.height / 2)); };
+        if (artReady()) {
+          shadow(px, py, TS * 0.3);
+          const kick = shot ? 2 : 0;
+          if (p.rolling) drawHero32(gg, px - Math.cos(s.aim.angle) * TS * 0.3, py, { angle: s.aim.angle, moving: true, t, stance: s.stance.id, hurt: false, weapon: s.weapon, kick: 0, alpha: 0.3 });
+          drawHero32(gg, px, py + bob, { angle: s.aim.angle, moving: p.moving, t, stance: s.stance.id, hurt: p.hurt < 0.08, weapon: s.weapon, kick, alpha: p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1 });
+          if(p.warded)pixelRing(gg,p.x*TS,p.y*TS-10,TS*0.7,'#7fe7ff',true);
+          return;
+        }
         if (held.behind) drawHeld();
         const hst: AnimState = p.hurt < 0.12 ? 'hurt' : shot ? 'attack' : p.moving ? 'walk' : 'idle';
         const hf = anim('hero',hst,t,9),hs=1,hpal=heroPalette(color);
@@ -461,18 +504,77 @@ export function createRenderer(): GameRenderer {
         // weapon gripped at its handle by the facing hand, pointing along the aim
         if(!held.behind)drawHeld();
       } });
+      if (bg32 && info) {
+        const lr = zonePropSize(Zn, 'light');
+        for (const q of info.pillars) if (inView(q, 2) && lr) actors.push({ y: q.y + 0.5, d: () => { const fx2 = q.x * TS + 16, fy2 = q.y * TS + 28; shadow(fx2, fy2, 9); drawZoneProp(gg, Zn, 'light', fx2 - (lr.w >> 1), fy2 - lr.h); } });
+        for (const sh of s.shrines) if (w.rooms[sh.room].seen) actors.push({ y: sh.y, d: () => { shadow(sh.x * TS, sh.y * TS, 11); drawShrine32(gg, sh.kind, sh.x * TS, sh.y * TS, t, sh.state === 'failed'); } });
+      }
       actors.sort((a, b) => a.y - b.y);
       for (const a of actors) a.d();
 
-      for (const b of s.bullets) drawBullet(b, TS, t);
-      for(const f of s.fx)if(f.kind!=='text')drawFx(f,t,TS);
+      const emissive = () => {
+        for (const b of s.bullets) if (!(artReady() && drawShot32(gg, b, TS))) drawBullet(b, TS, t);
+        for (const f of s.fx) if (f.kind === 'death' && artReady()) drawPuff(gg, f.x * TS, f.y * TS + 8, (t - f.t0) / f.life); else if (f.kind !== 'text') drawFx(f, t, TS);
+      };
+      if (!bg32) emissive();
       // Orbit blades and target marker use the same native-pixel masks as ordinary shots.
       for(const o of s.orbit)drawProjectile(gg,{x:o.x,y:o.y,r:0.2,friendly:true,style:'star',color:ELEMENT_COLORS[s.weapon.element],angle:t*14,age:t},TS);
       const tgt=s.ai.targetId?s.enemies.find(e=>e.id===s.ai.targetId):undefined;
       if(tgt)pixelTarget(gg,tgt.x*TS,tgt.y*TS,(tgt.r+0.35)*TS,tgt.kind==='boss'?'#ff6a70':'#ffd84a');
       gg.restore();
 
-      // Restrained stepped darkness, drawn at native resolution. No smoothed light-map upscale.
+      if (bg32 && info) {
+        // Stepped per-pixel lighting with wall occlusion (light32.ts), then the emissive layer on top.
+        const dark = s.curse?.kind === 'darkness', zl = ZL[Zn], ox = Math.round(cx), oy = Math.round(cy);
+        const grid = { w: w.w, h: w.h, wall: (x: number, y: number) => x < 0 || y < 0 || x >= w.w || y >= w.h || w.tiles[y * w.w + x] === TILE.WALL };
+        const L: Array<Light & { los: Los }> = [];
+        const add = (key: string | null, x: number, y: number, r: number, c: readonly [number, number, number], i: number) => {
+          if (x + r < ox || x - r > ox + W || y + r < oy || y - r > oy + H) return;
+          const tx = Math.floor(x / TS), ty = Math.floor(y / TS), rt = Math.ceil(r / TS);
+          let los = key ? losCache.get(key) : undefined;
+          if (!los) { los = lineOfSight(grid, tx, ty, rt); if (key) losCache.set(key, los); }
+          L.push({ x, y, r, c, i, los });
+        };
+        const fl = (k: number) => 1 + Math.sin(t * 9 + k * 2) * 0.04 + Math.sin(t * 23 + k) * 0.03;
+        add(null, p.x * TS, p.y * TS - 12, TS * (dark ? 2.2 : 3.2), [255, 236, 210], 0.55);
+        if (!dark) {
+          for (const q of info.torches) add(`t${q.x},${q.y}`, q.x * TS + 16, (q.y + 1) * TS + 2, TS * 3.4 * fl(q.x), zl.torch, 0.95);
+          for (const q of info.pillars) add(`p${q.x},${q.y}`, q.x * TS + 16, q.y * TS + 14, TS * 3.2 * fl(q.y), zl.prop, 0.95);
+          if (Zn === 'deep') for (const q of info.swamp) if (q.x % 3 === 1 && q.y % 2 === 0) add(`l${q.x},${q.y}`, q.x * TS + 16, q.y * TS + 16, TS * 2.8, [255, 110, 40], 0.9);
+          for (const sh of s.shrines) if (sh.state !== 'failed') add(`s${sh.room}`, sh.x * TS, sh.y * TS - 16, TS * 2.6, hexRgb(SHRINE_COLORS[sh.kind]), 0.7);
+        }
+        let nb = 0;
+        for (const b of s.bullets) if (b.friendly && nb++ < 10) add(null, b.x * TS, b.y * TS, TS * 1.6, hexRgb(b.color.length === 7 ? b.color : '#ffd84a'), 0.8);
+        for (const f of s.fx) if ((f.kind === 'boom' || f.kind === 'muzzle') && t - f.t0 < f.life) add(null, f.x * TS, f.y * TS, TS * 2.2 * (1 - (t - f.t0) / f.life), hexRgb(f.color.length === 7 ? f.color : '#ffb04a'), 1.2);
+        const amb = dark ? [zl.amb[0] * 0.35, zl.amb[1] * 0.35, zl.amb[2] * 0.4] as const : zl.amb;
+        const BW = Math.ceil(W / 2), BH = Math.ceil(H / 2);
+        if (!lightC) lightC = document.createElement('canvas');
+        if (lightC.width !== BW || lightC.height !== BH) { lightC.width = BW; lightC.height = BH; lightImg = null; }
+        const lc = lightC.getContext('2d')!; if (!lightImg) lightImg = lc.createImageData(BW, BH);
+        shade({ grid, ts: TS, rise: 16, ox, oy, W, H, amb, lights: L }, lightImg.data);
+        lc.putImageData(lightImg, 0, 0);
+        if (!litC) litC = document.createElement('canvas');
+        if (litC.width !== W || litC.height !== H) { litC.width = W; litC.height = H; }
+        const lg = litC.getContext('2d')!; lg.imageSmoothingEnabled = false; lg.globalCompositeOperation = 'source-over';
+        lg.drawImage(worldCanvas, 0, 0); lg.globalCompositeOperation = 'multiply'; lg.drawImage(lightC, 0, 0, BW * 2, BH * 2); lg.globalCompositeOperation = 'source-over';
+        gg.save(); gg.setTransform(1, 0, 0, 1, 0, 0);
+        gg.globalCompositeOperation = 'copy'; gg.drawImage(litC, 0, 0); gg.globalCompositeOperation = 'source-over';
+        for (let i = 1; i < LIGHT_SCALE; i++) { gg.globalCompositeOperation = 'lighter'; gg.drawImage(litC, 0, 0); gg.globalCompositeOperation = 'source-over'; }
+        gg.restore(); gg.save(); gg.translate(-ox, -oy);
+        // emissive layer: flames, glowing props, shots, bursts
+        const fi = Math.floor(t * 10), fr = Zr.rects.flame;
+        if (Zn !== 'deep' && fr) {
+          for (const q of info.torches) if (inView(q)) drawZoneProp(gg, Zn, 'flame', q.x * TS + 13, q.y * TS - 10, fi + q.x, 4);
+          const lr = zonePropSize(Zn, 'light');
+          if (lr) for (const q of info.pillars) if (inView(q)) drawZoneProp(gg, Zn, 'flame', q.x * TS + 13, q.y * TS + 28 - lr.h - 9, fi + q.y, 4);
+        }
+        if (Zn === 'deep') { const lr = zonePropSize(Zn, 'light'); if (lr) for (const q of info.pillars) if (inView(q)) { gg.globalAlpha = 0.55 + 0.25 * Math.sin(t * 2 + q.x); drawZoneProp(gg, Zn, 'light', q.x * TS + 16 - (lr.w >> 1), q.y * TS + 28 - lr.h); gg.globalAlpha = 1; } }
+        for (const sh of s.shrines) if (w.rooms[sh.room].seen && sh.state !== 'failed') { gg.globalAlpha = 0.5; drawShrine32(gg, sh.kind, sh.x * TS, sh.y * TS, t, false); gg.globalAlpha = 1; }
+        emissive();
+        for (const r of w.rooms) if (!r.seen) { gg.fillStyle = '#07060b'; gg.fillRect((r.x0 - 1) * TS, (r.y0 - 1) * TS - 16, (r.w + 2) * TS, (r.h + 2) * TS + 16); }
+        gg.restore();
+      } else {
+      // (fallback before the art sheets load) Restrained stepped darkness, drawn at native resolution. No smoothed light-map upscale.
       const dark=s.curse?.kind==='darkness';
       if(!lightC)lightC=document.createElement('canvas');
       if(lightC.width!==W||lightC.height!==H){lightC.width=W;lightC.height=H;}
@@ -482,6 +584,7 @@ export function createRenderer(): GameRenderer {
       lamp(p.x*TS,p.y*TS,TS*(dark?3:5));
       if(!dark){for(const q of torches)if(q.x>=x0-3&&q.x<=x1+3&&q.y>=y0-3&&q.y<=y1+3)lamp((q.x+.5)*TS,(q.y+.5)*TS,TS*3);for(const q of pillars)if(q.x>=x0-3&&q.x<=x1+3&&q.y>=y0-3&&q.y<=y1+3)lamp((q.x+.5)*TS,(q.y+.5)*TS,TS*3);}
       lg.globalAlpha=1;lg.globalCompositeOperation='source-over';gg.drawImage(lightC,0,0);
+      }
       if(s.curse){gg.fillStyle=s.curse.color+'12';gg.fillRect(0,0,W,H);}
       if(p.hurt<0.3){gg.fillStyle='#f4516133';gg.fillRect(0,0,W,2);gg.fillRect(0,H-2,W,2);gg.fillRect(0,0,2,H);gg.fillRect(W-2,0,2,H);}
       g=output;output.imageSmoothingEnabled=false;
@@ -518,10 +621,13 @@ export function createRenderer(): GameRenderer {
     if(worldCanvas.width!==V.width||worldCanvas.height!==V.height){worldCanvas.width=V.width;worldCanvas.height=V.height;}
     const cg=worldCanvas.getContext('2d')!;cg.imageSmoothingEnabled=false;cg.fillStyle='#15111f';cg.fillRect(0,0,V.width,V.height);
     const ground=Math.round(UH/scale*.84);
-    for(let yy=ground;yy<V.height;yy+=16)for(let xx=0;xx<V.width;xx+=16){cg.fillStyle=hash(xx,yy)>.5?'#302737':'#2a2332';cg.fillRect(xx,yy,15,15);}
+    const kim=sheetImage('keep'),kfl=zoneRect('keep','floor');
+    if(kim&&kfl)for(let yy=ground;yy<V.height;yy+=kfl[3])for(let xx=0;xx<V.width;xx+=kfl[2])cg.drawImage(kim,kfl[0],kfl[1],kfl[2],kfl[3],xx,yy,kfl[2],kfl[3]);
+    else for(let yy=ground;yy<V.height;yy+=16)for(let xx=0;xx<V.width;xx+=16){cg.fillStyle=hash(xx,yy)>.5?'#302737':'#2a2332';cg.fillRect(xx,yy,15,15);}
     pixelDisc(cg,V.width/2,UH/scale*.93,32,'#633b3033',.4);pixelDisc(cg,V.width/2,UH/scale*.93,20,'#b86a3633',.4);
     const fc=flameSprite(t),hx=Math.round(V.width/2-20),hy=Math.round(UH/scale*.95);
-    const hero=sprite2('hero','idle',0,heroPalette(color));cg.drawImage(hero,hx-9,hy-18);
+    if(artReady())drawHero32(cg,hx,hy,{angle:Math.PI/2,moving:false,t,stance:'scout',hurt:false,weapon:{base:'pellet'} as WeaponLook,kick:0});
+    else{const hero=sprite2('hero','idle',0,heroPalette(color));cg.drawImage(hero,hx-9,hy-18);}
     cg.fillStyle='#704830';cg.fillRect(Math.round(V.width/2)-5,hy-2,11,2);cg.drawImage(fc,Math.round(V.width/2)-5,hy-10);
     gg.imageSmoothingEnabled=false;gg.drawImage(worldCanvas,0,0,V.width*scale,V.height*scale);
     pixelText(gg,'CAMP',W/2,18*u,Math.max(3,Math.round(4*dpr)),'#ffd84a',true);
@@ -604,7 +710,7 @@ export function createRenderer(): GameRenderer {
         const e = k * k * (3 - 2 * k), fx2 = f.x + (tx - f.x) * e, fy2 = f.y + (ty - f.y) * e - Math.sin(k * Math.PI) * 40 * hu;
         drawSprite('coin', fx2, fy2 + 3 * hu, (1.4 - 0.6 * k) * hu);
       }
-      for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; drawSprite('potion', x + 86 * hu + k * 9 * hu, ly - 3.5 * hu, 1.1 * hu); }
+      for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; if (!drawItem32(gg, 'potion', x + 86 * hu + k * 9 * hu, ly + 4 * hu, Math.max(1, Math.round(hu * 0.6)))) drawSprite('potion', x + 86 * hu + k * 9 * hu, ly - 3.5 * hu, 1.1 * hu); }
       gg.globalAlpha = 1;
       // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
       const sw = p.secondWind, sx = x + PW - 26 * hu, sy = ly - 8 * hu, w = 26 * hu, h = 9 * hu, ready = sw >= 1;
@@ -682,7 +788,9 @@ export function createRenderer(): GameRenderer {
       const by=infoTop+(act?50*hu:0);
       bar(bx, by, bw, 14 * u, c.left / c.total, c.color, '');
       gg.fillStyle = c.color; gg.textAlign = 'center'; gg.font = pixelFont(fs);
-      fillText(gg, `☠ ${c.name}: ${c.desc} · ${Math.ceil(c.left)}s`, W / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
+      const sig = Math.max(2, Math.round(2 * u)), label = `${c.name}: ${c.desc} · ${Math.ceil(c.left)}s`;
+      if (artReady()) drawSigil(gg, c.kind, bx - 14 * sig - 4 * u, by - 6 * u - 10 * sig, sig);
+      fillText(gg, artReady() ? label : `☠ ${label}`, W / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
     }
     // big banners (uniques, curses)
     let bannerRow = 0; // stack banners that overlap in time (e.g. EXPLORE straight into AMBUSH), newest lowest

@@ -10,7 +10,7 @@ import { heldWeapon, gearSprite, weaponGrip, colorRamp, type WeaponLook } from '
 import { holdPose } from './hold';
 import { drawProjectile, drawPixelFx, flameSprite } from './effects';
 import { pixelPanel, pixelMeter, pixelText, pixelSocket, pixelGem, mixHex } from './chrome';
-import { fillText, fillTextShadow, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
+import { fillText, fillTextShadow, displayText, displayWidth, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
 import { drawFlagstone, drawMarsh } from './terrain';
 import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut, charFrame, anim as anim32 } from './art32';
 import { drawStanceSwap, drawPoolLights, drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
@@ -792,8 +792,8 @@ export function createRenderer(): GameRenderer {
     if (k > 0.6) { const a = Math.min(1, (k - 0.6) * 3); gg.globalAlpha = a;
       const ty = Math.max(24 * dpr, Math.min(H * 0.34, h.y - 34 * h.scale - 70 * dpr));
       const S8 = Math.max(4, Math.round(8 * dpr)), S2 = Math.max(1, Math.round(2 * dpr));
-      pixelText(gg, 'DNF', W / 2 + S8 / 2, ty + S8 / 2, S8, '#2a0610', true); pixelText(gg, 'DNF', W / 2, ty, S8, '#ff5a5a', true);
-      gg.globalAlpha = a * 0.85; pixelText(gg, 'DID NOT FINISH', W / 2 + S2, ty + 66 * dpr + S2, S2, '#2a0610', true); pixelText(gg, 'DID NOT FINISH', W / 2, ty + 66 * dpr, S2, '#ffb0b0', true); gg.globalAlpha = 1; }
+      displayText(gg, 'DNF', W / 2, ty, S8, '#ff5a5a', true, '#1a0408');
+      gg.globalAlpha = a * 0.85; displayText(gg, 'DID NOT FINISH', W / 2, ty + 70 * dpr, Math.max(2, Math.round(2.5 * dpr)), '#ffb0b0', true, '#1a0408'); gg.globalAlpha = 1; }
     if (k > DNF_S - 0.45) { gg.fillStyle = '#07060b'; gg.globalAlpha = Math.min(1, (k - (DNF_S - 0.45)) / 0.45); gg.fillRect(0, 0, W, H); gg.globalAlpha = 1; }
   }
   function drawCamp(c: CampView, W: number, H: number, t: number) {
@@ -855,7 +855,7 @@ export function createRenderer(): GameRenderer {
       cg.fillStyle='#704830';cg.fillRect(Math.round(V.width/2)-5,hy-2,11,2);cg.drawImage(fc,Math.round(V.width/2)-5,hy-10);
     }
     gg.imageSmoothingEnabled=false;gg.drawImage(worldCanvas,0,0,V.width*scale,V.height*scale);
-    pixelText(gg,'CAMP',W/2,18*u,Math.max(3,Math.round(4*dpr)),'#ffd84a',true);
+    displayText(gg,'CAMP',W/2,16*u,Math.max(3,Math.round(4*dpr)),'#ffd84a',true);
     gg.textAlign='center';
     gg.fillStyle = '#ccc'; gg.font = pixelFont(fs);
     fillText(gg, `Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}   ·   Runs ${c.runs}`, W / 2, 70 * u, W - 24 * u);
@@ -906,8 +906,8 @@ export function createRenderer(): GameRenderer {
     bossChip = f > bossChip ? f : bossChip + (f - bossChip) * 0.06;
     // name plate
     gg.save(); gg.textBaseline = 'alphabetic'; gg.textAlign = 'left'; gg.font = pixelFont(Math.round(12 * hu));
-    gg.fillStyle = '#0a0810'; fillText(gg, B.name.toUpperCase(), x + 2 * hu + q, y + 11 * hu + q, w * 0.7);
-    gg.fillStyle = exp ? '#fff4b0' : '#ffd84a'; fillText(gg, B.name.toUpperCase(), x + 2 * hu, y + 11 * hu, w * 0.7);
+    { const ns = Math.max(1, Math.min(fontScale(Math.round(12 * hu)), Math.floor(w * 0.72 / displayWidth(B.name, 1))));
+      displayText(gg, B.name, x + hu, y + 11 * hu - 8 * ns, ns, exp ? '#fff4b0' : '#ffd84a'); }
     // phase pips (diamonds): filled for phases reached
     const n = B.splits.length + 1;
     for (let i = 0; i < n; i++) {
@@ -1000,8 +1000,8 @@ export function createRenderer(): GameRenderer {
       const pick = st.swapping ? s.stance.list.find((x) => x.id === st.swapping) : undefined, pickC = pick?.color ?? st.color;
       const bs = R.h - 4 * q, bx = R.x + 2 * q, by = R.y + 2 * q;
       pixelPanel(gg, bx, by, bs, bs, mixHex(pickC, '#000000', 0.25), pickC, q);
-      const ls = Math.max(1, Math.floor((bs - 6 * q) / 7)), letter = (pick?.name ?? st.name)[0];
-      pixelText(gg, letter, bx + bs / 2, by + (bs - 7 * ls) / 2, ls, '#15111f', true);
+      const ls = Math.max(1, Math.floor((bs - 4 * q) / 10)), letter = (pick?.name ?? st.name)[0];
+      displayText(gg, letter, bx + bs / 2, by + (bs - 10 * ls) / 2 + ls / 2, ls, mixHex(pickC, '#ffffff', 0.25), true);
       // weapon in a socket, as big as fits in whole pixels
       const sw = Math.round(bs * 1.45), sx = bx + bs + q;
       pixelSocket(gg, sx, by, sw, bs, q);
@@ -1081,8 +1081,7 @@ export function createRenderer(): GameRenderer {
       gg.globalAlpha = Math.min(1, (1 - k2) * 3); gg.textAlign = 'center';
       gg.font = pixelFont(Math.round(30 * u)); gg.lineWidth = 6; gg.strokeStyle = '#000';
       const by = LY.playH * 0.3 + row * 40 * u - Math.min(1, k2 * 6) * 10 * u;
-      if(/^[A-Z0-9 ]{1,24}$/.test(f.text!)){const q=Math.max(1,Math.min(Math.round(4*dpr),Math.floor((W-40*hu)/(f.text!.length*6-1))));pixelText(gg,f.text!,W/2+q,by-7*q+q,q,'#100d1c',true);pixelText(gg,f.text!,W/2,by-7*q,q,f.color,true);}
-      else{strokeText(gg, f.text!,W/2,by,W-40*hu);gg.fillStyle=f.color;fillText(gg, f.text!,W/2,by,W-40*hu);}
+      { const q = Math.max(1, Math.min(Math.round(4 * dpr), Math.floor((W - 40 * hu) / displayWidth(f.text!, 1)))); displayText(gg, f.text!, W / 2, by - 8 * q, q, f.color, true); }
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
     // action-ready pulses (screen space, around the hero)

@@ -7,7 +7,7 @@ export const module: GameModule = {
   achievements,
   id: 'dungeon',
   accent: '#b26bff',
-  title: 'Delve',
+  title: 'Purgatour',
   blurb: 'Endless dungeon dive: pedal to shoot, loot ever-better weapons and gear, level up. Zone 2 heals; sprint to crack boss shields.',
   progressLine, drawCard,
   tags: ['zone2', 'sprint'],

@@ -43,14 +43,14 @@ remain available independently.
 
 ![Warm-up Ride](warmup.png)
 ![Dynamo Defense](towerdefense.png)
-![Delve](dungeon.png)
+![Purgatour](dungeon.png)
 ![Cadenza](cadenza.png)
 ![Watershed](watershed.png)
 ![Sprocket Squadron](starfighter.png)
 ![HAMSTERGRID](hamster.png)
 ![Keeper's Light](lighthouse.png)
 
-Cooldown data covers Tower Defense, Delve, Nova charge and Watershed's
+Cooldown data covers Tower Defense, Purgatour, Nova charge and Watershed's
 phase boost. Rail preserves its charge count; boss sprint windows and trial offers
 appear contextually. Charge is distinct from usability. Squadron's duplicate
 canvas Nova/target buttons are hidden when the shared HUD owns the controls;

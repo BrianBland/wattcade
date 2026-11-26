@@ -133,7 +133,7 @@ function gallery() {
 function typeGallery(g: CanvasRenderingContext2D, W: number, H: number) {
   const pad = 32, width = Math.min(W - pad * 2, 1100), x = Math.round((W - width) / 2);
   g.font = pixelFont(40); g.fillStyle = '#ffd84a';
-  fillText(g, 'DELVE', x, 28, width);
+  fillText(g, 'PURGATOUR', x, 28, width);
   g.font = pixelFont(20); g.fillStyle = '#eee5d3';
   fillText(g, 'Pixel lettering, from combat to camp.', x, 80, width);
   const panel = (y: number, height: number, label: string) => {

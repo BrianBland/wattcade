@@ -1,4 +1,4 @@
-# Delve (dungeon) - NOTES
+# Purgatour (dungeon) - NOTES
 
 CONTRACT-REQUESTs: none.
 

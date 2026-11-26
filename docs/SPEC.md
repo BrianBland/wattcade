@@ -272,7 +272,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 - **Style:** an arcade-cabinet look (dark, neon accents, big type readable from the saddle about 1 m from an iPad). Everything navigable by Ride D-pad + A (select) / B (back), keyboard, and touch.
 - **Screens:**
   - **Profile picker:** cards, "+ New", edit.
-  - **Profile editor:** name, color swatches, units, FTP, max HR, weight, zone source, paddle deadzone, debug stats, max grade; plus Backup export/import. There is no aim-mode or paddle-invert row: the left Ride paddle is always inverted, and Delve aims itself.
+  - **Profile editor:** name, color swatches, units, FTP, max HR, weight, zone source, paddle deadzone, debug stats, max grade; plus Backup export/import. There is no aim-mode or paddle-invert row: the left Ride paddle is always inverted, and Purgatour aims itself.
   - **Connect:** three big buttons (Trainer / Controller / Heart rate), each with a status, a "Fake bike" toggle, notes ("Close Zwift on this iPad first", "Enable Broadcast Heart Rate on your Garmin", "Record an Indoor Bike activity on your watch; it's your Garmin/Strava record for now"), and a firmware warning display.
   - **Arcade menu:** top bar (rider, level/XP, road, devices, achievements, switch rider, 📽) over one row of games: a looping carousel (wraps both ways) with the selection centred and enlarged (recorded clip of the real game from `public/cards/`, recorded in CI on deploy from the shots in `shell/cards/shots.ts`; `drawCard` art when there's none, tags, blurb, progress line, time/kJ ridden, last played); the rest show a title and a still. Sorted by the rider's most recent plays, ties in registry order (most polished first). While the Drive-In is on, the row is replaced by its toggle alone.
   - **Game host:** full-screen container. Mounts the renderer from `loadRenderer()`, runs `GameLoop`, and keeps the screen awake with `navigator.wakeLock` if available.
@@ -350,7 +350,7 @@ Games code **only** against `src/contracts.ts`. Each game folder contains:
 
 Until core lands, test the sims with a local minimal stub context. Keep it in `test/` and delete it once `runHeadless` exists; the orchestrator will tell you. The avatar/player/keeper/turret uses `profile.color`. Keep renderers minimal: simple shapes and a HUD built from DOM or canvas text. Stubbing sound is fine.
 
-### §6.1 Agent F — "Delve" (dungeon, 2D Canvas, RotMG-lite) · owns `src/games/dungeon/`
+### §6.1 Agent F — "Purgatour" (dungeon, 2D Canvas, RotMG-lite) · owns `src/games/dungeon/`
 
 - **World:** a seeded procedural dungeon of about 8 rooms on a grid, connected by corridors, ending in a boss room. Tiles: floor, wall, **swamp**, door. There are 3 enemy types:
   - **Chaser:** melee.

@@ -2,6 +2,9 @@ import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../..
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
 import { desaturate } from '../../kit/actionButton';
 import { runLayout, bossHudLayout } from './layout';
+import { createMinimapCache, drawBoxlessMinimap } from './minimap';
+import { BIOME_BANNER_DUR_S, biomeBannerSpec, drawBiomeBanner, type BiomeBannerState } from './biomeBanner';
+import { campGridLayout, drawCampOverlay } from './campUi';
 import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
@@ -163,7 +166,8 @@ export function createRenderer(): GameRenderer {
   const ZL: Record<string, { torch: [number, number, number]; prop: [number, number, number]; amb: [number, number, number] }> = {
     keep: { torch: [255, 170, 90], prop: [255, 160, 80], amb: [0.58, 0.55, 0.68] }, crypt: { torch: [90, 230, 210], prop: [90, 230, 210], amb: [0.55, 0.6, 0.74] },
     catacombs: { torch: [255, 190, 110], prop: [255, 190, 110], amb: [0.56, 0.5, 0.48] }, deep: { torch: [170, 110, 255], prop: [170, 110, 255], amb: [0.47, 0.43, 0.56] } };
-  let mini: HTMLCanvasElement | null = null;
+  const miniCache = createMinimapCache();
+  let biomeBanner: BiomeBannerState | null = null;
   let pillars: Array<{ x: number; y: number }> = [];
   let worldCanvas: HTMLCanvasElement | null = null;
   let pixelScale = 1;
@@ -428,7 +432,7 @@ export function createRenderer(): GameRenderer {
       gg.imageSmoothingEnabled = false;
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
       if (bgFor !== w || (!bg32 && artReady())) {
-        if (bgFor !== w) { bg?.release(); bg = artReady() ? null : buildBackground(w); mini = null; }
+        if (bgFor !== w) { bg?.release(); bg = artReady() ? null : buildBackground(w); miniCache.canvas = null; }
         bgFor = w; pillars = []; goo.length = 0; gooLast.clear(); bg32?.release(); info = floorInfo(w); bg32 = buildBackground32(w, info); losCache.clear();
         if (bg32 && bg) { bg.release(); bg = null; }
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
@@ -804,7 +808,7 @@ export function createRenderer(): GameRenderer {
       losCache.clear(); flashAt.clear(); hpSeen.clear(); moved.clear();
       coinSeen.clear(); readyPrev.clear(); gooLast.clear(); goo.length = 0; flyers.length = 0; pulses.length = 0;
       clearDerivedArtCache();
-      mini = null; worldCanvas = null; lightC = null; lightImg = null; litC = null; litAt = null; campSnap = null;
+      miniCache.canvas = null; biomeBanner = null; worldCanvas = null; lightC = null; lightImg = null; litC = null; litAt = null; campSnap = null;
       lastRun = null; dnf = null; zoom.held = 0;
     },
   };
@@ -832,9 +836,9 @@ export function createRenderer(): GameRenderer {
     if(!worldCanvas)worldCanvas=document.createElement('canvas');
     if(worldCanvas.width!==V.width||worldCanvas.height!==V.height){worldCanvas.width=V.width;worldCanvas.height=V.height;}
     const cg=worldCanvas.getContext('2d')!;cg.imageSmoothingEnabled=false;cg.fillStyle='#15111f';cg.fillRect(0,0,V.width,V.height);
-    // layout first: the fire scene sits in the free band between the upgrade list and the hint line
-    const rowH0=(compact?48:32)*u, maxRows0=Math.max(4,Math.floor((UH*0.72-90*u)/rowH0)), nRows=Math.min(c.rows.length,maxRows0);
-    const menuBot=(90*u+nRows*rowH0+(c.lastRun||c.lastDeath?34*u:0))/scale, hintTop=(UH-(compact?46:36)*u)/scale;
+    // layout first: the fire scene sits in the generous open band between the 2-column card grid and the hint line
+    const campL = campGridLayout(W, UH, u, dpr, c.rows.length, !!(c.lastRun || c.lastDeath));
+    const menuBot = campL.menuBottom / scale, hintTop = campL.hintTop / scale;
     const fy=Math.round(Math.max(menuBot+28,menuBot+(hintTop-menuBot)*0.62)),hx=Math.round(V.width/2-26),hy=fy,fx=Math.round(V.width/2),ground=fy;
     const kim=sheetImage('keep'),KR=ATLAS.zones.keep.rects;
     if(kim&&artReady()){
@@ -883,51 +887,7 @@ export function createRenderer(): GameRenderer {
       cg.fillStyle='#704830';cg.fillRect(Math.round(V.width/2)-5,hy-2,11,2);cg.drawImage(fc,Math.round(V.width/2)-5,hy-10);
     }
     gg.imageSmoothingEnabled=false;gg.drawImage(worldCanvas,0,0,V.width*scale,V.height*scale);
-    displayText(gg,c.lastRun?.won?'FINISHED':'CAMP',W/2,16*u,Math.max(3,Math.round(4*dpr)),'#ffd84a',true);
-    gg.textAlign='center';
-    gg.fillStyle = '#ccc'; gg.font = pixelFont(fs);
-    fillText(gg, `Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}${c.floors ? `/${c.floors}` : ''}   ·   ${c.wins ? `Wins ${c.wins}   ·   ` : ''}Runs ${c.runs}`, W / 2, 70 * u, W - 24 * u);
-    const resY = 90 * u + nRows * rowH0 + 22 * u;
-    if (c.lastRun) { const L = c.lastRun; gg.fillStyle = L.won ? '#ffd84a' : '#ff8a8a'; gg.font = pixelFont(Math.round(fs * 0.9));
-      fillText(gg, runResultLine(L, compact), W / 2, resY, W - 24 * u); }
-    else if (c.lastDeath) { gg.fillStyle = '#ff8a8a'; gg.font = pixelFont(Math.round(fs * 0.9));
-      fillText(gg, compact ? `Fell on floor ${c.lastDeath.floor}. Coins banked.` : `You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, resY, W - 24 * u); }
-    const rowH = (compact ? 48 : 32) * u, lw = Math.min(W - 24 * u, 620 * u), lx = W / 2 - lw / 2;
-    const maxRows = Math.max(4, Math.floor((UH * 0.72 - 90 * u) / rowH));
-    const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));
-    campHits = [];
-    c.rows.slice(first, first + maxRows).forEach((r, i) => {
-      const idx = first + i, y = 90 * u + i * rowH, sel = idx === c.sel;
-      campHits.push({ x: lx, y, w: lw, h: rowH - 4 * u, row: idx });
-      pixelPanel(gg,lx,y,lw,rowH-4*u,sel?'#ffd84a':'#493c59',sel?'#493925ee':'#181320ee',dpr);
-      if(sel){gg.fillStyle='#ffd84a';gg.fillRect(lx+4*dpr,y+7*dpr,2*dpr,Math.max(2*dpr,rowH-18*dpr));}
-      const baseline = y + 20 * u, costX = lx + lw - 10 * u, levelX = costX - 86 * u;
-      let descRight = lx + lw - 10 * u;
-      gg.textAlign = 'right';
-      if (r.kind === 'upgrade') {
-        gg.font = pixelFont(Math.round(12 * u));
-        const level = `Lv ${r.level}/${r.max}`;
-        descRight = levelX - textW(gg, level) - 12 * u;
-        gg.fillStyle = '#ddd'; fillText(gg, level, levelX, baseline);
-        gg.fillStyle = r.cost === undefined ? '#7dff5a' : r.affordable ? '#ffd84a' : '#775';
-        gg.font = pixelFont(Math.round(13 * u));
-        fillText(gg, r.cost === undefined ? 'MAX' : `● ${r.cost}`, costX, baseline, 76 * u);
-      }
-      gg.textAlign = 'left'; gg.font = pixelFont(fs);
-      gg.fillStyle = r.kind === 'start' ? '#7dff5a' : '#fff';
-      fillText(gg, r.name, lx + 10 * u, baseline, compact ? descRight - lx - 10 * u : 170 * u);
-      gg.font = pixelFont(Math.round(12 * u)); gg.fillStyle = '#aaa';
-      const descX = lx + (compact ? 10 : 190) * u;
-      fillText(gg, r.desc, descX, compact ? y + 37 * u : baseline, (compact ? lx + lw - 10 * u : descRight) - descX);
-    });
-    gg.textAlign = 'center'; gg.font = pixelFont(fs); gg.fillStyle = '#bbb';
-    const left = Math.ceil(c.autoStartLeft);
-    if (compact) {
-      gg.font = pixelFont(12 * u);
-      fillText(gg, 'Tap a row to buy · B to begin', W / 2, UH - 30 * u, W - 24 * u);
-      fillText(gg, `D-pad + A/Z · Auto-start in ${left}s`, W / 2, UH - 14 * u, W - 24 * u);
-    } else fillText(gg, `Tap a row, or D-pad + A/Z to buy/select · B begin  —  auto-start after ${left}s of pedaling`, W / 2, UH - 18 * u, W - 24 * u);
-    gg.textAlign = 'left';
+    campHits = drawCampOverlay(gg, c, campL, W, u, dpr);
   }
 
   /** Boss bar: gold name plate with phase pips, a framed crimson meter with a lagging damage chip and notched phase marks. */
@@ -1136,31 +1096,18 @@ export function createRenderer(): GameRenderer {
     });
     gg.globalAlpha = 1;
 
-    // minimap with fog (top-right)
-    // crisp: one whole number of device pixels per tile, no resampling
-    const w = s.world, mm = Math.max(1, Math.floor((118 * u) / Math.max(1, w.w)));
-    if (!mini || mini.width !== w.w * mm || mini.height !== w.h * mm) { mini = document.createElement('canvas'); mini.width = w.w * mm; mini.height = w.h * mm; }
-    const m = mini.getContext('2d')!;
-    m.clearRect(0, 0, mini.width, mini.height);
-    for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.DOOR && w.rooms[w.doorRoom[i]]?.seen) { m.fillStyle = '#9a8458'; m.fillRect((i % w.w) * mm, Math.floor(i / w.w) * mm, mm, mm); }
-    for (const r of w.rooms) {
-      if (!r.seen) continue;
-      const here = r.id === s.room, fill = here ? '#6e6a84' : r.cleared ? '#3c5844' : r.boss ? '#5a2a46' : '#46445a', edge = here ? '#d8d0f0' : r.cleared ? '#6a9a72' : r.boss ? '#c0507a' : '#7a7890';
-      m.fillStyle = edge; m.fillRect(r.x0 * mm, r.y0 * mm, r.w * mm, r.h * mm);
-      m.fillStyle = fill; m.fillRect(r.x0 * mm + 1, r.y0 * mm + 1, r.w * mm - 2, r.h * mm - 2);
-      if (r.chest && !r.chest.opened) { m.fillStyle = '#2a1d00'; m.fillRect((r.chest.x - 1) * mm - 1, (r.chest.y - 1) * mm - 1, 2 * mm + 2, 2 * mm + 2); m.fillStyle = '#ffd84a'; m.fillRect((r.chest.x - 1) * mm, (r.chest.y - 1) * mm, 2 * mm, 2 * mm); }
+    // boxless translucent minimap with silhouette halo (top-right)
+    const miniBox = drawBoxlessMinimap(gg, s, W, L, u, dpr, color, miniCache);
+    hudBox(miniBox.x, miniBox.y, miniBox.w, miniBox.h);
+
+    // Biome Arrival Title Card whenever entering a new stage
+    if (!biomeBanner || biomeBanner.floor !== s.floor || s.t < biomeBanner.shownAt) {
+      biomeBanner = { floor: s.floor, shownAt: s.t };
     }
-    const br = w.rooms.find((r) => r.boss);
-    if (br?.seen) { const sx = Math.floor(w.stairs.x) * mm, sy = Math.floor(w.stairs.y) * mm; m.fillStyle = '#0a0810'; m.fillRect(sx - mm, sy - mm, 3 * mm, 3 * mm); m.fillStyle = s.stairsOpen ? '#ffd84a' : '#a07a2a'; for (let k = 0; k < 3; k++) m.fillRect(sx - mm + k * mm, sy - mm + k * mm, (3 - k) * mm, mm); }
-    const mw = mini.width, mh = mini.height, mx0 = Math.round(W - mw - L), my0 = Math.round(L), mk = mm;
-    pixelPanel(gg,mx0-4*dpr,my0-4*dpr,mw+8*dpr,mh+8*dpr,'#655572','#120e18dd',dpr); hudBox(mx0 - 4 * dpr, my0 - 4 * dpr, mw + 8 * dpr, mh + 8 * dpr);
-    gg.imageSmoothingEnabled = false; gg.drawImage(mini, mx0, my0);
-    for (const e of s.enemies) if (e.kind === 'boss' || w.rooms[s.room] && e.x >= w.rooms[s.room].x0 && e.x <= w.rooms[s.room].x0 + w.rooms[s.room].w && e.y >= w.rooms[s.room].y0 && e.y <= w.rooms[s.room].y0 + w.rooms[s.room].h) {
-      const sz = Math.max(2, Math.round((e.kind === 'boss' ? 3 : 2) * dpr)); gg.fillStyle = ENEMY_TINT[e.kind] ?? '#e55'; gg.fillRect(Math.round(mx0 + e.x * mk - sz / 2), Math.round(my0 + e.y * mk - sz / 2), sz, sz);
-    }
-    { // the hero: an outlined diamond that pulses
-      const hx0 = Math.round(mx0 + p.x * mk), hy0 = Math.round(my0 + p.y * mk), R = Math.round((2.5 + (Math.sin(s.t * 6) > 0 ? 0.5 : 0)) * dpr);
-      for (const [rr, c] of [[R + dpr, '#0a0810'], [R, '#ffffff'], [Math.max(1, R - dpr), color]] as const) { gg.fillStyle = c; gg.beginPath(); gg.moveTo(hx0, hy0 - rr); gg.lineTo(hx0 + rr, hy0); gg.lineTo(hx0, hy0 + rr); gg.lineTo(hx0 - rr, hy0); gg.fill(); }
+    const bAge = s.t - biomeBanner.shownAt;
+    if (bAge >= 0 && bAge < BIOME_BANNER_DUR_S && !s.boss?.active && s.run) {
+      const spec = biomeBannerSpec(s.floor, s.run.floors, s.run.zone, s.run.tier, s.run.final);
+      drawBiomeBanner(gg, spec, bAge, W, LY.playH, hu, dpr);
     }
 
     if (s.boss && s.boss.active) {

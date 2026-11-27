@@ -11,7 +11,8 @@ import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStan
 import { createArsenalCollection } from './arsenal';
 import { DEFAULT_OFFER, PERK_FX, PERKS, RARITY_NAMES, SLOT_NAMES, STYLE_NAMES, kitOf, perkMods, rollOffer, styleWeights, suggestPerk, type FloorRide, type PerkId, type PerkMods, type PerkRanks } from './perks';
 import { clearLine, cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
-import { RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
+import { DELVE_MAX, RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
+import { BOSS_NAMES, FLOORS, SWEEPER, TIERS, ZONE_STARTS, planFor, tierOf, unlockAfterWin, type RunResult } from './descent';
 import type { BulletView, CampView, PerkView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
 
 interface Enemy {
@@ -39,7 +40,6 @@ const ENEMY_DEF: Record<EnemyKind, { hp: number; speed: number; r: number; conta
 };
 const ELITES: EliteMod[] = ['undying', 'splitting', 'shielded', 'swift', 'volatile'];
 const SEG_BANNER: Partial<Record<string, string>> = { warmup: 'WARM UP', explore: 'EXPLORE · ZONE 2', recover: 'RECOVER', cooldown: 'COOL DOWN' };
-const BOSS_NAMES = ['King Gel', 'The Boneshaker', 'The Gear Masher', 'The Lycra Lich', 'King of the Mountains', 'The Headwind Wyrm'];
 const SHRINES: Record<ShrineKind, { label: string; window: number; color: string }> = {
   fury: { label: 'Shrine of Fury: ride power Z3+ for 20s', window: 50, color: '#ff8c2a' },
   endurance: { label: 'Shrine of Patience: hold Z2, treasure grows', window: 90, color: '#5aa9ff' },
@@ -79,8 +79,10 @@ export interface DungeonTotals { runs: number; deaths: number; floors: number; b
 export interface DungeonSave {
   ver?: number; bank?: number; upgrades?: Levels; bestFloor?: number; runs?: number; autoInvest?: boolean;
   stance?: StanceId; stancesUnlocked?: StanceId[]; totals?: DungeonTotals; erg?: boolean;
+  /** v3: the fixed descent. `tier` = chosen Category, `tierUnlocked` = highest unlocked, `wins` per tier index. */
+  tier?: number; tierUnlocked?: number; wins?: number[]; bestWinS?: number;
 }
-export const SAVE_VER = 2;
+export const SAVE_VER = 3;
 /** Upgrade an old save in place: v1 -> v2 refunds retired upgrades (Swiftness) as coins and adds totals. Pure. */
 export function migrateSave(s: DungeonSave | null | undefined): DungeonSave {
   const out: DungeonSave = { ...(s ?? {}) };
@@ -89,6 +91,12 @@ export function migrateSave(s: DungeonSave | null | undefined): DungeonSave {
     const ups = out.upgrades as Record<string, number>;
     for (const [id, def] of Object.entries(RETIRED)) if (ups[id]) { out.bank = (out.bank ?? 0) + spentOn(def, ups[id]); delete ups[id]; }
     out.totals = out.totals ?? { runs: out.runs ?? 0, deaths: 0, floors: 0, bosses: 0, coins: 0 };
+  }
+  if ((out.ver ?? 1) < 3) {
+    // endless floors -> a fixed descent: clamp the depth record, refund Delver levels the Shortcuts upgrade no longer has
+    const ups = out.upgrades as Record<string, number>, d = UPGRADES.find((u) => u.id === 'delve')!;
+    if ((ups.delve ?? 0) > DELVE_MAX) { out.bank = (out.bank ?? 0) + spentOn(d, ups.delve) - spentOn(d, DELVE_MAX); ups.delve = DELVE_MAX; }
+    out.bestFloor = Math.min(FLOORS, out.bestFloor ?? 1);
   }
   out.ver = SAVE_VER;
   return out;
@@ -208,6 +216,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const woundedFrac = tn.num('woundedHpFrac', 0.4, 0.1, 0.9, 0.05);
   const surgeGrade = tn.num('gradeBossSurge', 5, 0, 12, 0.5);
   const whirlRpm = tn.num('whirlRpm', 95, 60, 140, 1, 'Whirlwind shrine cadence floor (rpm)');
+  const sweeperHp = tn.num('sweeperHpMult', 1.25, 0.3, 4, 0.05, 'Grim Sweeper HP vs a normal boss on the final floor');
+  const finalRooms = tn.num('finalFloorRooms', 4, 2, 12, 1, 'rooms on the final floor (the Broom Wagon), boss room included');
+  const winBonus = tn.num('winBonusCoins', 1500, 0, 20000, 50, 'coins for finishing a descent (x the Category coin multiplier)');
   const perkStrength = tn.num('perkStrength', 1, 0, 3, 0.05, 'scales every perk effect (1 = as designed)');
   const perkAutoS = tn.num('perkAutoPickS', 20, 3, 120, 1, 'the highlighted perk is taken after this long');
   const perkDelayS = tn.num('perkOfferDelayS', 1.5, 0, 10, 0.25, 'the perk offer opens this long after a boss falls');
@@ -220,9 +231,14 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const saved = migrateSave(ctx.load<DungeonSave>());
   const totals: DungeonTotals = { runs: 0, deaths: 0, floors: 0, bosses: 0, coins: 0, ...(saved.totals ?? {}) };
   const levels: Levels = { ...(saved.upgrades ?? {}) };
-  let bankStart = saved.bank ?? 0, bestFloor = saved.bestFloor ?? 1, runs = saved.runs ?? 0, autoInvestOn = saved.autoInvest ?? true;
+  let bankStart = saved.bank ?? 0, bestFloor = Math.min(FLOORS, saved.bestFloor ?? 1), runs = saved.runs ?? 0, autoInvestOn = saved.autoInvest ?? true;
+  let tierUnlocked = clamp(saved.tierUnlocked ?? 0, 0, TIERS.length - 1), tier = clamp(saved.tier ?? tierUnlocked, 0, tierUnlocked), runTier = tier;
+  const wins: number[] = TIERS.map((_, i) => saved.wins?.[i] ?? 0);
+  let bestWinS = saved.bestWinS ?? 0, runT0 = 0, runKills0 = 0, runBosses0 = 0, descentsWon = 0, lastRun: RunResult | undefined;
+  const T = () => tierOf(runTier);
   let mods: MetaMods = metaMods(levels, bestFloor);
-  let startFloor = opts?.floor ?? mods.maxStartFloor; // defaults to the deepest unlocked start; lower it at camp
+  // a descent starts at the Keep; shortcut starts are a camp choice (they skip the loot, levels and perks of the floors before)
+  let startFloor = clamp(opts?.floor ?? 1, 1, FLOORS);
   let sprintingNow = false, firedUpUntil = -1;
   let phase: 'camp' | 'run' = 'camp', campSel = 0, campT = 0;
   let erg = opts?.erg ?? !!saved.erg, dir: DirectorState = newFloor(true), firstFloorOfRun = true, spinGood = 0;
@@ -295,8 +311,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let navPrev: { x: number; y: number } | null = null;
   let flow: Int16Array = new Int16Array(0), flowQ = new Int32Array(0), flowKey = -1;
 
-  const hpMul = () => enemyHpMult() * Math.pow(enemyHpGrowth(), floor - 1);
-  const dmgMul = () => (floor === 1 ? floor1Ease() : Math.pow(enemyDmgGrowth(), floor - 1));
+  const hpMul = () => enemyHpMult() * Math.pow(enemyHpGrowth(), floor - 1) * T().hp;
+  const dmgMul = () => (floor === 1 ? floor1Ease() : Math.pow(enemyDmgGrowth(), floor - 1)) * T().dmg;
   function spawnEnemy(kind: EnemyKind, x: number, y: number, room: number): Enemy {
     const d = ENEMY_DEF[kind], hp = d.hp * hpMul();
     const e: Enemy = {
@@ -314,17 +330,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (mod === 'shielded') { e.shieldMax = e.maxHp * 0.4; e.shield = e.shieldMax; }
   }
   function buildFloor() {
-    world = generateWorld(rng, floor);
+    const fp = planFor(floor);
+    world = generateWorld(rng, floor, { theme: fp.zone, ...(fp.final ? { rooms: finalRooms() } : {}) });
     enemies = []; bullets.length = 0; drops.length = 0; hazards.length = 0;
-    const eliteChance = Math.min(0.25, eliteBase() + 0.015 * (floor - 1));
+    const eliteChance = Math.min(0.25 + T().elite, eliteBase() + 0.015 * (floor - 1) + T().elite);
     for (const room of world.rooms) for (const s of room.spawns) {
       const e = spawnEnemy(s.kind, s.x, s.y, room.id);
       if (rng() < eliteChance) makeElite(e, ELITES[Math.floor(rng() * ELITES.length)]);
     }
     const br = world.rooms.find((r) => r.boss)!;
-    const hp = bossHpT() * enemyHpMult() * Math.pow(bossHpGrowth(), floor - 1) * (floor === 1 ? 0.55 : 1);
+    const hp = bossHpT() * enemyHpMult() * Math.pow(bossHpGrowth(), floor - 1) * (floor === 1 ? 0.55 : 1) * T().hp * (fp.boss === SWEEPER ? sweeperHp() : 1);
     boss = spawnEnemy('chaser', br.x0 + br.w / 2, br.y0 + br.h / 2 + 1, br.id);
-    Object.assign(boss, { kind: 'boss', r: 1.1, hp, maxHp: hp, speed: 1.1, contact: 18 * dmgMul(), fireCd: 2, fireCd2: 1.2, xp: 120 * (1 + 0.3 * (floor - 1)), variant: (floor - 1) % BOSS_NAMES.length });
+    Object.assign(boss, { kind: 'boss', r: 1.1, hp, maxHp: hp, speed: 1.1, contact: 18 * dmgMul(), fireCd: 2, fireCd2: 1.2, xp: 120 * (1 + 0.3 * (floor - 1)), variant: fp.boss });
+    if (fp.boss === SWEEPER) boss.r = 1.35;
     shrines = world.rooms.filter((r) => r.shrine).map((r) => ({ room: r.id, kind: r.shrine!.kind, x: r.shrine!.x, y: r.shrine!.y, state: 'idle' as const, progress: 0, left: 0, s0: 0 }));
     Object.assign(ride, { t: 0, z2: 0, spin: 0, sprints: 0, bossT: 0, surge: 0 });
     current = 0; safeRoom = 0; bossStarted = false; bossT = 0; bs = newBoss(); fl.mode = 'hand'; fl.px = P.x; fl.py = P.y; fl.pvx = fl.pvy = 0; navPath = []; navKey = ''; flowKey = -1;
@@ -335,7 +353,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   buildFloor();
 
   function persist() {
-    ctx.save({ ver: SAVE_VER, bank: Math.round(bankStart + P.coinsEarned), upgrades: { ...levels }, bestFloor, runs, autoInvest: autoInvestOn,
+    ctx.save({ ver: SAVE_VER, bank: Math.round(bankStart + P.coinsEarned), upgrades: { ...levels }, bestFloor, runs, autoInvest: autoInvestOn, tier, tierUnlocked, wins: [...wins], bestWinS,
       stance, stancesUnlocked: stancesFor(mods.arcanist), erg, totals: { ...totals, coins: totals.coins + P.coinsEarned } } satisfies DungeonSave);
   }
 
@@ -483,7 +501,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     else if (rng() < 0.45) { const st = stylesFor(stance, mods.arcanist); dropAt(x, y, 'weapon', 0, makeWeapon(rng, lvl, rar, rng() < stanceDropBias() ? pickWeaponStyle(st, rng()) : undefined)); }
     else dropAt(x, y, 'gear', 0, makeGear(rng, lvl, rar));
   }
-  function coinValue() { return Math.max(1, Math.round((1 + rng() * 2) * (1 + 0.3 * (floor - 1)) * mods.coinMult)); }
+  function coinValue() { return Math.max(1, Math.round((1 + rng() * 2) * (1 + 0.3 * (floor - 1)) * mods.coinMult * T().coins)); }
   function addCoins(v: number) { v = Math.round(v * bounty()); P.coins += v; P.coinsEarned += v; }
   function collect(d: Drop) {
     if (d.kind === 'coin') { addCoins(d.value); cue('coin'); addFx({ kind: 'text', x: P.x, y: P.y - 0.6, life: 0.8, color: '#ffd84a', text: `+${d.value}` }); return; }
@@ -581,11 +599,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (e.kind === 'boss') {
       dropItem(e.x, e.y, 2, 10); dropItem(e.x, e.y, 1, 10); dropAt(e.x, e.y, 'potion', 0);
       bossDefeated++; totals.bosses++; freeze(0.8); cue('bossDie');
-      if (opts?.perks !== 'none') perkDueT = t + perkDelayS();
+      const last = e.variant === SWEEPER;
+      if (opts?.perks !== 'none' && !last) perkDueT = t + perkDelayS();
       for (let k = 0; k < 5; k++) addFx({ kind: 'boom', x: e.x + Math.cos(k * 1.3) * k * 0.5, y: e.y + Math.sin(k * 1.3) * k * 0.5, life: 0.6 + k * 0.2, color: k % 2 ? '#ffe08a' : '#c77dff', r: 2 + k });
       for (const b of bullets) if (!b.friendly) b.life = 0;
       addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.8, color: '#c77dff', r: 4 });
-      toast(`${BOSS_NAMES[e.variant]} defeated! Stairs open.`, '#ff8c2a');
+      toast(last ? 'The Grim Sweeper is swept away! Ride through the finish.' : `${BOSS_NAMES[e.variant]} defeated! Stairs open.`, '#ff8c2a');
+      if (last) addFx({ kind: 'banner', x: e.x, y: e.y, life: 4, color: '#ffd84a', text: 'FINISH LINE OPEN' });
       ctx.emit({ type: 'bossDefeated', data: { timeS: Math.round(t), floor, stance, windows: expWindows, struck: expStruck } });
       return;
     }
@@ -933,8 +953,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   // ---------- camp (between runs) ----------
   function campRows(): CampView['rows'] {
-    const rows: CampView['rows'] = [{ kind: 'start', name: 'Begin descent', desc: `Floor ${startFloor}` }];
-    if (mods.maxStartFloor > 1) rows.push({ kind: 'floor', name: 'Starting floor', desc: `◀ ${startFloor} ▶  (max ${mods.maxStartFloor})` });
+    const rows: CampView['rows'] = [{ kind: 'start', name: 'Begin descent', desc: `Floor ${startFloor} of ${FLOORS} · ${tierOf(tier).name}` }];
+    if (mods.startFloors.length > 1) rows.push({ kind: 'floor', name: 'Start at', desc: `◀ ${planFor(startFloor).name} (floor ${startFloor}) ▶` });
+    if (tierUnlocked > 0) rows.push({ kind: 'tier', name: 'Category', desc: `◀ ${tierOf(tier).name} ▶  ${tierOf(tier).blurb}` });
     for (const d of UPGRADES) {
       const L = lvl(levels, d.id), cost = L >= d.max ? undefined : upgradeCost(d, L);
       rows.push({ kind: 'upgrade', id: d.id, name: d.name, desc: d.desc, level: L, max: d.max, cost, affordable: cost !== undefined && cost <= bankStart });
@@ -952,20 +973,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (p('down')) { campSel = (campSel + 1) % rows.length; cue('select'); campT = 0; }
     campSel = Math.min(campSel, rows.length - 1);
     const row = rows[campSel];
-    if (row.kind === 'floor' && (p('left') || p('right'))) {
-      startFloor = clamp(startFloor + (p('left') ? -1 : 1), 1, mods.maxStartFloor); cue('select'); campT = 0;
-    }
+    if (row.kind === 'floor' && (p('left') || p('right'))) { startFloor = stepStart(p('left') ? -1 : 1); cue('select'); campT = 0; }
+    if (row.kind === 'tier' && (p('left') || p('right'))) { tier = clamp(tier + (p('left') ? -1 : 1), 0, tierUnlocked); cue('select'); campT = 0; persist(); }
     if (p('a') || p('z') || tapped) { // A or Z on the Ride diamond; taps select + activate
       campT = 0;
       if (row.kind === 'start') { startRun(); return; }
-      if (row.kind === 'floor') { startFloor = startFloor >= mods.maxStartFloor ? 1 : startFloor + 1; cue('select'); }
+      if (row.kind === 'floor') { startFloor = startFloor >= mods.maxStartFloor ? 1 : stepStart(1); cue('select'); }
+      if (row.kind === 'tier') { tier = tier >= tierUnlocked ? 0 : tier + 1; cue('select'); persist(); }
       if (row.kind === 'auto') { autoInvestOn = !autoInvestOn; cue('select'); persist(); }
       if (row.kind === 'erg') { erg = !erg; cue('select'); applyMode(); persist(); }
       if (row.kind === 'upgrade') {
         if (row.affordable) {
           bankStart -= row.cost!; levels[row.id!] = (row.level ?? 0) + 1; cue('buy');
-          const wasMax = startFloor === mods.maxStartFloor;
-          mods = metaMods(levels, bestFloor); if (wasMax) startFloor = mods.maxStartFloor; persist();
+          mods = metaMods(levels, bestFloor); persist();
         } else cue('deny');
       }
     }
@@ -973,28 +993,44 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (bike.cadence3s > 30) campT += dt;
     if (campT >= campAutoS() || (autopilot && campT >= Math.min(campAutoS(), 10))) startRun();
   }
+  /** Move the chosen start between unlocked zone starts. */
+  function stepStart(d: number): number {
+    const f = mods.startFloors, i = Math.max(0, f.indexOf(startFloor));
+    return f[clamp(i + d, 0, f.length - 1)];
+  }
+  /** Snap a start floor to the deepest unlocked zone start at or above it. */
+  const snapStart = (f: number) => mods.startFloors.filter((s) => s <= f).pop() ?? 1;
   function startRun() {
     if (autoInvestOn) {
       const r = autoInvest(bankStart, levels);
       bankStart = r.bank;
       if (r.bought.length) toast(`Auto-invested: ${r.bought.length} upgrade${r.bought.length > 1 ? 's' : ''}`, '#ffd84a');
     }
-    const wasMax = startFloor === mods.maxStartFloor;
     mods = metaMods(levels, bestFloor);
-    if (!opts?.floor) startFloor = wasMax ? mods.maxStartFloor : clamp(startFloor, 1, mods.maxStartFloor);
-    floor = startFloor;
+    if (!opts?.floor) startFloor = snapStart(startFloor);
+    floor = startFloor; runTier = tier; runT0 = t; runKills0 = kills; runBosses0 = bossDefeated;
+    bestFloor = Math.max(bestFloor, floor);
     runs++;
     totals.runs++; P.coins = 0; P.coinsEarned = 0; lastDeath = undefined;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
     weapon = starterWeapon(floor, rng); fillSlots(P.level); arsenal.reset(); bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
     perkRanks = {}; pm = perkMods({}); perkPityN = 0; perkDueT = -1; offer = null; drones.length = 0;
+    // a shortcut start skips bosses, so it packs one perk per skipped boss (the suggested card of a normal deal)
+    if (opts?.perks !== 'none') for (let k = 1; k < floor; k++) {
+      const r = rollOffer(rng, perkRanks, perkPityN, { stance, stances: stancesFor(mods.arcanist), style: styleWeights(ride) }, { weights: [DEFAULT_OFFER.weights[0], DEFAULT_OFFER.weights[1], perkLegW()], pityStep: perkPity() });
+      perkPityN = r.pity; if (!r.ids.length) break;
+      const id = r.ids[suggestPerk(r.ids, perkRanks, { hpFrac: 1, bossFightS: 0, deaths: 0, stance })];
+      perkRanks[id] = (perkRanks[id] ?? 0) + 1; perksTaken++;
+    }
+    pm = perkMods(perkRanks, perkStrength(), { stance, cadence: ctx.bike().cadence3s, zone2: ctx.bike().effortZone === 2 });
+    if (floor > 1 && perksTaken) toast(`Shortcut: ${floor - 1} perk${floor > 2 ? 's' : ''} packed for the road`, '#8fd8ff');
     P.potions = potionCap();
     buildFloor(); dir = newFloor(true);
     recomputeHp(true);
     P.lastShotRevs = ctx.bike().crankRevs;
     phase = 'run';
     cue('stairs');
-    toast(`Run ${runs} — Floor ${floor}`, '#ffd84a');
+    toast(`Run ${runs}: ${planFor(floor).name}, floor ${floor} of ${FLOORS}${runTier ? ` · ${T().name}` : ''}`, '#ffd84a');
     persist();
   }
   if (autopilot || opts?.skipCamp) startRun();
@@ -1188,7 +1224,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
             const sx = r.x0 + (r.w >> 1) + 0.5 + (k - 1) * 1.5, sy = r.y0 + 1.5;
             spawnEnemy(k === 1 ? 'chaser' : 'bat', sx, sy, r.id);
           }
-          if (!r.boss && !curse && (floor > 1 || roomsCleared >= 2) && rng() < Math.min(0.2, curseChance() + 0.01 * (floor - 1))) startCurse(bike);
+          if (!r.boss && !curse && (floor > 1 || roomsCleared >= 2) && rng() < Math.min(0.2 + T().curse, curseChance() + 0.01 * (floor - 1) + T().curse)) startCurse(bike);
           if (r.boss && !bossStarted) {
             bossStarted = true; bossT = 0; bs = newBoss(bossCfg()); expWindows = 0; expStruck = 0; expHit = false; cue('bossStart'); freeze(0.5);
             addFx({ kind: 'banner', x: boss.x, y: boss.y, life: 3, color: '#ff5a5a', text: BOSS_NAMES[boss.variant].toUpperCase() });
@@ -1447,9 +1483,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       case 2: flailSlam(); return; // the ring and boom come from the impact point when the chainring lands
       case 3: ring(e.x, e.y, 24 + 4 * ph, spd, 7, e.spin); break;
       case 4: for (let k = 0; k < 4; k++) for (let j = 0; j < 4 + ph; j++) enemyShot(e.x, e.y, e.spin + k * Math.PI / 2, 3 + j * 0.8, 7); break; // bone cross
+      case SWEEPER: { // the last sweep: two counter-turned rings, then lantern flares under the hero (telegraphed, step out)
+        ring(e.x, e.y, 18 + 4 * ph, spd - 0.5, 7, e.spin); ring(e.x, e.y, 18 + 4 * ph, spd - 1.8, 7, -e.spin + 0.13);
+        const rm = world.rooms[e.room];
+        for (let k = 0; k < ph; k++) {
+          const a = rng() * Math.PI * 2, rr = k ? 2.2 + rng() * 2 : 0;
+          hazards.push({ x: clamp(P.x + Math.cos(a) * rr, rm.x0 + 1, rm.x0 + rm.w - 1), y: clamp(P.y + Math.sin(a) * rr, rm.y0 + 1, rm.y0 + rm.h - 1),
+            r: 1.8, left: 1.1 + 0.25 * k, total: 1.1 + 0.25 * k, dmg: 20 * dmgMul() });
+        }
+        break;
+      }
       default: for (let w = 0; w < 3; w++) ring(e.x, e.y, 10 + 2 * ph, 2.5 + w * 1.3, 7, e.spin + w * 0.3); // frost bloom
     }
-    addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.5, color: e.variant === 5 ? '#9fe8ff' : '#ff7a2a', r: 3 });
+    addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.5, color: e.variant === 5 ? '#9fe8ff' : e.variant === SWEEPER ? '#9affd6' : '#ff7a2a', r: 3 });
     cue('explode'); freeze(0.1);
   }
   const flailHand = () => ({ x: boss.x + (P.x >= boss.x ? 0.7 : -0.7), y: boss.y - 0.4 });
@@ -1540,6 +1586,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         case 3: if (liveCount(e.room) < 5) { const s = spawnEnemy(rng() < 0.5 ? 'bat' : 'bomber', e.x, e.y + 1.5, e.room); s.summoned = 1; } break;
         case 4: if (liveCount(e.room) < 3 + bs.phase) { const s = spawnEnemy('archer', e.x + (rng() - 0.5) * 3, e.y + 1.5, e.room); s.summoned = 1; } else for (const o of [-0.2, 0.2]) enemyShot(e.x, e.y, a + o, 6, 7); break;
         case 5: for (let k = -3; k <= 3; k++) enemyShot(e.x, e.y, a + k * 0.12, 3.6, 6, 0.2); break; // frost breath
+        case SWEEPER: // broom sweep: a wide, slow fan; from phase 2 it also sweeps up the fallen (DNF riders rise to fight)
+          for (let k = -4; k <= 4; k++) enemyShot(e.x, e.y, a + k * 0.2, 3.2, 6, 0.22);
+          if (bs.phase >= 2 && liveCount(e.room) < 2 + bs.phase) { const s = spawnEnemy(rng() < 0.5 ? 'chaser' : 'archer', e.x + (rng() - 0.5) * 3, e.y + 1.5, e.room); s.summoned = 1; }
+          e.fireCd2 = 2.2 * pace; break;
         default: for (const o of [-0.3, 0, 0.3]) enemyShot(e.x, e.y, a + o, 5, 7, 0.22);
       }
     }
@@ -1548,12 +1598,37 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function descend() {
     floorsCleared++; totals.floors++; cue('stairs');
     ctx.emit({ type: 'floorCleared', data: { floor, timeS: Math.round(t) } });
+    if (planFor(floor).final) { winRun(); return; }
     floor++;
     bestFloor = Math.max(bestFloor, floor);
     P.potions = potionCap();
     buildFloor(); dir = newFloor(false);
     recomputeHp(true);
-    toast(`Floor ${floor} — potions refilled`, '#ffd84a');
+    const fp = planFor(floor);
+    toast(fp.final ? `Floor ${floor} of ${FLOORS}: the Broom Wagon. The Grim Sweeper waits.` : `Floor ${floor} of ${FLOORS}: ${fp.name}. Potions refilled`, fp.final ? '#c77dff' : '#ffd84a');
+    persist();
+  }
+  function runResult(won: boolean, banked: number): RunResult {
+    return { won, floor, startFloor, tier: runTier, timeS: Math.round(t - runT0), kills: kills - runKills0, bosses: bossDefeated - runBosses0,
+      perks: Object.values(perkRanks).reduce((a, n) => a + (n ?? 0), 0), banked, level: P.level, weapon: weapon.name };
+  }
+  /** Through the finish behind the Grim Sweeper: the descent is won. Bank everything plus the finish bonus, unlock the next Category. */
+  function winRun() {
+    const bonus = Math.round(winBonus() * T().coins);
+    P.coinsEarned += bonus;
+    const banked = P.coinsEarned, timeS = Math.round(t - runT0), before = tierUnlocked;
+    wins[runTier]++; descentsWon++;
+    tierUnlocked = unlockAfterWin(runTier, tierUnlocked);
+    if (startFloor === 1) bestWinS = bestWinS ? Math.min(bestWinS, timeS) : timeS;
+    lastRun = runResult(true, banked);
+    if (tierUnlocked > before) { lastRun.unlocked = tierOf(tierUnlocked).name; tier = tierUnlocked; }
+    deepest = Math.max(deepest, floor); topLevel = Math.max(topLevel, P.level); earnedPrev += banked; lastDeath = undefined;
+    ctx.emit({ type: 'descentWon', data: { tier: runTier, startFloor, timeS, perks: lastRun.perks } });
+    bankStart += banked; totals.coins += banked; P.coinsEarned = 0; P.coins = 0;
+    bullets.length = 0; hazards.length = 0; navPath = []; curse = null; offer = null; perkDueT = -1;
+    toast(`Descent complete in ${Math.floor(timeS / 60)}:${String(timeS % 60).padStart(2, '0')}! +${bonus} finish bonus.${lastRun.unlocked ? ` ${lastRun.unlocked} unlocked.` : ''}`, '#ffd84a');
+    cue('unique');
+    enterCamp();
     persist();
   }
 
@@ -1561,9 +1636,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function die() {
     deaths++; totals.deaths++; deepest = Math.max(deepest, floor); topLevel = Math.max(topLevel, P.level); // summary is per session, across runs
     ctx.emit({ type: 'death', data: { room: current, floor } });
-    const banked = P.coinsEarned; earnedPrev += banked; lastDeath = { floor, banked };
-    // no death spiral: dying on the floor you started on suggests a start 2 floors shallower next time (still adjustable at camp)
-    if (!opts?.floor && floor === startFloor && startFloor > 1) startFloor = Math.max(1, startFloor - 2);
+    const banked = P.coinsEarned; earnedPrev += banked; lastDeath = { floor, banked }; lastRun = runResult(false, banked);
+    // no death spiral: dying on the floor you started on suggests the previous zone next time (still adjustable at camp)
+    if (!opts?.floor && floor === startFloor && startFloor > 1) startFloor = stepStart(-1);
     bankStart += P.coinsEarned; totals.coins += P.coinsEarned; P.coinsEarned = 0; P.coins = 0;
     P.hp = 0; bullets.length = 0; hazards.length = 0; navPath = []; curse = null; offer = null; perkDueT = -1;
     toast(`You fell on floor ${floor}. ${banked} coins banked. Back to camp.`, '#ff5a5a');
@@ -1577,7 +1652,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
 
   function campView(): CampView {
-    return { bank: Math.round(bankStart), sel: campSel, autoStartS: campAutoS(), autoStartLeft: campAutoS() - campT, startFloor, maxStartFloor: mods.maxStartFloor, autoInvest: autoInvestOn, rows: campRows(), bestFloor, runs, lastDeath };
+    return { bank: Math.round(bankStart), sel: campSel, autoStartS: campAutoS(), autoStartLeft: campAutoS() - campT, startFloor, maxStartFloor: mods.maxStartFloor, autoInvest: autoInvestOn, rows: campRows(), bestFloor, runs, lastDeath,
+      ...(lastRun ? { lastRun } : {}), floors: FLOORS, tier: tierOf(tier).name, wins: wins.reduce((a, n) => a + n, 0) };
   }
 
   function snapshot(): DungeonSnapshot {
@@ -1595,6 +1671,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }));
     return {
       t, phase, camp: phase === 'camp' ? campView() : null, world, floor,
+      run: { floors: FLOORS, zone: planFor(floor).name, final: planFor(floor).final, tier: T().name, tierIndex: runTier },
       player: {
         x: P.x, y: P.y, r: PLAYER_R, hp: P.hp, maxHp: P.maxHp, potions: P.potions, potionCap: potionCap(),
         invuln: P.invuln > 0, onSwamp: P.onSwamp, speedMult: P.speedMult, moving: P.moving, rolling: P.rollT > 0, warded: P.ward > 0, rallied: P.rally > 0, hurt: t - P.hurtT,
@@ -1686,6 +1763,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     summary: () => ({
       'Deepest floor': Math.max(deepest, floor), 'Hero level': Math.max(topLevel, P.level), 'Rooms cleared': roomsCleared, Kills: kills, 'Elites slain': elitesSlain,
       'Bosses slain': bossDefeated, Deaths: deaths, 'Coins earned': Math.round(earnedPrev + P.coinsEarned), 'Coins banked': Math.round(bankStart + P.coinsEarned),
+      'Descents won': descentsWon, Category: tierOf(phase === 'run' ? runTier : tier).name,
       'Best find': phase === 'run' ? bestFind.name : '-', 'Uniques found': uniquesFound, 'Curses survived': cursesSurvived, 'Final weapon': weapon.name, 'Second Winds': secondWinds, Stance: STANCES[stance].name, Perks: perksTaken,
     }),
     dispose() { if (phase === 'run') persist(); ctx.resistance.clearAll(); ctx.resistance.useVirtualGears(false); },

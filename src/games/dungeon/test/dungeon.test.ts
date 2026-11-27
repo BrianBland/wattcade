@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput, TuningRegistry } from '../../../core';
 import type { Button } from '../../../contracts';
-import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
+import { DELVE_MAX, UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
+import { FLOORS } from '../sim/descent';
 import { makeUnique, weaponScore } from '../sim/loot';
 import { module } from '../index';
 import { migrateSave } from '../sim/sim';
@@ -183,10 +184,11 @@ describe('meta progression', () => {
     const cheapest = Math.min(...UPGRADES.map((d) => upgradeCost(d, (lv as Record<string, number>)[d.id] ?? 0)));
     expect(cheapest).toBeGreaterThan(r.bank);
   });
-  it('start floor is capped by best floor', () => {
-    expect(metaMods({ delve: 10 }, 6).maxStartFloor).toBe(5);
-    expect(metaMods({ delve: 1 }, 30).maxStartFloor).toBe(3);
-    expect(metaMods({}, 30).maxStartFloor).toBe(1);
+  it('shortcut starts are zone starts, capped by the deepest floor reached', () => {
+    expect(metaMods({ delve: 3 }, 7).startFloors).toEqual([1, 3, 4, 5]);
+    expect(metaMods({ delve: 3 }, 4).maxStartFloor).toBe(4);
+    expect(metaMods({ delve: 1 }, 7).maxStartFloor).toBe(3);
+    expect(metaMods({}, 7).maxStartFloor).toBe(1);
   });
   it('camp: buy an upgrade (Z or A), then start the run; bank persists', () => {
     const profile = testProfile();
@@ -296,12 +298,20 @@ describe('death to camp, Second Wind, saves', () => {
   it('migrates v1 saves: Swiftness refunded as coins, totals added, lives gone', () => {
     // Swiftness L3 cost 500 + 750 + 1125 = 2375
     const m = migrateSave({ bank: 100, upgrades: { swift: 3, vitality: 2 } as any, bestFloor: 4, runs: 7 });
-    expect(m.ver).toBe(2);
+    expect(m.ver).toBe(3);
     expect(m.bank).toBe(100 + 2375);
     expect((m.upgrades as any).swift).toBeUndefined();
     expect(m.upgrades!.vitality).toBe(2);
     expect(m.totals!.runs).toBe(7);
     expect(migrateSave(m)).toEqual(m); // idempotent
-    expect(migrateSave(undefined).ver).toBe(2);
+    expect(migrateSave(undefined).ver).toBe(3);
+  });
+  it('migrates v2 saves to the fixed descent: depth clamped, Delver levels above the shortcuts refunded', () => {
+    const d = UPGRADES.find((u) => u.id === 'delve')!;
+    const m = migrateSave({ ver: 2, bank: 0, upgrades: { delve: 6 }, bestFloor: 26 });
+    expect(m.bestFloor).toBe(FLOORS);
+    expect(m.upgrades!.delve).toBe(DELVE_MAX);
+    expect(m.bank).toBe([3, 4, 5].reduce((a, L) => a + upgradeCost(d, L), 0));
+    expect(migrateSave(m)).toEqual(m);
   });
 });

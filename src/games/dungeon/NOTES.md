@@ -5,6 +5,7 @@ CONTRACT-REQUESTs: none.
 ## Layout
 - `sim/world.ts` per-floor maze (random spanning tree on 5x4 grid + loops), Z corridors with door tiles, boss room (deepest) holds STAIRS, dead ends get chests, 1-2 shrine rooms. Room layouts: open / quads / scatter (PIT tiles) / braziers (PILLAR tiles). Pits & braziers block walking, not projectiles; the centre cross + border ring stay clear so rooms stay connected.
 - `sim/loot.ts` 7 weapon archetypes x 5 elements x rarities 0-4, plus rarity 5 uniques (homing, orbit, split, nova, ricochet). Gear slots helm/armor/boots/ring. `score` decides auto-equip vs auto-sell.
+- `sim/descent.ts` (pure) the fixed descent: 7 floors (Keep 1-2, Catacombs 3, Crypt 4, Deep 5-6, the Broom Wagon 7 with the Grim Sweeper, `boss` variant 6), zone shortcut starts, Categories (Cat 4 .. World Tour) and `RunResult`.
 - `sim/meta.ts` roguelite upgrades (cost = base x growth^level), `metaMods`, `autoInvest` (cheapest first).
 - `sim/sim.ts` phases: `camp` (spend bank, choose start floor; D-pad + A or Z or tap a row via `GameSim.receive({type:'campRow',row})`; auto-starts after 45 s pedalling, B starts now) then endless `run`. `autopilot`/`skipCamp` skip camp.
 - `render/renderer.ts` + `render/sprites.ts`; sound via `src/audio/sfx.ts` driven by `snapshot.cues` (id-ordered; renderer plays unseen ids, rate-limited).
@@ -153,3 +154,10 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
 - Offer opens `perkOfferDelayS` after a boss kill and pauses the sim; D-pad moves, A/Z or tap takes; after `perkAutoPickS` (20 s) the suggested card (`suggestPerk`) is taken. `perkStrength` scales every effect. Snapshot `perks?` (optional, no format bump); `perks: 'none'|'first'|'suggest'` sim opt for headless runs.
 - Rebalance: enemyDamageGrowth 1.52, enemyHpGrowth 1.36, bossHpGrowth 1.56 so a perked rider ends near the old curve and a rider who skips perks does worse. 12 seeds x 40 min, deaths / deepest floor:
   z2 none 3.25/3.17, suggest 2.83/3.67 (old 2.83/3.00); sprints none 2.67/4.75, suggest 2.00/5.83 (old 2.33/5.25); hook-responsive none 1.83/6.00, suggest 1.42/6.50 (old 1.08/6.08).
+
+## The descent (run ending)
+- A descent is `FLOORS` = 7 floors; bosses meet in their old tuned order, then the Grim Sweeper (floor 7, `finalFloorRooms` 4 rooms, `sweeperHpMult` 1.25). Beating him opens the finish (the stairs); walking through calls `winRun()`: banks coins + `winBonusCoins` x Category coins, emits `descentWon { tier, startFloor, timeS, perks }`, unlocks the next Category (only from the top unlocked one) and returns to camp, whose title reads FINISHED with a one-line `runResultLine` summary (deaths get one too).
+- Delver became Shortcuts (max 3): start at a zone you have reached (floors 1/3/4/5). Starts default to floor 1; a shortcut start packs one auto-picked perk per skipped boss. Dying on the start floor suggests the previous zone. Save v3 clamps `bestFloor` to 7 and refunds Delver levels above 3.
+- Categories scale enemy HP/damage x1.4 per step (to x5.3), add elites/curses, and pay more coins. Snapshot `run?` and camp `lastRun?`/`floors?`/`tier?`/`wins?` are optional; `snapshotFormat` 2 (variant 6).
+- Bot chains, 3 seeds x 5 hour rides (default tuning): floors take ~3.7 min, a clean descent ~22-25 min. z2: first win on ride 4, then stuck at Cat 3. hook-responsive + actionBot: first win on ride 2, then about a Category per ride (Pro by ride 5).
+- Achievements: Delver / Deep Delver / Swept Away = boss clears on floor 4 / 6 / 7; Untouchable = 7 bosses in a dive; Perfect Exposure on floor 3+; new Over the Line (win from floor 1) and World Tour.

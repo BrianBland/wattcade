@@ -19,6 +19,7 @@ import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, dr
 import { heroPerkLook, drawPerkPicker, drawPerkBadges, drawPerkParticles, drawDrone } from './perks32';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
+import { runResultLine } from './runResult';
 
 const DNF_S = 2.1;
 const ACTION_COLOR: Record<string, string> = { strike: '#ffd84a', ward: '#7fe7ff', rally: '#8fd8ff', potion: '#ff6b8a' };
@@ -822,7 +823,7 @@ export function createRenderer(): GameRenderer {
     const cg=worldCanvas.getContext('2d')!;cg.imageSmoothingEnabled=false;cg.fillStyle='#15111f';cg.fillRect(0,0,V.width,V.height);
     // layout first: the fire scene sits in the free band between the upgrade list and the hint line
     const rowH0=(compact?48:32)*u, maxRows0=Math.max(4,Math.floor((UH*0.72-90*u)/rowH0)), nRows=Math.min(c.rows.length,maxRows0);
-    const menuBot=(90*u+nRows*rowH0+(c.lastDeath?34*u:0))/scale, hintTop=(UH-(compact?46:36)*u)/scale;
+    const menuBot=(90*u+nRows*rowH0+(c.lastRun||c.lastDeath?34*u:0))/scale, hintTop=(UH-(compact?46:36)*u)/scale;
     const fy=Math.round(Math.max(menuBot+28,menuBot+(hintTop-menuBot)*0.62)),hx=Math.round(V.width/2-26),hy=fy,fx=Math.round(V.width/2),ground=fy;
     const kim=sheetImage('keep'),KR=ATLAS.zones.keep.rects;
     if(kim&&artReady()){
@@ -871,12 +872,15 @@ export function createRenderer(): GameRenderer {
       cg.fillStyle='#704830';cg.fillRect(Math.round(V.width/2)-5,hy-2,11,2);cg.drawImage(fc,Math.round(V.width/2)-5,hy-10);
     }
     gg.imageSmoothingEnabled=false;gg.drawImage(worldCanvas,0,0,V.width*scale,V.height*scale);
-    displayText(gg,'CAMP',W/2,16*u,Math.max(3,Math.round(4*dpr)),'#ffd84a',true);
+    displayText(gg,c.lastRun?.won?'FINISHED':'CAMP',W/2,16*u,Math.max(3,Math.round(4*dpr)),'#ffd84a',true);
     gg.textAlign='center';
     gg.fillStyle = '#ccc'; gg.font = pixelFont(fs);
-    fillText(gg, `Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}   ·   Runs ${c.runs}`, W / 2, 70 * u, W - 24 * u);
-    if (c.lastDeath) { gg.fillStyle = '#ff8a8a'; gg.font = pixelFont(Math.round(fs * 0.9));
-      fillText(gg, compact ? `Fell on floor ${c.lastDeath.floor}. Coins banked.` : `You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, 90 * u + nRows * rowH0 + 22 * u, W - 24 * u); }
+    fillText(gg, `Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}${c.floors ? `/${c.floors}` : ''}   ·   ${c.wins ? `Wins ${c.wins}   ·   ` : ''}Runs ${c.runs}`, W / 2, 70 * u, W - 24 * u);
+    const resY = 90 * u + nRows * rowH0 + 22 * u;
+    if (c.lastRun) { const L = c.lastRun; gg.fillStyle = L.won ? '#ffd84a' : '#ff8a8a'; gg.font = pixelFont(Math.round(fs * 0.9));
+      fillText(gg, runResultLine(L, compact), W / 2, resY, W - 24 * u); }
+    else if (c.lastDeath) { gg.fillStyle = '#ff8a8a'; gg.font = pixelFont(Math.round(fs * 0.9));
+      fillText(gg, compact ? `Fell on floor ${c.lastDeath.floor}. Coins banked.` : `You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, resY, W - 24 * u); }
     const rowH = (compact ? 48 : 32) * u, lw = Math.min(W - 24 * u, 620 * u), lx = W / 2 - lw / 2;
     const maxRows = Math.max(4, Math.floor((UH * 0.72 - 90 * u) / rowH));
     const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));
@@ -983,7 +987,7 @@ export function createRenderer(): GameRenderer {
       fillTextShadow(gg, `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
       pixelMeter(gg,x,y+13*hu,PW,3*hu,p.xp/p.xpNext,'#b58ad9',dpr);
       const ly = y + 28 * hu; gg.font = pixelFont(Math.round(10 * hu));
-      gg.fillStyle = '#fff'; const lvTxt = `Lv${p.level} F${s.floor}`; fillTextShadow(gg, lvTxt, x, ly); const coinX = Math.max(x + 44 * hu, x + textW(gg, lvTxt) + 6 * hu);
+      gg.fillStyle = '#fff'; const lvTxt = `Lv${p.level} F${s.floor}${s.run ? `/${s.run.floors}` : ''}`; fillTextShadow(gg, lvTxt, x, ly); const coinX = Math.max(x + 44 * hu, x + textW(gg, lvTxt) + 6 * hu);
       const cp = Math.max(0, 1 - (s.t - coinPulseT) / 0.25);
       if (cp > 0) { gg.save(); gg.font = pixelFont(Math.round(10 * hu * (1 + 0.35 * cp))); }
       gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillTextShadow(gg, `● ${p.coins}`, coinX, ly); const coinEnd = coinX + textW(gg, `● ${p.coins}`);

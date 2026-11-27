@@ -53,7 +53,7 @@ export function drawHero32(g: CanvasRenderingContext2D, x: number, foot: number,
 }
 
 /** Enemy kinds map to their own sheets; bosses use boss<variant>. */
-export function enemyAnim(kind: string, variant: number) { return kind === 'boss' ? `boss${((variant % 6) + 6) % 6}` : kind; }
+export function enemyAnim(kind: string, variant: number) { return kind === 'boss' ? `boss${Math.max(0, Math.min(6, Math.floor(variant)))}` : kind; }
 export interface EnemyLook { kind: string; variant: number; moving: boolean; tell: number; flash: boolean; face: number; t: number; id: number; /** Gear Masher with its chainring out on the chain */ free?: boolean }
 /** Returns the drawn height (for labels and bars). */
 export function drawEnemy32(g: CanvasRenderingContext2D, x: number, foot: number, e: EnemyLook): number {

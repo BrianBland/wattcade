@@ -6,6 +6,8 @@ import { drawCard, progressLine } from './card';
 export const module: GameModule = {
   achievements,
   id: 'dungeon',
+  // 2: the fixed descent (boss variant 6, the Grim Sweeper; an older renderer would draw him as King Gel)
+  snapshotFormat: 2,
   accent: '#b26bff',
   title: 'Purgatour',
   blurb: 'Endless dungeon dive: pedal to shoot, loot ever-better weapons and gear, level up. Zone 2 heals; sprint to crack boss shields.',

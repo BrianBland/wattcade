@@ -19,7 +19,7 @@ describe('dungeon achievements (synthetic summaries)', () => {
     expect(count('dg_curses_total', rec({ 'Curses survived': 7 }))).toBe(7);
   });
   it('depth rewards require boss clears, not entering or starting on a deep floor', () => {
-    for (const [id, goal] of [['dg_floor5', 10], ['dg_floor10', 15], ['dg_floor20', 20]] as const) {
+    for (const [id, goal] of [['dg_floor5', 4], ['dg_floor10', 6], ['dg_floor20', 7]] as const) {
       expect(byId(id).goal).toBe(goal);
       expect(count(id, rec({ 'Deepest floor': 30 }))).toBe(0);
       expect(count(id, rec({}, [{ type: 'bossDefeated', data: { floor: goal - 1 } }]))).toBe(goal - 1);
@@ -28,23 +28,30 @@ describe('dungeon achievements (synthetic summaries)', () => {
       expect(byId(id).count?.key).toBe('dungeon.bestClearedFloor');
     }
   });
-  const bosses = (n: number, floor = 5, windows = 2, struck = windows) =>
+  it('finishing a descent: from floor 1 for Over the Line, World Tour category for World Tour', () => {
+    const won = (d: Record<string, number>) => rec({}, [{ type: 'descentWon', data: d }]);
+    expect(feat('dg_finish', won({ tier: 0, startFloor: 1 }))).toBe(true);
+    expect(feat('dg_finish', won({ tier: 3, startFloor: 5 }))).toBe(false);
+    expect(feat('dg_world_tour', won({ tier: 5, startFloor: 5 }))).toBe(true);
+    expect(feat('dg_world_tour', won({ tier: 4, startFloor: 1 }))).toBe(false);
+  });
+  const bosses = (n: number, floor = 3, windows = 2, struck = windows) =>
     Array.from({ length: n }, (_, i) => ({ type: 'bossDefeated', data: { floor: floor + i, windows, struck } }));
-  it('Perfect Exposure needs three floor-5+ perfect bosses in the same dive', () => {
+  it('Perfect Exposure needs three floor-3+ perfect bosses in the same dive', () => {
     expect(feat('dg_perfect_exposure', rec({}, bosses(3)))).toBe(true);
     expect(feat('dg_perfect_exposure', rec({}, bosses(2)))).toBe(false);
-    expect(feat('dg_perfect_exposure', rec({}, bosses(3, 4)))).toBe(false);
-    expect(feat('dg_perfect_exposure', rec({}, bosses(3, 5, 1)))).toBe(false);
-    expect(feat('dg_perfect_exposure', rec({}, bosses(3, 5, 3, 2)))).toBe(false);
-    expect(feat('dg_perfect_exposure', rec({}, bosses(3, 5, 2, 3)))).toBe(false);
+    expect(feat('dg_perfect_exposure', rec({}, bosses(3, 2)))).toBe(false);
+    expect(feat('dg_perfect_exposure', rec({}, bosses(3, 3, 1)))).toBe(false);
+    expect(feat('dg_perfect_exposure', rec({}, bosses(3, 3, 3, 2)))).toBe(false);
+    expect(feat('dg_perfect_exposure', rec({}, bosses(3, 3, 2, 3)))).toBe(false);
     expect(feat('dg_perfect_exposure', rec({}, [...bosses(2), { type: 'death' }, ...bosses(1)]))).toBe(false);
     expect(feat('dg_perfect_exposure', rec({}, [{ type: 'death' }, ...bosses(3), { type: 'death' }]))).toBe(true);
     expect(feat('dg_perfect_exposure', rec({}, bosses(3), 'tower'))).toBe(false);
   });
-  it('Untouchable counts eight bosses within any one dive, even after an earlier death', () => {
-    expect(feat('dg_deathless', rec({}, bosses(7)))).toBe(false);
+  it('Untouchable counts all seven bosses within any one dive, even after an earlier death', () => {
+    expect(feat('dg_deathless', rec({}, bosses(6)))).toBe(false);
     expect(feat('dg_deathless', rec({}, [...bosses(4), { type: 'death' }, ...bosses(4)]))).toBe(false);
-    expect(feat('dg_deathless', rec({}, [{ type: 'death' }, ...bosses(8), { type: 'death' }]))).toBe(true);
+    expect(feat('dg_deathless', rec({}, [{ type: 'death' }, ...bosses(7), { type: 'death' }]))).toBe(true);
     expect(feat('dg_deathless', rec({ 'Bosses slain': 8, Deaths: 0 }))).toBe(false);
   });
   it('Elite Hunter cannot combine kills across deaths or count ordinary kills', () => {

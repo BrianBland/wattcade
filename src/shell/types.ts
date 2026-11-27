@@ -11,6 +11,8 @@ export interface AwardView {
   newItems: Array<{ slot: string; id: string; name: string }>;
   /** Reward picks waiting after this ride. */
   picks: number;
+  /** Power-profile bests this ride set (absent/empty for fake or sped-up rides). */
+  powerBests?: Array<{ durationS: number; w: number; prevW: number; allTime: boolean }>;
 }
 export interface AchievementView {
   id: string; name: string; desc: string; unlocked: boolean; secret: boolean;

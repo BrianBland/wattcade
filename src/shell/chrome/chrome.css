@@ -208,6 +208,11 @@
 .rider-editor .field { min-height:64px; grid-template-columns:minmax(120px,.7fr) minmax(0,1.5fr); gap:4px 20px; padding:10px 12px; border:0; border-bottom:1px solid var(--line); border-radius:0; background:transparent; transform:none; font-size:13px; }
 .rider-editor .field.focused { background:color-mix(in srgb,var(--ui-color-accent) 3.14%,transparent); box-shadow:inset 3px 0 var(--ui-color-accent); }
 .rider-editor .field label { font-weight:600; }
+.rider-editor .power-profile { padding:12px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:8px; }
+.rider-editor .power-profile-head { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+.rider-editor .power-profile-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(88px,1fr)); gap:6px; }
+.rider-editor .power-cell { display:flex; flex-direction:column; gap:2px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; }
+.rider-editor .power-cell.hard { border-color:color-mix(in srgb,var(--ui-color-accent) 45%,var(--line)); }
 .rider-editor .field>small { font:400 10px/1.5 system-ui; color:var(--ui-color-subtle); max-width:440px; }
 .rider-editor .field-ctl { min-width:0; }
 .rider-editor .field input[type=text] { width:100%; max-width:380px; min-height:var(--ui-size-touch); background:transparent; color:var(--fg); border:0; border-bottom:1px solid color-mix(in srgb,var(--ui-color-muted) 33.33%,transparent); border-radius:0; padding:10px 0; font:500 15px system-ui; }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EDITOR_FIELDS, editorFields, COLORS, activateField, adjustField } from './editorFields';
 import { testProfile } from '../core';
+import { updatePowerProfile } from '../progression/powerProfile';
 
 const f = (id: string) => EDITOR_FIELDS.find((x) => x.id === id)!;
 
@@ -55,4 +56,15 @@ it('keeps the general debug stats flag off by default and toggles only the selec
   expect(enabled.settings.debugStats).toBe(true);
   expect(field.get(a)).toBe(false); expect(field.get(b)).toBe(false);
   expect(adjustField(field, enabled, -1)!.settings.debugStats).toBe(false);
+});
+
+it('the FTP row shows the power profile estimate once a hard 20 min is on record', () => {
+    const p = { ...testProfile(), ftp: 250 };
+    expect(editorFields(p).find((x) => x.id === 'ftp')).not.toHaveProperty('hint');
+    const watts = Array(1250).fill(280);
+    const rec = { id: 'r', profileId: p.id, gameId: 'warmup', startedAt: 1, durationS: watts.length, events: [], gameSummary: {},
+      samples: watts.map((power, i) => ({ t: i + 1, power, cadence: 90, hr: null, grade: null, mode: 'sim' as const })),
+      stats: { avgPower: 280, maxPower: 280, kj: 0, avgHr: null, zoneSeconds: [0, 0, 0, 0, 0], sprints: 0 } };
+    const withPower = { ...p, power: updatePowerProfile(undefined, rec).power };
+  expect((editorFields(withPower).find((x) => x.id === 'ftp') as { hint?: string }).hint).toContain('266 W');
 });

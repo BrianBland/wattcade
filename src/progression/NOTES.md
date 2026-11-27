@@ -23,6 +23,14 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 
 - Games in `wipGames` (under construction) are left out of `ACHIEVEMENTS`/`ACHIEVEMENT_GAME`: no awards, no counters, until they ship.
 
+## Power profile (`powerProfile.ts`, `Profile.power`)
+- Shared by every game: best mean power at `POWER_DURATIONS` (5 s, 15 s, 30 s, 1 min, 5 min, 20 min). The shell folds in every real, real-time ride (`updatePowerProfile` in `creditRecord`; never the fake bike or a sped-up clock), however short (no `MIN_AWARD_ACTIVE_S` gate). The Summary lists the bests a ride set (`AwardView.powerBests`); Rider settings show the table and offer the FTP estimate.
+- Measuring: 1 Hz samples, glitches above `maxW` and lone spikes replaced by neighbours, windows never span a recording gap.
+- Storage per duration: `allTime` (kept forever) + `recent`, a frontier (oldest first, each higher than every newer one; dropped after `keepDays`). Form fade: a best keeps full value `graceDays`, then `fadePerDay` to `fadeFloor`, measured from `lastRideAt` so sims stay deterministic.
+- Reading (games): `powerCurve(ctx.profile)` → `at(s)` (measured / log-log interpolated / extrapolated by `TYPICAL_SHAPE` / FTP-only), `fraction(s)`, `best(d)`, `hasHard(min,max)`, `ftpEstimate`. Only set targets from **hard** efforts (`HARD_FTP` × FTP): an easy ride's "best 5 s" is a lower bound, not a sprint. Keep game-side scaling in the game's tunables (see Full Send `profileHold`/`profileReach`).
+- `ftpEstimate` = 95 % of a hard 20 min; never lowers FTP, never applied without the rider.
+- Not backfilled from `SessionStore` (old records don't say if they were fake).
+
 ## Conventions games must follow
 - Achievement ids are permanent; a rename needs an entry in `core/renames.ts` `RENAMED_ACHIEVEMENTS`. Achievements read summary keys/events: rename one → update `achievements.ts`;
   `scenarios.test.ts` runs real headless rides and fails if a key goes missing.

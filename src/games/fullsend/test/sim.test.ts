@@ -6,6 +6,7 @@ import { scenarios } from '../scenarios';
 import { landingGrade, leapRange, loopExit, loopRadius, medalFor, smashCount, targetSpeed } from '../sim/physics';
 import { TOURS, weekOf, weeklyTour } from '../sim/tour';
 import { flipName, hazardY, leapHazards, type FullSendSnapshot } from '../sim/sim';
+import { updatePowerProfile } from '../../../progression/powerProfile';
 
 describe('scenarios via runHeadless', () => {
   for (const sc of scenarios) {
@@ -458,6 +459,33 @@ describe('coaching: heart-rate paced rests and a first-ride calibration', () => 
     for (let i = 0; i < 30 * 60 * 10 && !(snap().phase === 'approach' && snap().setIndex === 1); i++) s.step(1);
     expect(snap().calibrating).toBe(false);
     expect(snap().piece!.th).not.toEqual([1.1, 1.25, 1.5]); // the leap's default zones are replaced by your own
+  });
+});
+
+describe('zones from the shared power profile', () => {
+  const ftp = testProfile().ftp;
+  /** A rider whose power profile (from another game) holds a hard 30 s at `sprintFtp` × FTP, with 5 s at 1.3 × that. */
+  const withProfile = (sprintFtp: number) => {
+    const w = (f: number, n: number) => Array(n).fill(Math.round(f * ftp));
+    const watts = [...w(0.6, 300), ...w(sprintFtp, 25), ...w(sprintFtp * 1.3, 5), ...w(0.6, 120)];
+    const rec = { id: 'x', profileId: 'p', gameId: 'warmup', startedAt: 1_700_000_000_000, durationS: watts.length, events: [], gameSummary: {},
+      samples: watts.map((power, i) => ({ t: i + 1, power, cadence: 90, hr: null, grade: null, mode: 'sim' as const })),
+      stats: { avgPower: 0, maxPower: 0, kj: 0, avgHr: null, zoneSeconds: [0, 0, 0, 0, 0], sprints: 1 } };
+    return { ...testProfile(), power: updatePowerProfile(undefined, rec).power };
+  };
+  const firstPiece = (profile: ReturnType<typeof testProfile>) => {
+    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'quick', forks: 'main' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 10 && !(snap().phase === 'approach'); i++) s.step(1);
+    return snap();
+  };
+  it('a hard sprint ridden in any game skips the calibration and sets the zones on the first ride', () => {
+    const a = firstPiece(withProfile(1.6)), b = firstPiece(withProfile(2.0));
+    expect(a.calibrating).toBe(false);
+    expect(b.piece!.th[2]).toBeGreaterThan(a.piece!.th[2]); // a stronger profile means a higher gold zone
+  });
+  it('an easy ride in the profile is not a sprint: the calibration still runs', () => {
+    expect(firstPiece(withProfile(0.9)).calibrating).toBe(true);
   });
 });
 

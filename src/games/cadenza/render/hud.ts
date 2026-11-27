@@ -141,7 +141,7 @@ export class Hud {
       if (key !== this.lastKey) {
         this.lastKey = key;
         const row = (i: number, label: string, val: string, cls = '') => `<div class="ws-row${m.row === i ? ' f' : ''} ${cls}" data-i="${i}">${label}${val ? `<em>◀ ${val} ▶</em>` : ''}</div>`;
-        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, 'Ship<canvas width="144" height="96" aria-label="Ship preview"></canvas>', m.ships.find(s => s.id === m.ship)?.name ?? 'Triad')}${m.ships.filter(s => s.locked).map(s => `<small>${esc(s.name)} · ${esc(s.hint)}</small>`).join('')}${row(5, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
+        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, 'Ship<canvas width="144" height="96" aria-label="Ship preview"></canvas>', shipLabel(m.ships.find(s => s.id === m.ship)))}${m.ships.filter(s => s.locked).map(s => `<small>${esc(s.name)} · ${esc(s.hint)}</small>`).join('')}${row(5, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
         const canvas=this.menu.querySelector<HTMLCanvasElement>('canvas');
         const preview=canvas&&typeof CanvasRenderingContext2D!=='undefined'?canvas.getContext('2d'):null;
         if(preview){preview.translate(72,30);preview.scale(64,64);drawShip(preview,m.ship,accent,now);}
@@ -189,3 +189,5 @@ export class Hud {
   }
 }
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+/** The ship row's value: its name, plus its perk when it changes the road (e.g. "Manta · 5 lanes"). */
+export const shipLabel = (s: { name: string; lanes: number } | undefined) => !s ? 'Triad' : s.lanes !== 3 ? `${esc(s.name)} · ${s.lanes} lanes` : esc(s.name);

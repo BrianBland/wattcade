@@ -35,6 +35,12 @@ try {
    checks++;
   };
   for(const p of [0,15,44,49,80,120,170]) { snapshot.p=p; snapshot.effort.under=1; r.render(snapshot,bike,input); check(); }
+  // Manta flies the 5-lane road (same as /dev/cadenza.html?ship=manta).
+  const manta=createGameSession({game:module,profile:testProfile({achievements:['cz_sets','cz_launches'],gameData:{cadenza:{ship:'manta'}}}),input:new NullInput(),fake:{script:'z2'},media:{timeline},simOpts:{difficulty:'pro',autopilot:true}});
+  manta.step(44*30);
+  const mantaSnap=manta.sim.snapshot();
+  if(mantaSnap.lanes!==5) throw new Error(`Manta should fly 5 lanes, got ${mantaSnap.lanes}`);
+  for(const p of [0,44,120]) { mantaSnap.p=p; r.render(mantaSnap,bike,input); check(); }
   const items=[{id:'long',title:'Mix',artist:'Artist',analysis:estimatedAnalysis(14400)}];
   const started=performance.now(), long=buildTrack(buildTimeline(planMix(items,'continuous'),items),{difficulty:'pro',mode:'mono',seed:1});
   snapshot.track=long;

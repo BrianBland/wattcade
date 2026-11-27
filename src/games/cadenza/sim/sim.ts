@@ -4,7 +4,7 @@ import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZO
 import { rideIndexAt } from './ride';
 import { advanceCoaching, freshCoaching, type Direction } from './coaching';
 import { Announcements } from './announcements';
-import { SHIPS, selectedShip, unlockedShips, type ShipId } from '../ships';
+import { SHIPS, selectedShip, shipLanes, unlockedShips, type ShipId } from '../ships';
 
 export type TrainerStyle = 'grade' | 'erg';
 export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
@@ -17,6 +17,19 @@ export interface CadenzaSave {
 export interface SongRecap {
   n: number; title: string; artist: string; score: number; accuracyPct: number; maxChain: number;
   onTargetPct: number; launches: LaunchRating[]; strip: number[];
+}
+/**
+ * Best scores are kept per lane count (`…|<difficulty>|l3` / `…|l5`): lanes come from the ship now, not difficulty.
+ * Older keys end at the difficulty; elite used to be the 5-lane mode, so `…|elite` becomes `…|elite|l5`, the rest `|l3`.
+ */
+export function migrateBest(best: Record<string, number> | undefined): Record<string, number> | undefined {
+  if (!best) return best;
+  const out: Record<string, number> = {};
+  for (const [key, score] of Object.entries(best)) {
+    const k = /\|l\d+$/.test(key) ? key : `${key}|l${key.endsWith('|elite') ? 5 : 3}`;
+    out[k] = Math.max(out[k] ?? 0, score);
+  }
+  return out;
 }
 /** Chain counts that set off a flourish: 25, 50, then every 50. */
 export const isChainMilestone = (c: number) => c === 25 || (c >= 50 && c % 50 === 0);
@@ -33,7 +46,7 @@ export const rateLaunch = (ratio: number) => LAUNCH_RATINGS.find((x) => ratio >=
 export interface CadenzaSnapshot {
   ship: ShipId;
   p: number; durationS: number; started: boolean; done: boolean;
-  menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; left: number; ship: ShipId; ships: Array<{ id: ShipId; name: string; locked: boolean; hint: string }> } | null;
+  menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; left: number; ship: ShipId; ships: Array<{ id: ShipId; name: string; locked: boolean; hint: string; lanes: number }> } | null;
   track: Track; blockState: Uint8Array; x: number; previousX: number; steeringTick: number; lanes: number;
   score: number; mult: number; chain: number; shield: number; overdrive: boolean;
   dropout: { left: number } | null;
@@ -83,6 +96,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     underGrace: t.num('underGraceS', 1.5, 0, 6, 0.25, 'Seconds under target before the shield starts draining'),
   };
   const save: CadenzaSave = { ...(ctx.load<CadenzaSave>() ?? {}) };
+  if (save.best) save.best = migrateBest(save.best); // written back with the next save
   let ship = selectedShip(ctx.profile);
   const availableShips = unlockedShips(ctx.profile);
   const cycleShip = (d: number) => { ship = availableShips[(availableShips.findIndex(s => s.id === ship) + d + availableShips.length) % availableShips.length].id; };
@@ -94,7 +108,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let trainer: TrainerStyle = opts.trainer ?? save.trainer ?? 'grade';
   let menu = opts.menu !== false && !opts.autopilot && !opts.difficulty;
   let menuRow: number = MENU.start, menuT = 0;
-  let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+  let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade(), lanes: shipLanes(ship) });
   let blockState = new Uint8Array(track.blocks.length);
   let revision = timeline.revision ?? 0;
   const announcements = new Announcements(ctx.media);
@@ -137,7 +151,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
 
   const startRide = () => {
     menu = false;
-    track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+    track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade(), lanes: shipLanes(ship) });
     announcements.setTrack(track, position());
     blockState = new Uint8Array(track.blocks.length);
     save.lastDifficulty = difficulty; save.lastMode = mode; save.reducedFlash = reducedFlash; save.trainer = trainer; save.ship = ship; ctx.save(save);
@@ -237,7 +251,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     receive(a: unknown) { if (a && typeof a === 'object' && 'type' in a) actions.push(a as { type: string; value?: unknown }); },
     update(dt) {
       if ((timeline.revision ?? 0) !== revision) {
-        const next = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+        const next = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade(), lanes: shipLanes(ship) });
         // Ahead-only commits: the engine holds the clock before the analyzed horizon is exhausted.
         const from = Math.max(announcements.untilS, timeline.frozenUntilS ?? 0,
           started ? timeline.updateFromS ?? (timeline.frozenUntilS === undefined ? position() + 35 : 0) : 0,
@@ -361,7 +375,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       }
       if (done && !saved) {
         saved = true;
-        const key = `${timeline.songs.map((s) => s.id).join('+')}|${mode}|${difficulty}`;
+        const key = `${timeline.songs.map((s) => s.id).join('+')}|${mode}|${difficulty}|l${track.lanes}`;
         const best = { ...(save.best ?? {}) };
         if (score > (best[key] ?? 0)) { best[key] = score; cue('newBest', { score }); }
         Object.assign(save, { best, plays: (save.plays ?? 0) + 1, sets: (save.sets ?? 0) + (timeline.songs.length >= 5 ? 1 : 0), bestScore: Math.max(save.bestScore ?? 0, score) });
@@ -390,7 +404,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       return {
         p, durationS: track.durationS, started, done,
         ship,
-        menu: menu ? { row: menuRow, difficulty, mode, reducedFlash, trainer, ship, ships: SHIPS.map(s => ({ id: s.id, name: s.name, locked: !availableShips.some(a => a.id === s.id), hint: s.hint })), left: Math.max(0, MENU_AUTO_S - menuT) } : null,
+        menu: menu ? { row: menuRow, difficulty, mode, reducedFlash, trainer, ship, ships: SHIPS.map(s => ({ id: s.id, name: s.name, locked: !availableShips.some(a => a.id === s.id), hint: s.hint, lanes: s.lanes })), left: Math.max(0, MENU_AUTO_S - menuT) } : null,
         track, blockState, x, previousX, steeringTick, lanes: track.lanes,
         score, mult: mult(), chain, shield, overdrive, dropout: dropoutLeft >= 0 ? { left: dropoutLeft } : null,
         launch: launchActive

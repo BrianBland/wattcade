@@ -4,7 +4,7 @@ import { scenarios } from '../scenarios';
 import { createGameSession, NullInput, runHeadless, testProfile, TimelineInput } from '../../../core';
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
-import { isChainMilestone, rateLaunch, type CadenzaSnapshot, type CadenzaSave } from '../sim/sim';
+import { isChainMilestone, migrateBest, rateLaunch, type CadenzaSnapshot, type CadenzaSave } from '../sim/sim';
 import { rideTimeline } from './fixtures';
 
 describe('Cadenza sim', () => {
@@ -29,7 +29,33 @@ describe('Cadenza sim', () => {
     const last = saves[saves.length - 1] as { plays: number; bestScore: number; best: Record<string, number> };
     expect(last.plays).toBe(1);
     expect(last.bestScore).toBeGreaterThan(0);
-    expect(Object.keys(last.best)[0]).toMatch(/^synth:edm:1:s\|mono\|pro$/);
+    expect(Object.keys(last.best)[0]).toMatch(/^synth:edm:1:s\|mono\|pro\|l3$/);
+  });
+
+  it('keeps 5-lane (Manta) bests apart from 3-lane bests', () => {
+    const saves: CadenzaSave[] = [];
+    const timeline = synthTimeline({ style: 'edm', songs: 1, short: true });
+    const profile = testProfile({ achievements: ['cz_launches'], gameData: { cadenza: { ship: 'manta', best: { 'synth:edm:1:s|mono|elite': 1234 } } } });
+    const s = createGameSession({ game: module, profile, input: new NullInput(), media: { timeline }, fake: { script: 'target-follow' }, simOpts: { autopilot: true, difficulty: 'elite' }, onSave: (d) => saves.push(d as CadenzaSave) });
+    expect((s.sim.snapshot() as CadenzaSnapshot).lanes).toBe(5);
+    while (!s.sim.isOver()) s.step(300);
+    const best = saves.at(-1)!.best!;
+    expect(Object.keys(best).sort()).toEqual(['synth:edm:1:s|mono|elite|l5']);
+    expect(best['synth:edm:1:s|mono|elite|l5']).toBeGreaterThanOrEqual(1234);
+  });
+
+  it('migrates old best keys once: elite was the 5-lane mode, casual/pro were 3 lanes', () => {
+    expect(migrateBest(undefined)).toBeUndefined();
+    expect(migrateBest({ 'a+b|mono|elite': 900, 'a|mono|pro': 500, 'a|mono|casual': 300, 'a|mono|pro|l5': 700, 'a|mono|elite|l3': 40 })).toEqual({
+      'a+b|mono|elite|l5': 900, 'a|mono|pro|l3': 500, 'a|mono|casual|l3': 300, 'a|mono|pro|l5': 700, 'a|mono|elite|l3': 40,
+    });
+    // An old key and its migrated twin keep the higher score.
+    expect(migrateBest({ 'a|mono|elite': 900, 'a|mono|elite|l5': 1200, 'b|mono|pro': 800, 'b|mono|pro|l3': 100 })).toEqual({ 'a|mono|elite|l5': 1200, 'b|mono|pro|l3': 800 });
+    // Loading an old save rewrites it with the next save.
+    const saves: CadenzaSave[] = [];
+    const s = createGameSession({ game: module, profile: testProfile({ gameData: { cadenza: { best: { 'x|mono|elite': 50, 'y|mono|casual': 20 } } } }), input: new NullInput(), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, onSave: (d) => saves.push(d as CadenzaSave) });
+    s.sim.receive?.({ type: 'start' }); s.step(1);
+    expect(saves.at(-1)!.best).toEqual({ 'x|mono|elite|l5': 50, 'y|mono|casual|l3': 20 });
   });
 
   it('eases trainer demand for protected recovery even when the music is still a build', () => {
@@ -136,9 +162,15 @@ describe('Cadenza controls', () => {
       expect(color < 0 ? summary.greysHit : summary.collected).toBe(Math.abs(position) < 0.5 ? 1 : 0);
     }
   });
-  it('elite (5 lanes): half a pull is one lane over, a full pull is the edge; holding a button repeats', () => {
+  it('elite on Triad is 3 lanes; lanes come from the ship', () => {
+    const lanesFor = (profile: ReturnType<typeof testProfile>) => (createGameSession({ game: module, profile, input: new NullInput(), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'elite' } }).sim.snapshot() as CadenzaSnapshot).lanes;
+    expect(lanesFor(testProfile())).toBe(3);
+    expect(lanesFor(testProfile({ achievements: ['cz_sets'], gameData: { cadenza: { ship: 'lancer' } } }))).toBe(3);
+    expect(lanesFor(testProfile({ achievements: ['cz_launches'], gameData: { cadenza: { ship: 'manta' } } }))).toBe(5);
+  });
+  it('Manta (5 lanes): half a pull is one lane over, a full pull is the edge; holding a button repeats', () => {
     const elite = (tl: Parameters<typeof ride>[0], secs: number) => {
-      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(tl), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'elite' } });
+      const s = createGameSession({ game: module, profile: testProfile({ achievements: ['cz_launches'], gameData: { cadenza: { ship: 'manta' } } }), input: new TimelineInput(tl), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'pro' } });
       s.step(Math.round(secs * 30)); return (s.sim.snapshot() as CadenzaSnapshot).x;
     };
     expect(elite([{ t: 1, paddleR: 0.5 }], 2)).toBeCloseTo(1, 3);

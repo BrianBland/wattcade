@@ -76,6 +76,7 @@ class LiveClient {
       const entry = v.games[gameId]?.entry;
       if (!entry) return Promise.reject(new Error(`${gameId} isn't in ${v.short}`));
       installWorkerShim();
+      requestCorsFrom(v.base);
       p = import(/* @vite-ignore */ `${v.base}${entry}`).then((m: { module?: GameModule }) => {
         if (!m.module || m.module.id !== gameId) throw new Error(`${v.short} has no ${gameId} module`);
         return m.module;
@@ -88,6 +89,57 @@ class LiveClient {
 }
 
 export const live = new LiveClient();
+
+/**
+ * Where live.yml published the running build's own copy (alias c-<sha8>, next to the feed's live- alias), or null
+ * (dev, or a feed host that isn't a workers.dev alias).
+ */
+export function buildVersionBase(sha: string | null = BUILD_SHA, feedUrl: string = FEED_URL): string | null {
+  if (!sha) return null;
+  try {
+    const u = new URL(feedUrl);
+    if (!u.hostname.startsWith('live-')) return null;
+    return `${u.protocol}//c-${sha.slice(0, 8)}-${u.hostname.slice(5)}/`;
+  } catch { return null; }
+}
+
+/** True for the errors a browser gives when a module script (or its chunk) can't be fetched. */
+export function isChunkLoadError(e: unknown): boolean {
+  const m = e instanceof Error ? `${e.name} ${e.message}` : String(e);
+  return /dynamically imported module|module script|Importing a module|error loading dynamically|Load failed|Failed to fetch/i.test(m);
+}
+
+const buildCopies = new Map<string, Promise<GameModule>>();
+/** This build's own copy of a game, from its version URL (which no later deploy replaces). */
+function buildCopy(gameId: string, base: string | null): Promise<GameModule> {
+  let p = buildCopies.get(gameId);
+  if (!p) {
+    p = !base ? Promise.reject(new Error('no published copy of this build'))
+      : fetch(`${base}live/manifest.json`).then((r) => { if (!r.ok) throw new Error(`manifest ${r.status}`); return r.json() as Promise<LiveManifest>; })
+        .then((v) => live.module({ ...v, base: v.base || base }, gameId));
+    p.catch(() => buildCopies.delete(gameId));
+    buildCopies.set(gameId, p);
+  }
+  return p;
+}
+
+/**
+ * A deploy replaces the site's hashed chunks, so an app opened before it can't import a game's renderer any more. When
+ * that happens, load the same build's copy from its version URL instead; if that fails too, say a reload is needed.
+ */
+export function keepRenderersLoadable(games: GameModule[], base: string | null = buildVersionBase()) {
+  if (!base) return;
+  for (const g of games) {
+    const own = g.loadRenderer.bind(g);
+    g.loadRenderer = () => own().catch(async (e: unknown) => {
+      if (!isChunkLoadError(e)) throw e;
+      try { return await (await buildCopy(g.id, base)).loadRenderer(); } catch (e2) {
+        console.warn(`[live] ${g.id}: built-in renderer and this build's published copy both failed`, e, e2);
+        throw new Error(`${g.title} couldn't load: the app was updated since this page opened. Reload to play it.`);
+      }
+    });
+  }
+}
 
 export interface LiveRun {
   /** Layers the game starts with (missing versions fall back to built-in). */
@@ -143,4 +195,30 @@ function installWorkerShim() {
     }
   }
   window.Worker = LiveWorker as typeof Worker;
+}
+
+const corsOrigins = new Set<string>();
+let imagesShimmed = false;
+/**
+ * A version's renderer loads its art from the version's own origin. A cross-origin image without `crossOrigin` taints
+ * any canvas it's drawn on, and the renderer's next getImageData throws a SecurityError ("The operation is insecure"
+ * in Safari). So images and media from version origins are requested with CORS (every version serves ACAO *).
+ * Other origins are left alone: the shell's own cross-origin images may not send CORS headers.
+ */
+export function requestCorsFrom(base: string) {
+  try { corsOrigins.add(new URL(base).origin); } catch { return; }
+  if (imagesShimmed || typeof window === 'undefined') return;
+  imagesShimmed = true;
+  for (const proto of [window.HTMLImageElement?.prototype, window.HTMLMediaElement?.prototype]) {
+    const d = proto && Object.getOwnPropertyDescriptor(proto, 'src');
+    if (!proto || !d?.set || !d.get) continue;
+    const set = d.set;
+    Object.defineProperty(proto, 'src', {
+      ...d,
+      set(this: HTMLImageElement | HTMLMediaElement, v: string) {
+        if (this.crossOrigin === null) { try { if (corsOrigins.has(new URL(String(v), location.href).origin)) this.crossOrigin = 'anonymous'; } catch { /* not a URL */ } }
+        set.call(this, v);
+      },
+    });
+  }
 }

@@ -86,3 +86,30 @@ describe('planApply', () => {
     expect(shellPending({ versions: [v('new', {}, 'sh2')] }, 'unknown')).toEqual([]);
   });
 });
+
+describe('the running build\'s own published copy', () => {
+  it('sits next to the feed alias, named by the build commit', async () => {
+    const { buildVersionBase, isChunkLoadError } = await import('./client');
+    expect(buildVersionBase('0123456789abcdef', 'https://live-wattcade.brian-t-bland.workers.dev/live/feed.json')).toBe('https://c-01234567-wattcade.brian-t-bland.workers.dev/');
+    expect(buildVersionBase(null)).toBeNull();
+    expect(buildVersionBase('0123456789', 'http://localhost:4174/live/feed.json')).toBeNull();
+    expect(isChunkLoadError(new TypeError('Importing a module script failed.'))).toBe(true);
+    expect(isChunkLoadError(new TypeError('Failed to fetch dynamically imported module: https://x/assets/render-1.js'))).toBe(true);
+    expect(isChunkLoadError(new Error('WebGL context lost'))).toBe(false);
+  });
+});
+
+describe('keepRenderersLoadable', () => {
+  it('passes other errors through, and asks for a reload when the published copy is out of reach too', async () => {
+    const { keepRenderersLoadable } = await import('./client');
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('', { status: 404 })) as typeof fetch;
+    try {
+      const mk = (err: Error) => ({ id: 'g', title: 'Game', loadRenderer: () => Promise.reject(err) }) as never as import('../contracts').GameModule;
+      const other = mk(new Error('WebGL context lost')), gone = mk(new TypeError('Importing a module script failed.'));
+      keepRenderersLoadable([other, gone], 'https://c-01234567-wattcade.example.dev/');
+      await expect(other.loadRenderer()).rejects.toThrow('WebGL context lost');
+      await expect(gone.loadRenderer()).rejects.toThrow(/Reload to play it/);
+    } finally { globalThis.fetch = realFetch; }
+  });
+});

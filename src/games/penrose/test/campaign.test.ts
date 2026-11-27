@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { FIXED_DT } from '../../../contracts';
+import { createGameSession, NullInput, runHeadless, testProfile } from '../../../core';
+import { module } from '..';
+import { scenarios } from '../scenarios';
 import { getLevelDef, LEVEL_CATALOG, LEVEL_COUNT } from '../sim/catalog';
 import { SimWorld } from '../sim/world';
-import type { BikeInput, SimTunables } from '../sim/types';
+import type { BikeInput, PenroseSnapshot, SimTunables } from '../sim/types';
 
 const DEFAULT_TUN: SimTunables = {
   gradeBase: 1, gradePerLoad: 4.5, gradeSlopeMax: 3, gradeWindHead: 2.5, gradeWindTail: 1.5,
@@ -50,6 +53,16 @@ describe('penrose campaign — every level solves deterministically in Node', ()
     }
     expect(failures).toEqual([]);
   });
+});
+
+describe('penrose headless scenarios', () => {
+  for (const sc of scenarios) {
+    it(`scenario: ${sc.name}`, () => {
+      const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts });
+      const failures = sc.assert(r.summary, r.stats, { mixerCommands: r.mixerCommands, isOver: r.isOver, events: r.events });
+      expect(failures).toEqual([]);
+    });
+  }
 });
 
 describe('penrose bike physics & ergonomics (Phase 1)', () => {
@@ -111,5 +124,27 @@ describe('penrose bike physics & ergonomics (Phase 1)', () => {
     const sBefore = world.wheel.s;
     for (let i = 0; i < 30; i++) world.step(FIXED_DT, stopped, 0, DEFAULT_TUN);
     expect(Math.abs(world.wheel.s - sBefore)).toBeLessThan(0.05);
+  });
+
+  it('publishes real frame-0 controls, touchControls:[], and live cadence/zone targets', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1, simOpts: { level: 0 } });
+    const hud0 = s.sim.hud!();
+    expect(hud0.touchControls).toEqual([]);
+    expect(hud0.controls?.some((c) => c.button === 'y')).toBe(true);
+
+    // Check cadence target on m-lift
+    const liftIdx = LEVEL_CATALOG.findIndex((e) => e.item === 'm-lift');
+    const sLift = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1, simOpts: { level: liftIdx } });
+    expect(sLift.sim.hud!().targetCadence).toBeDefined();
+
+    // Check zone target on m-tide
+    const tideIdx = LEVEL_CATALOG.findIndex((e) => e.item === 'm-tide');
+    const sTide = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1, simOpts: { level: tideIdx } });
+    expect(sTide.sim.hud!().targetZone?.source).toBe('power');
+
+    // Snapshot exposes clean typed data
+    const snap = s.sim.snapshot() as PenroseSnapshot;
+    expect(snap.levelId).toBe('turntable');
+    expect(snap.machines.length).toBe(1);
   });
 });

@@ -28,6 +28,11 @@ When the sim layer changes between starts, the game's save is backed up first (l
 carries its own copies of shared code; only `audio/sfx` and `audio/voices` forward to the page (`shared.ts`, matching
 `SHARED_MODULES`), so other module-level state isn't shared with the shell.
 
+**Cross-origin art**: `requestCorsFrom(base)` makes images and media from version origins load with CORS, else a
+version's renderer taints its canvases and getImageData throws ("The operation is insecure" in Safari).
+**Deploys vs open pages**: deploy.yml keeps 10 days of earlier hashed `dist/assets` (`scripts/deploy/keepAssets.ts`), and
+`keepRenderersLoadable` (main.tsx) falls back to the running build's own copy at `c-<sha8>` when a renderer chunk 404s.
+
 **Known limits**: public-dir assets referenced with literal `/path` (Scrapjet's `/scrapjet/`) still load from prod;
 `BASE_URL` ones load from the version. Only Dynamo has a checkpoint so far. After each publish CI runs
 `scripts/live/smoke.ts`: headless Chrome on the live origin imports every game chunk and its renderer cross-origin. `LIVE_DEBUG=1` adds `live/shell-modules.json` for hash debugging.

@@ -8,6 +8,8 @@ name: Deploy
 #   deploy         ships right away with the cached clips (out of date ones included) and lists the games whose clip is stale;
 #   clips          records just those games and saves the cache (outside the production lock; a newer run's clips cancels it);
 #   publish-clips  redeploys this commit with the new clips, unless main has moved on (that run's deploy publishes them).
+# Each deploy also ships the hashed dist/assets files of the last 10 days of deploys (scripts/deploy/keepAssets.ts), so an app
+# opened before a deploy can still load its own renderer chunks after it.
 
 on:
   workflow_run:
@@ -60,11 +62,25 @@ jobs:
         id: cards
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         run: npm run capture:cards -- --cache .cache/cards --cached-only
+      - name: Restore earlier deploys' assets
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/prod-assets
+          key: prod-assets-${{ github.run_id }}
+          restore-keys: prod-assets-
       - name: Build and deploy
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         run: |
-          npm run build
+          LIVE_SHA="$SHA" npm run build # the app's own commit (GITHUB_SHA is main's head on workflow_run)
+          npx tsx scripts/deploy/keepAssets.ts dist/assets .cache/prod-assets
           npx wrangler deploy
+      - name: Save deployed assets
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/prod-assets
+          key: prod-assets-${{ github.run_id }}-${{ github.run_attempt }}
 
   clips:
     needs: deploy
@@ -140,9 +156,23 @@ jobs:
           path: .cache/cards
           key: ${{ needs.clips.outputs.key }}
           fail-on-cache-miss: true
+      - name: Restore earlier deploys' assets
+        if: steps.head.outputs.latest == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/prod-assets
+          key: prod-assets-${{ github.run_id }}-clips
+          restore-keys: prod-assets-
       - name: Build and deploy with the new clips
         if: steps.head.outputs.latest == 'true'
         run: |
           npm run capture:cards -- --cache .cache/cards --cached-only
-          npm run build
+          LIVE_SHA="$SHA" npm run build # the app's own commit (GITHUB_SHA is main's head on workflow_run)
+          npx tsx scripts/deploy/keepAssets.ts dist/assets .cache/prod-assets
           npx wrangler deploy
+      - name: Save deployed assets
+        if: steps.head.outputs.latest == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/prod-assets
+          key: prod-assets-${{ github.run_id }}-clips-${{ github.run_attempt }}

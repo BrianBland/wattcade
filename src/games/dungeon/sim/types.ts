@@ -51,6 +51,7 @@ export interface DungeonSnapshot {
     x: number; y: number; r: number; hp: number; maxHp: number; potions: number; potionCap: number;
     invuln: boolean; onSwamp: boolean; speedMult: number; moving: boolean; rolling: boolean; warded: boolean; rallied: boolean; hurt: number;
     secondWind: number; secondWindFlash: number; // Second Wind ready 0..1; flash 1->0 after it fires
+    firedUpLeft?: number; // seconds remaining on post-sprint Fired Up damage buff
     level: number; xp: number; xpNext: number; coins: number; bank: number;
   };
   weapon: Weapon;

@@ -2,7 +2,8 @@ import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../..
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
 import { desaturate } from '../../kit/actionButton';
 import { runLayout, bossHudLayout } from './layout';
-import { play, type SfxName } from '../../../audio/sfx';
+import { DungeonSound } from './sound';
+import { JuiceEngine, activeBuffs } from './juice';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
 import { BOSS_ART, anim, heroPalette, sprite, sprite2, type AnimState } from './sprites';
@@ -39,8 +40,6 @@ const ELITE_COLORS: Record<EliteMod, string> = { undying: '#7dff5a', splitting: 
 const ELITE_LABEL: Record<EliteMod, string> = { undying: 'Undying', splitting: 'Splitting', shielded: 'Warded', swift: 'Swift', volatile: 'Volatile' };
 const KIND_LABEL: Record<string, string> = { chaser: 'Coneling', bat: 'Saddle Sore', spitter: 'Gel Slime', archer: 'Lost Rider', brute: 'Wrench Troll', bomber: 'CO2 Gremlin', summoner: 'Directeur Sportif' };
 const SHRINE_COLORS = { fury: '#ff8c2a', endurance: '#5aa9ff', sprint: '#ffd84a', whirl: '#8fd8ff' } as const;
-// rate limits (s) for spammy sound cues
-const CUE_GAP: Partial<Record<SfxName, number>> = { shoot: 0.06, shootHeavy: 0.08, zap: 0.06, flame: 0.1, hit: 0.05, crit: 0.08, coin: 0.05, kill: 0.04, explode: 0.08, hurt: 0.2, door: 0.2 };
 
 const hash = (x: number, y: number) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
@@ -177,7 +176,8 @@ export function createRenderer(): GameRenderer {
   let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
   let lightC: HTMLCanvasElement | null = null;
   let campSnap: HTMLCanvasElement | null = null;
-  let lastCue = -1;
+  const sound = new DungeonSound(), juice = new JuiceEngine();
+  let juiceT = 0, bossCycle = '';
   let send: ((a: unknown) => void) | undefined;
   let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
   let hudOcclusions: Insets['occlusions'];
@@ -335,7 +335,8 @@ export function createRenderer(): GameRenderer {
     drawFlail32(g!, { hx, hy, gx, gy, groundY: f.y * TS + 2, spin, sag, onFloor });
   }
   function drawEnemy(e: EnemyView, TS: number, t: number) {
-    const gg = g!, x = e.x * TS, y = e.y * TS + e.r * TS * 0.9;
+    const rec = juice.recoilOf(e.id);
+    const gg = g!, x = (e.x + rec.dx) * TS, y = (e.y + rec.dy) * TS + e.r * TS * 0.9;
     const isBoss = e.kind === 'boss', ba = isBoss ? BOSS_ART[e.variant % BOSS_ART.length] : undefined;
     const name = ba ? ba.art : e.kind, scale = ba?.scale ?? 1, pal = ba?.pal;
     // animation state (render-only): hurt flinch, wind-up = attack pose, moving = walk cycle
@@ -353,6 +354,11 @@ export function createRenderer(): GameRenderer {
     const bob = e.kind === 'bat' ? Math.sin(t * 14 + e.id) * TS * 0.12 : -Math.abs(Math.sin(t * 8 + e.id)) * TS * 0.05;
     shadow(x, y, e.r * TS * 0.9);
     if (e.elite) { gg.globalCompositeOperation = 'lighter'; glowAt(ELITE_COLORS[e.elite], x, y - e.r * TS, e.r * TS * (2 + Math.sin(t * 5 + e.id) * 0.2), 0.55); gg.globalCompositeOperation = 'source-over'; }
+    if (isBoss && bossCycle === 'windup') {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 18);
+      pixelDisc(gg, x, y - e.r * TS * 0.35, e.r * TS * (1.8 + 0.35 * pulse), '#ff3b4a26');
+      pixelRing(gg, x, y - e.r * TS * 0.35, e.r * TS * (2.0 + 0.3 * pulse), pulse > 0.5 ? '#ff5a6a' : '#ffd84a', true);
+    }
     if (e.tell > 0) { gg.globalCompositeOperation = 'lighter'; glowAt(e.kind === 'bomber' ? '#ff7a2a' : '#ff3b3b', x, y - e.r * TS, e.r * TS * (1.5 + e.tell), 0.3 + e.tell * 0.6); gg.globalCompositeOperation = 'source-over'; }
     if (e.exposed) pixelRing(gg,x,y-e.r*TS,e.r*TS*1.9,'#ffe08a',true);
     if (e.exposed) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffe08a', x, y - e.r * TS, e.r * TS * 2.6, 0.75 + Math.sin(t * 9) * 0.2); gg.globalCompositeOperation = 'source-over'; }
@@ -400,9 +406,9 @@ export function createRenderer(): GameRenderer {
       const s = snapshot as DungeonSnapshot;
       if (!canvas || !g || !s.world) return;
       pinchEnabled = s.phase === 'run' && !s.perks?.offer;
-      // sound cues (skip any backlog from before mount)
-      if (lastCue < 0) lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
-      for (const c of s.cues) if (c.id > lastCue) { lastCue = c.id; play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] }); }
+      bossCycle = s.boss?.active ? s.boss.cycle : '';
+      const dtJ = Math.max(0, Math.min(0.1, s.t - juiceT)); juiceT = s.t;
+      if (!hideHero) { sound.update(s); juice.update(s, dtJ); }
       if (prevPhase === 'run' && s.phase === 'camp' && s.camp?.lastDeath && lastHero && artReady()) {
         // re-draw the last run frame without the standing hero, so only the falling one shows
         if (lastRun) { hideHero = true; this.render(lastRun.s, lastRun.bike, lastRun.input); hideHero = false; }
@@ -414,7 +420,11 @@ export function createRenderer(): GameRenderer {
       lastStance = s.phase === 'run' ? s.stance.id : '';
       if (s.phase !== 'camp') dnf = null;
       if (dnf && s.phase === 'camp' && s.t - dnf.t0 < DNF_S) { drawDnf(s.t - dnf.t0); return; }
-      if (s.phase === 'camp' && s.camp) { actionHits = []; clearPinch(); drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
+      if (s.phase === 'camp' && s.camp) {
+        actionHits = []; clearPinch(); drawCamp(s.camp, canvas.width, canvas.height, s.t);
+        drawScreenJuice(g, canvas.width, canvas.height);
+        return;
+      }
       campHits = []; if (s.phase !== 'run') actionHits = [];
       const output=g, OW=canvas.width, OH=canvas.height, w=s.world,t=s.t,p=s.player;
       // Orientation-balanced framing; room boundaries and boss phases never change the selected zoom.
@@ -439,7 +449,7 @@ export function createRenderer(): GameRenderer {
       const fx0 = bossE ? p.x + (bossE.x - p.x) * 0.45 : p.x, fy0 = bossE ? p.y + (bossE.y - p.y) * 0.45 : p.y;
       if (camFor !== w || !Number.isFinite(camX)) { camX = fx0; camY = fy0; camFor = w; }
       else { const kf = 1 - Math.exp(-dtR * 6); camX += (fx0 - camX) * kf; camY += (fy0 - camY) * kf; }
-      const cx = camX * TS - W / 2, cy = camY * TS - VH / 2;
+      const cx = camX * TS - W / 2 + juice.shakeX, cy = camY * TS - VH / 2 + juice.shakeY;
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
       const k = TS / BT;
@@ -754,6 +764,13 @@ export function createRenderer(): GameRenderer {
         }
         for (const sh of s.shrines) if (w.rooms[sh.room].seen && sh.state !== 'failed') { gg.globalAlpha = 0.5; drawShrine32(gg, sh.kind, sh.x * TS, sh.y * TS, t, false); gg.globalAlpha = 1; }
         emissive();
+        for (const pt of juice.particles) if (!pt.screen) {
+          gg.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+          gg.fillStyle = pt.color;
+          const sz = Math.max(1, Math.round(pt.size));
+          gg.fillRect(Math.round(pt.x * TS - sz / 2), Math.round(pt.y * TS - sz / 2), sz, sz);
+        }
+        gg.globalAlpha = 1;
         for (const r of w.rooms) if (!r.seen) { gg.fillStyle = '#07060b'; gg.fillRect((r.x0 - 1) * TS, (r.y0 - 1) * TS - 16, (r.w + 2) * TS, (r.h + 2) * TS + 16); }
         gg.restore();
       } else {
@@ -781,11 +798,13 @@ export function createRenderer(): GameRenderer {
         output.fillStyle = label.color; fillText(output, label.text, label.x * pixelScale, label.y * pixelScale);
       }
       output.restore();
+      drawScreenJuice(output, OW, OH);
       drawHud(s,OW,OH,bike);
       perkHits = s.perks?.offer && artReady() ? drawPerkPicker(output, s.perks, OW, OH, insetCss * dpr, uiU, dpr, s.perks.offer.age, heroPerkLook(s.perks, s.stance.id),
         (hg, x, foot, look) => drawHero32(hg, x, foot, { moving: false, t, hurt: false, weapon: look.stance && look.stance !== s.stance.id ? stanceWeapon(s, look.stance) : s.weapon, kick: 0, ...look, stance: look.stance ?? s.stance.id, angle: look.angle ?? Math.PI * 0.5 })) : [];
     },
     unmount() {
+      sound.dispose(); juice.reset();
       clearPinch(); pinchEnabled = false;
       canvas?.removeEventListener('pointerdown', onPointer);
       canvas?.removeEventListener('pointermove', moveTouch);
@@ -797,6 +816,21 @@ export function createRenderer(): GameRenderer {
       mini=null;worldCanvas=null;lightC=null;zoom.held=0;
     },
   };
+
+  function drawScreenJuice(ctx: CanvasRenderingContext2D, W: number, H: number) {
+    if (juice.edgeFlash) {
+      const bw = Math.max(4, Math.round(6 * dpr));
+      ctx.save(); ctx.globalAlpha = juice.edgeFlash.alpha; ctx.fillStyle = juice.edgeFlash.color;
+      ctx.fillRect(0, 0, W, bw); ctx.fillRect(0, H - bw, W, bw); ctx.fillRect(0, 0, bw, H); ctx.fillRect(W - bw, 0, bw, H);
+      ctx.restore();
+    }
+    for (const pt of juice.particles) if (pt.screen) {
+      ctx.save(); ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife); ctx.fillStyle = pt.color;
+      const sz = Math.max(2, Math.round(pt.size * dpr));
+      ctx.fillRect(Math.round(pt.x * W), Math.round(pt.y * H), sz, sz * 1.4);
+      ctx.restore();
+    }
+  }
 
   function drawDnf(k: number) {
     const gg = g!, d = dnf!, W = canvas!.width, H = canvas!.height, h = d.hero;
@@ -1116,11 +1150,30 @@ export function createRenderer(): GameRenderer {
       strokeText(gg, q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u); gg.fillStyle = q.color; fillText(gg, q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u);
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
+    // active workout & combat buff pills (Fired Up, In Rhythm, Ward, Rally)
+    const buffs = activeBuffs(s);
+    const buffY = L + (40 + (s.perks?.ranks.length ? 17 : 0)) * hu;
+    if (buffs.length) {
+      let bx = L;
+      gg.font = pixelFont(Math.round(8.5 * hu));
+      for (const b of buffs) {
+        const bw = textW(gg, b.label) + 10 * hu, bh = 13 * hu;
+        pixelPanel(gg, bx, buffY, bw, bh, b.color, '#15111fe8', dpr);
+        if (b.fill !== undefined) {
+          gg.fillStyle = b.color + '44';
+          gg.fillRect(Math.round(bx + dpr), Math.round(buffY + bh - 2 * hu), Math.round((bw - 2 * dpr) * Math.max(0, Math.min(1, b.fill))), Math.round(1.5 * hu));
+        }
+        gg.fillStyle = b.color; fillTextShadow(gg, b.label, bx + 5 * hu, buffY + 9.5 * hu);
+        hudBox(bx, buffY, bw, bh);
+        bx += bw + 4 * hu;
+      }
+    }
     // toasts
     gg.font = pixelFont(Math.round(11 * hu));
+    const buffOff = buffs.length ? 18 : 0;
     s.toasts.forEach((tt, i) => {
       const age = s.t - tt.t0; gg.globalAlpha = Math.max(0, Math.min(1, (6 - age) / 1.5));
-      gg.lineWidth = 3; gg.strokeStyle = '#000'; const ty0 = L + (52 + (s.perks?.ranks.length ? 17 : 0) + i * 15) * hu; strokeText(gg, tt.text, L, ty0, W - 2 * L); gg.fillStyle = tt.color; fillText(gg, tt.text, L, ty0, W - 2 * L);
+      gg.lineWidth = 3; gg.strokeStyle = '#000'; const ty0 = L + (52 + (s.perks?.ranks.length ? 17 : 0) + buffOff + i * 15) * hu; strokeText(gg, tt.text, L, ty0, W - 2 * L); gg.fillStyle = tt.color; fillText(gg, tt.text, L, ty0, W - 2 * L);
     });
     gg.globalAlpha = 1;
 

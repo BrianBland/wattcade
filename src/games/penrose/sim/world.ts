@@ -559,6 +559,12 @@ export class SimWorld {
         out[r.groupId] = r.transform();
       }
     }
+    for (const m of this.built.machines) {
+      const gid = `g_${m.id}`;
+      if (m.transform && !out[gid]) {
+        out[gid] = m.transform();
+      }
+    }
     return out;
   }
 

@@ -142,6 +142,7 @@ export class PenroseRenderer implements GameRenderer {
   private lastT = 0;
   private elapsed = 0;
   private lastLoadSeq = -1;
+  private lastFitYaw = Number.NaN;
   private lastEventId = 0;
   private toastUntil = 0;
   private titleUntil = 0;
@@ -249,9 +250,10 @@ export class PenroseRenderer implements GameRenderer {
     this.fitCamera();
   }
 
-  private fitCamera(): void {
+  private fitCamera(yawRad = 0): void {
     if (!this.camera || !this.built) return;
-    let [x0, x1, y0, y1] = this.built.bounds;
+    this.lastFitYaw = yawRad;
+    let [x0, x1, y0, y1] = this.built.boundsAtYaw(yawRad);
     const pad = this.built.pad;
     x0 -= pad; x1 += pad; y0 -= pad; y1 += pad;
     const bw = Math.max(1, x1 - x0);
@@ -451,7 +453,10 @@ export class PenroseRenderer implements GameRenderer {
     }
     if (!this.built) return;
 
-    // 1. Aim camera (level yaw + subtle paddle peek + roll)
+    // 1. Fit per-yaw bounds if camera turned, then aim camera (level yaw + subtle paddle peek + roll)
+    if (Math.abs(snap.yawRad - this.lastFitYaw) > 1e-4 || Number.isNaN(this.lastFitYaw)) {
+      this.fitCamera(snap.yawRad);
+    }
     this.aimCamera(snap.yawRad + snap.peekYawRad, snap.rollRad);
 
     // 2. Sync 3D diorama & portals

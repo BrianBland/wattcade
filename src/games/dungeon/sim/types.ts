@@ -3,6 +3,8 @@ import type { Element, Gear, Rarity, Slot, UniqueFx, Weapon, WeaponStyle } from 
 import type { UpgradeId } from './meta';
 import type { KitId, PerkId } from './perks';
 import type { RunResult } from './descent';
+import type { LootOfferView, StatDelta } from './lootOffer';
+export type { LootOfferView, StatDelta };
 
 export type EliteMod = 'undying' | 'splitting' | 'shielded' | 'swift' | 'volatile';
 export interface EnemyView {
@@ -87,6 +89,8 @@ export interface DungeonSnapshot {
   boss: { active: boolean; name: string; hp: number; maxHp: number; phase: 1 | 2 | 3; cycle: 'idle' | 'windup' | 'exposed' | 'stagger'; left: number; fightT: number; tide: number; splits: [number, number] } | null;
   /** optional: an older sim chunk may not send it */
   perks?: PerkView;
+  /** optional: active non-blocking loot choice prompt (default auto-resolves; Y flips) */
+  lootOffer?: LootOfferView | null;
   stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; /** hero damage output while firing, normalised per weapon (sum of per-shot damage / weapon rate), and seconds spent firing */ output: number; fireT: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number };
   hooks: { boss: boolean; shielded: boolean; swamp: boolean; seg: string; cadence: number; powerFtp: number };
 }

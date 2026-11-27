@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
 import type { DungeonSnapshot } from '../sim/types';
-import { CUE_BPM, beatS, cueNotes, mtof, musicFor, type DungeonCue } from '../render/musicScore';
+import { CUE_BPM, PHRASE_BEATS, beatS, cueNotes, layerGain, mtof, musicFor, type DungeonCue } from '../render/musicScore';
 import { DungeonMusic } from '../render/music';
 import { DungeonSound } from '../render/sound';
 import { JuiceEngine, activeBuffs } from '../render/juice';
@@ -13,10 +13,22 @@ function baseSnap(): DungeonSnapshot {
   return s.sim.snapshot() as DungeonSnapshot;
 }
 
-describe('Purgatour AV soundscape (pure scores & Node-safe audio)', () => {
-  it('selects camp, zone, ambush, boss (with phase acceleration), and victory cues', () => {
+describe('Purgatour AV soundscape (multi-section scores, intensity & Node-safe audio)', () => {
+  it('selects camp, zone, ambush, boss (with phase acceleration), victory cues and scales intensity dynamically', () => {
     const run = baseSnap();
     expect(musicFor(run)?.cue).toBe('keep');
+
+    // Calm empty room vs active fired-up skirmish scales dynamic combat intensity
+    const calm = musicFor({ ...run, enemies: [], player: { ...run.player, firedUpLeft: 0, rallied: false } })!;
+    const intense = musicFor({
+      ...run,
+      enemies: Array.from({ length: 5 }, (_, i) => ({
+        id: i + 1, kind: 'chaser', x: 5 + i, y: 5, r: 0.4, hp: 50, maxHp: 50,
+        face: 1, hurt: 9, slowed: false, dot: false, tell: 0, variant: 0, shieldFrac: 0, exposed: false, elite: null,
+      })),
+      player: { ...run.player, firedUpLeft: 20, rallied: true },
+    })!;
+    expect(intense.intensity).toBeGreaterThan(calm.intensity + 0.3);
 
     const catacombs = { ...run, world: { ...run.world, theme: 2 } };
     expect(musicFor(catacombs)?.cue).toBe('catacombs');
@@ -31,6 +43,7 @@ describe('Purgatour AV soundscape (pure scores & Node-safe audio)', () => {
     const bossP3: DungeonSnapshot = { ...run, boss: { name: 'King Gel', hp: 200, maxHp: 1000, active: true, phase: 3, cycle: 'exposed', left: 4, fightT: 60, tide: 0, splits: [0.66, 0.33] } };
     expect(musicFor(bossP1)?.cue).toBe('boss');
     expect(musicFor(bossP3)!.tempoScale).toBeGreaterThan(musicFor(bossP1)!.tempoScale);
+    expect(musicFor(bossP3)!.intensity).toBeGreaterThan(musicFor(bossP1)!.intensity);
 
     const camp = { ...run, phase: 'camp' as const, camp: { bank: 0, sel: 0, autoStartS: 45, autoStartLeft: 45, startFloor: 1, maxStartFloor: 1, autoInvest: false, rows: [], bestFloor: 1, runs: 1 } };
     expect(musicFor(camp)?.cue).toBe('camp');
@@ -39,25 +52,41 @@ describe('Purgatour AV soundscape (pure scores & Node-safe audio)', () => {
     expect(musicFor(campWin)?.cue).toBe('victory');
   });
 
-  it('produces valid musical notes across a full 16-beat phrase for every theme', () => {
+  it('produces valid multi-section 64-beat scores with A/B evolution for every theme', () => {
     const cues: DungeonCue[] = ['camp', 'keep', 'catacombs', 'crypt', 'deep', 'boss', 'victory'];
+    const unpitched = new Set(['snare', 'hat', 'openhat', 'shaker']);
     for (const cue of cues) {
       expect(CUE_BPM[cue]).toBeGreaterThanOrEqual(80);
       expect(beatS(cue)).toBeGreaterThan(0.3);
       let count = 0;
-      for (let b = 0; b < 16; b++) {
+      const sectionA: number[] = [];
+      const sectionB: number[] = [];
+      for (let b = 0; b < PHRASE_BEATS; b++) {
         const notes = cueNotes(cue, b);
         for (const n of notes) {
           count++;
           expect(n.dur).toBeGreaterThan(0);
           expect(n.vol).toBeGreaterThan(0);
-          if (n.inst !== 'snare' && n.inst !== 'hat') {
+          expect(n.vol).toBeLessThanOrEqual(1);
+          if (n.pan !== undefined) {
+            expect(n.pan).toBeGreaterThanOrEqual(-1);
+            expect(n.pan).toBeLessThanOrEqual(1);
+          }
+          if (!unpitched.has(n.inst)) {
             expect(mtof(n.midi)).toBeGreaterThan(20);
+            if (b < 16) sectionA.push(n.midi);
+            if (b >= 32 && b < 48) sectionB.push(n.midi);
           }
         }
       }
-      expect(count).toBeGreaterThan(16);
+      expect(count).toBeGreaterThan(120);
+      // Verify genuine A vs B musical contrast (not a 4-bar loop!)
+      expect(sectionA).not.toEqual(sectionB);
     }
+    expect(layerGain(undefined, 0.2)).toBe(1);
+    expect(layerGain(0.6, 0.3)).toBe(0);
+    expect(layerGain(0.6, 0.6)).toBeGreaterThan(0.4);
+    expect(layerGain(0.6, 0.85)).toBe(1);
   });
 
   it('safely runs DungeonMusic and DungeonSound in Node without WebAudio', () => {

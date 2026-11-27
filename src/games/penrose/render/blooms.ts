@@ -804,11 +804,19 @@ export function makeRibbon(
     else quad(a, b, c, d);
   };
 
+  const count = road.localS.length;
   const cross = (i: number): [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3] => {
     const s = road.localS[i];
     const p = new THREE.Vector3(s.p[0], s.p[1], s.p[2]);
     const n = new THREE.Vector3(s.n[0], s.n[1], s.n[2]);
     const d = new THREE.Vector3(s.d[0], s.d[1], s.d[2]);
+    // On closed loops, blend the tangent cleanly across the seam (0 <-> count-1) so corners never pinch
+    if (road.closed && count > 3 && (i === 0 || i === count - 1)) {
+      const prev = road.localS[count - 2].p;
+      const next = road.localS[1].p;
+      const wd = new THREE.Vector3(next[0] - prev[0], next[1] - prev[1], next[2] - prev[2]);
+      if (wd.lengthSq() > 1e-6) d.copy(wd.normalize());
+    }
     const side = new THREE.Vector3().crossVectors(d, n);
     if (side.lengthSq() < 1e-8) side.set(1, 0, 0);
     else side.normalize();
@@ -822,22 +830,32 @@ export function makeRibbon(
     ];
   };
 
-  const count = road.localS.length;
   let flip = false;
-  if (o.cull && count > 1) {
+  if (count > 1) {
     const a = cross(0), b = cross(1);
     const nrm = new THREE.Vector3().subVectors(a[1], a[0]).cross(new THREE.Vector3().subVectors(b[1], a[0]));
     const n0 = road.localS[0].n;
     flip = nrm.x * n0[0] + nrm.y * n0[1] + nrm.z * n0[2] < 0;
   }
 
-  for (let i = 0; i < count - 1; i++) {
-    if (o.dash && (road.cum[i] % o.dash[0]) > o.dash[1]) continue;
-    const a = cross(i), b = cross(i + 1);
+  const emitSeg = (a: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3], b: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3]) => {
     const faces = th > 0 ? 4 : 1;
     for (let k = 0; k < faces; k++) {
       if (flip) quad(a[k], b[k], b[(k + 1) % 4], a[(k + 1) % 4]);
       else quad(a[k], a[(k + 1) % 4], b[(k + 1) % 4], b[k]);
+    }
+  };
+
+  for (let i = 0; i < count - 1; i++) {
+    if (o.dash && (road.cum[i] % o.dash[0]) > o.dash[1]) continue;
+    emitSeg(cross(i), cross(i + 1));
+  }
+
+  // Close hairline seam if a closed loop's final sample does not exactly coincide with sample 0
+  if (road.closed && count > 2 && !o.dash) {
+    const p0 = road.localS[0].p, p1 = road.localS[count - 1].p;
+    if (Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]) > 1e-3) {
+      emitSeg(cross(count - 1), cross(0));
     }
   }
 

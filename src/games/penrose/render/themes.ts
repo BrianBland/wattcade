@@ -359,6 +359,8 @@ export interface TriMatOpts {
   side?: boolean;
   opacity?: number;
   fresh?: boolean;
+  /** Subtle polygonOffsetFactor/Units (positive pushes slightly back in depth to prevent road/wall z-fighting). */
+  polyOff?: number;
 }
 
 export function setTri(mat: THREE.ShaderMaterial, p: TriPalette): void {
@@ -404,7 +406,8 @@ export class LevelDisposer {
     const grad = opt.grad ?? 0.07;
     const opacity = opt.opacity ?? 1;
     const side = opt.side ? 1 : 0;
-    const key = opt.fresh ? null : `${p.t}|${p.l}|${p.r}|${grad}|${side}|${opacity}`;
+    const po = opt.polyOff ?? 0;
+    const key = opt.fresh ? null : `${p.t}|${p.l}|${p.r}|${grad}|${side}|${opacity}|${po}`;
     if (key) {
       const hit = this.triCache.get(key);
       if (hit) return hit;
@@ -426,6 +429,9 @@ export class LevelDisposer {
       side: opt.side ? THREE.DoubleSide : THREE.FrontSide,
       transparent: opacity < 1,
       depthWrite: opacity >= 1,
+      polygonOffset: po !== 0,
+      polygonOffsetFactor: po,
+      polygonOffsetUnits: po,
     });
     this.mats.add(m);
     if (key) this.triCache.set(key, m);

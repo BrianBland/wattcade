@@ -1480,7 +1480,16 @@ export function createWallArm(opts: {
       m.load = m.on && drive > 0 ? (opts.hardPush ? (canPush ? 0.95 : 0.55) : ld) : 0;
       return m.load;
     },
-    extra: () => ({ ang: stepper.ang, len: opts.len, block: bs ?? 0 }),
+    extra: () => {
+      const uW = v3Norm(V(F.u[0], F.u[1], F.u[2]));
+      return {
+        ang: stepper.ang,
+        len: opts.len,
+        block: bs ?? 0,
+        nx: nW[0], ny: nW[1], nz: nW[2],
+        ux: uW[0], uy: uW[1], uz: uW[2],
+      };
+    },
   };
 
   return { m, road, ang: () => stepper.ang, at: (d) => stepper.at(d), driveTo: (d) => stepper.driveTo(m, d), armMat, groupId };
@@ -1558,7 +1567,7 @@ export function createAwning(opts: {
     capPos: blW,
     capNormal: nW,
     size: 0.5,
-    transform: getMat,
+    transform: () => matMul(getMat(), basisMat),
     press(dirHint) { stepper.onPress(m, dirHint ?? 0, true, pendingEmit); },
     tick(dt, drive, _bike, tun, emit) {
       pendingEmit = emit;
@@ -1646,7 +1655,24 @@ export function createWallLift(opts: {
       m.status = z === opts.hi ? 'Top' : z === opts.lo ? 'Bottom' : 'Moving';
       return moving ? 0.15 : 0;
     },
-    extra: () => ({ z, lo: opts.lo, hi: opts.hi }),
+    extra: () => {
+      const uW = v3Norm(V(opts.F.u[0], opts.F.u[1], opts.F.u[2]));
+      const nW = v3Norm(V(opts.F.n[0], opts.F.n[1], opts.F.n[2]));
+      const cSk = opts.F.at((opts.u[0] + opts.u[1]) / 2, opts.h / 2, -0.01);
+      const cW = V(cSk[0], cSk[1], cSk[2]);
+      const r0Sk = opts.F.at(opts.u[0] - 0.35, (opts.lo + opts.hi + opts.h) / 2, 0.02);
+      const r1Sk = opts.F.at(opts.u[1] + 0.35, (opts.lo + opts.hi + opts.h) / 2, 0.02);
+      const r0W = V(r0Sk[0], r0Sk[1], r0Sk[2]);
+      const r1W = V(r1Sk[0], r1Sk[1], r1Sk[2]);
+      return {
+        z, lo: opts.lo, hi: opts.hi, h: opts.h, w: opts.u[1] - opts.u[0],
+        cx: cW[0], cy: cW[1], cz: cW[2],
+        r0x: r0W[0], r0y: r0W[1], r0z: r0W[2],
+        r1x: r1W[0], r1y: r1W[1], r1z: r1W[2],
+        ux: uW[0], uy: uW[1], uz: uW[2],
+        nx: nW[0], ny: nW[1], nz: nW[2],
+      };
+    },
   };
 
   return { m, loop, z: () => z, moving: () => moving, groupId };

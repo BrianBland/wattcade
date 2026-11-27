@@ -339,6 +339,7 @@ export interface PenroseSnapshot {
   /** Wheel pose for rendering. */
   wheel: {
     mode: WheelMode;
+    roadId: string;
     t: number;
     pos: Vec3;
     normal: Vec3;

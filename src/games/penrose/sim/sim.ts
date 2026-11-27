@@ -368,6 +368,7 @@ export function createPenroseSim(ctx: GameContext, rawOpts?: Record<string, unkn
         wallIndex: world.wallIndex,
         wheel: {
           mode: world.wheel.mode,
+          roadId: world.wheel.road.id,
           t: world.wheel.t,
           pos: world.wheel.pos,
           normal: world.wheel.normal,

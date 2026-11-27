@@ -1,8 +1,12 @@
 /**
  * Strict-TS Three.js diorama builder for Penrose Pedals.
- * Builds a complete, leak-free Three.js scene from a `PenroseSnapshot`,
- * exposes fast per-frame synchronization (`sync`), one-time `wheelOnTop` layer tagging,
- * throttled portal render targets, and diegetic feedback cues.
+ * Builds a complete, leak-free Three.js scene from a `PenroseSnapshot`, with:
+ * - Seamless open-cap optical perspective joins + golden seam glints
+ * - Smart road-over-road `wheelOnTop` occlusion (passes under overpasses, never clips at joins)
+ * - Exact wall-frame alignment for The Cube's awning, sail bridge, wall lift & rails, and tip blocks
+ * - Zero z-fighting via polygonOffset on flush support masonry & clean turntable/disc drums
+ * - Procedural Monument Valley stepped stone piers & terrace grounding into atmospheric haze
+ * - Per-yaw camera framing (`boundsAtYaw`) so camera-crank rotations never crop roads or caps
  */
 
 import * as THREE from 'three';
@@ -46,6 +50,7 @@ import {
 const TAU = Math.PI * 2;
 const V3 = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, z, y);
 const W3 = (p: Vec3): THREE.Vector3 => new THREE.Vector3(p[0], p[1], p[2]);
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 function applyMat4(obj: THREE.Object3D, m: Mat4): void {
   const tm = new THREE.Matrix4();
@@ -53,6 +58,23 @@ function applyMat4(obj: THREE.Object3D, m: Mat4): void {
   obj.matrixAutoUpdate = false;
   obj.matrix.copy(tm);
   obj.matrixWorldNeedsUpdate = true;
+}
+
+/** Build a right-handed transform matrix placing a unit box along basis (bx, by, bz) scaled by (sx, sy, sz) at pos. */
+function makeOrientedBoxMatrix(
+  bx: THREE.Vector3,
+  by: THREE.Vector3,
+  bz: THREE.Vector3,
+  sx: number,
+  sy: number,
+  sz: number,
+  pos: THREE.Vector3,
+): THREE.Matrix4 {
+  const x = new THREE.Vector3().crossVectors(by, bz).dot(bx) < 0 ? bx.clone().negate() : bx.clone();
+  return new THREE.Matrix4()
+    .makeBasis(x, by, bz)
+    .multiply(new THREE.Matrix4().makeScale(sx, sy, sz))
+    .setPosition(pos);
 }
 
 function addBox(
@@ -149,6 +171,8 @@ export interface BuiltScene {
   pad: number;
   hasOverlay: boolean;
   caps: CapAnchor[];
+  /** Smoothly interpolated framing bounds for any camera yaw (prevents cropping on camera-crank levels). */
+  boundsAtYaw: (yawRad: number) => [number, number, number, number];
   sync: (
     snap: PenroseSnapshot,
     dt: number,
@@ -175,19 +199,70 @@ const SR = new THREE.Vector3(1, 0, -1).normalize();
 const SU = new THREE.Vector3(-1, 2, -1).normalize();
 const SD = new THREE.Vector3(1, 1, 1).normalize();
 
-function computeScreenBounds(pts: readonly Vec3[], center: Vec3): [number, number, number, number] {
-  const c = V3(center[0], center[1], center[2]);
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (const pt of pts) {
-    const d = V3(pt[0], pt[1], pt[2]).sub(c);
-    const sx = d.dot(SR), sy = d.dot(SU);
-    if (sx < x0) x0 = sx;
-    if (sx > x1) x1 = sx;
-    if (sy < y0) y0 = sy;
-    if (sy > y1) y1 = sy;
-  }
-  if (!Number.isFinite(x0)) return [-6, 6, -5, 5];
-  return [x0, x1, y0, y1];
+interface YawFrame {
+  yawRad: number;
+  bounds: [number, number, number, number];
+}
+
+function computeYawFrames(
+  yawsDeg: readonly number[],
+  pts: readonly Vec3[],
+  roads: readonly SimRoad[],
+  caps: readonly Vec3[],
+  centerSketch: Vec3,
+): YawFrame[] {
+  const c = V3(centerSketch[0], centerSketch[1], centerSketch[2]);
+  const stops = yawsDeg.length ? [...yawsDeg].sort((a, b) => a - b) : [0];
+  return stops.map((yd) => {
+    const yawRad = yd * DEG;
+    const R = SR.clone().applyAxisAngle(Y_AXIS, yawRad);
+    const U = SU.clone().applyAxisAngle(Y_AXIS, yawRad);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    const addWorld = (p: THREE.Vector3, margin = 0) => {
+      const dx = p.x - c.x, dy = p.y - c.y, dz = p.z - c.z;
+      const sx = dx * R.x + dy * R.y + dz * R.z;
+      const sy = dx * U.x + dy * U.y + dz * U.z;
+      if (sx - margin < x0) x0 = sx - margin;
+      if (sx + margin > x1) x1 = sx + margin;
+      if (sy - margin < y0) y0 = sy - margin;
+      if (sy + margin > y1) y1 = sy + margin;
+    };
+    if (yd === 0) {
+      for (const pt of pts) addWorld(V3(pt[0], pt[1], pt[2]), 0);
+    }
+    const tmp = new THREE.Vector3();
+    for (const r of roads) {
+      const src = r.wp.length ? r.wp : r.localS.map((q) => q.p);
+      for (const p of src) {
+        tmp.set(p[0], p[1], p[2]);
+        addWorld(tmp, 0.78);
+      }
+    }
+    for (const cp of caps) {
+      tmp.set(cp[0], cp[1], cp[2]);
+      addWorld(tmp, 0.65);
+    }
+    if (!Number.isFinite(x0)) return { yawRad, bounds: [-6, 6, -5, 5] };
+    return { yawRad, bounds: [x0, x1, y0, y1] };
+  });
+}
+
+/* ---------- Open-Cap Road Rig & Perspective Seam Management ---------- */
+
+type CapKey = '00' | '10' | '01' | '11';
+
+interface RoadRig {
+  road: SimRoad;
+  parent: THREE.Object3D;
+  mat: THREE.Material;
+  w: number;
+  th: number;
+  cull: boolean;
+  variants: Map<CapKey, THREE.Mesh>;
+  activeKey: CapKey;
+  activeMesh: THREE.Mesh;
+  worldBox: THREE.Box3;
+  hasDynamicTransform: boolean;
 }
 
 export function buildLevelScene(
@@ -209,7 +284,6 @@ export function buildLevelScene(
   const framePts = built.frameOverride?.pts ?? def.pts;
   const pad = built.frameOverride?.pad ?? def.pad ?? 0.9;
   const center = V3(frameCenter[0], frameCenter[1], frameCenter[2]);
-  const bounds = computeScreenBounds(framePts, frameCenter);
 
   // Dynamic transform groups keyed by groupId (e.g. `g_tt1`, `cube_body`, `cube_upper`)
   const groups = new Map<string, THREE.Group>();
@@ -224,13 +298,29 @@ export function buildLevelScene(
     return g;
   };
 
-  // 1. Build Roads
+  // 1. Build Roads with Open-Cap Variant Support & Double-Sided Lane Dashes
   const deckPal = th.path ?? th.deck ?? sp(th, 1);
-  const laneMat = D.tri(tone(th.lane));
+  // Double-sided lane material ensures vertical walls, inverted ceilings & Möbius roads always show crisp dashes
+  const laneMat = D.tri(tone(th.lane), { side: true });
   const roadMatDefault = D.tri(deckPal, { side: true });
   const goalRoadMat = D.tri(mixPal(deckPal, tone(th.goal), 0.14), { side: true });
   const waterRoadMat = D.tri(tone('#A8DCFA', 0.88, 0.72), { opacity: 0.55, side: true });
   const dynamicRoadMats = new Map<string, THREE.ShaderMaterial>();
+
+  const roadRigs: RoadRig[] = [];
+  const roadRigById = new Map<string, RoadRig>();
+
+  const getOrBuildRoadVariant = (rig: RoadRig, key: CapKey): THREE.Mesh => {
+    const existing = rig.variants.get(key);
+    if (existing) return existing;
+    const open: [boolean, boolean] = [key[0] === '1', key[1] === '1'];
+    const mesh = makeRibbon(rig.road, rig.w, rig.th, rig.mat, D, { cull: rig.cull, open });
+    mesh.userData.isRoad = true;
+    mesh.visible = false;
+    rig.parent.add(mesh);
+    rig.variants.set(key, mesh);
+    return mesh;
+  };
 
   let minRoadY = Infinity;
   for (const r of built.roads) {
@@ -248,12 +338,37 @@ export function buildLevelScene(
       }
       mat = dm;
     }
-    const slab = makeRibbon(r, r.w ?? 0.96, r.th ?? 0.28, mat, D, { cull: !r.isReflection });
+
+    const rw = r.w ?? 0.96;
+    const rth = r.th ?? 0.24;
+    const cull = !r.isReflection;
+    const slab = makeRibbon(r, rw, rth, mat, D, { cull });
     slab.userData.isRoad = true;
     parent.add(slab);
 
-    if (!r.isReflection) {
-      const dash = makeRibbon(r, 0.045, 0, laneMat, D, { lift: 0.012, dash: [0.38, 0.18] });
+    const variants = new Map<CapKey, THREE.Mesh>([['00', slab]]);
+    const worldBox = new THREE.Box3();
+    for (const p of r.wp.length ? r.wp : r.localS.map((s) => s.p)) {
+      worldBox.expandByPoint(new THREE.Vector3(p[0], p[1], p[2]));
+    }
+    const rig: RoadRig = {
+      road: r,
+      parent,
+      mat,
+      w: rw,
+      th: rth,
+      cull,
+      variants,
+      activeKey: '00',
+      activeMesh: slab,
+      worldBox,
+      hasDynamicTransform: !!r.transform,
+    };
+    roadRigs.push(rig);
+    roadRigById.set(r.id, rig);
+
+    if (!r.isReflection && !r.noLane) {
+      const dash = makeRibbon(r, 0.048, 0, laneMat, D, { lift: 0.015, dash: [0.38, 0.18] });
       dash.userData.isRoad = true;
       parent.add(dash);
     }
@@ -271,7 +386,6 @@ export function buildLevelScene(
 
   // Cube body visual group (synced from cubeRotY & cubeSink)
   let cubeGroup: THREE.Group | null = null;
-  let cubeUpperGroup: THREE.Group | null = null;
 
   // Build declarative VisualProps
   const rng = mulberry(1337 + def.id.length * 97);
@@ -279,67 +393,122 @@ export function buildLevelScene(
     buildVisualProp(prop, {
       root, getGroup, th, D, tex, rng,
       addMachUpd, portalUpdaters, generalUpdaters,
-      onCubeGroup: (cg, ug) => { cubeGroup = cg; cubeUpperGroup = ug; },
+      onCubeGroup: (cg) => { cubeGroup = cg; },
     });
   }
 
-  // Automatic extra visual scaffolding for wall machines (e.g. Cube awning leaf, wallArm hub/sail, wallLift deck)
+  // Build architectural grounding piers/terraces for terrain/beat-composer levels
+  if (def.terrain || (built.anchors && built.anchors.length > 0)) {
+    buildArchitecturalGrounding(root, built.roads, built.anchors ?? [], th, D, minRoadY);
+  }
+
+  // Exact wall-frame visual scaffolding for Cube / wall machines (awning, wallArm, wallLift)
+  const upVec = new THREE.Vector3(0, 1, 0);
   for (const m of snap.machines) {
     if (m.kind === 'awning') {
+      // `g_${m.id}` receives `matMul(getMat(), basisMat)` directly from sim/machines.ts!
+      // Local space is X = along wall (u), Y = up, Z = outward normal (n), matching `aw.occluder` to the mm!
       const g = getGroup(`g_${m.id}`);
       const w = Number(m.extra?.w ?? 1.9);
       const d = Number(m.extra?.d ?? 1.0);
       const leafM = D.tri(th.mech, { fresh: true, side: true });
       const slab = new THREE.Mesh(D.unitBox, leafM);
-      slab.scale.set(w, 0.09, d);
+      slab.scale.set(w, 0.08, d);
       slab.position.set(0, 0, d / 2);
       g.add(slab);
+
+      // Front scalloped valance stripes
       for (let k = 0; k < 4; k++) {
         const stripe = new THREE.Mesh(
           D.unitBox,
           D.basic(k % 2 ? (th.trim ?? '#FFFFFF') : (th.mechDark?.l ?? th.goal)),
         );
-        stripe.scale.set(w / 4 - 0.02, 0.11, 0.14);
+        stripe.scale.set(w / 4 - 0.02, 0.1, 0.14);
         stripe.position.set(-w / 2 + w / 8 + (k * w) / 4, 0, d - 0.07);
         g.add(stripe);
       }
+      // Subtle hinge rod along wall edge
+      const rod = new THREE.Mesh(D.geo(new THREE.CylinderGeometry(0.045, 0.045, w + 0.08, 10)), D.tri(th.mechDark ?? th.idle));
+      rod.rotation.z = Math.PI / 2;
+      g.add(rod);
+
       addMachUpd(m.id, (ms) => {
-        setTri(leafM, mixPal(th.mech, tone(th.goal), ms.ready ? 0.45 : ms.on ? 0.25 : 0));
+        setTri(leafM, mixPal(th.mech, tone(th.goal), ms.ready ? 0.42 : ms.on ? 0.22 : 0));
       });
     } else if (m.kind === 'wallArm') {
       const g = getGroup(`g_${m.id}`);
-      const hub = new THREE.Mesh(D.geo(new THREE.CylinderGeometry(0.36, 0.36, 0.09, 20)), D.tri(th.mechDark ?? th.idle));
-      hub.rotation.x = Math.PI / 2;
+      const nx = Number(m.extra?.nx ?? 1), ny = Number(m.extra?.ny ?? 0), nz = Number(m.extra?.nz ?? 0);
+      const ux = Number(m.extra?.ux ?? 0), uy = Number(m.extra?.uy ?? 0), uz = Number(m.extra?.uz ?? -1);
+      const nW = new THREE.Vector3(nx, ny, nz).normalize();
+      const uW = new THREE.Vector3(ux, uy, uz).normalize();
+
+      // Hub disc lying flush against the wall normal
+      const hub = new THREE.Mesh(D.geo(new THREE.CylinderGeometry(0.42, 0.42, 0.08, 24)), D.tri(th.mechDark ?? th.idle));
+      hub.quaternion.setFromUnitVectors(upVec, nW);
+      hub.position.copy(nW).multiplyScalar(-0.03);
+      hub.userData.isRoad = true;
       g.add(hub);
-      // Sail bridge on wall 5 (`cube_sail`) gets a visible teal sail plate that hides the hole when laid flat!
+
+      // Sail plate on Wall 5 (`cube_sail`): exact match with `sailOcc` OBB in sim/cube.ts!
       if (m.id === 'cube_sail') {
         const sailMat = D.tri(th.mech, { fresh: true, side: true });
         const sailPlate = new THREE.Mesh(D.unitBox, sailMat);
-        // Local coords in arm group: arm runs along F[0].u = [0,-1,0] -> world [0,0,-1], normal F[0].n = [1,0,0] -> world [1,0,0]
-        sailPlate.scale.set(0.95, 0.07, 1.3);
-        sailPlate.position.set(0.48, -0.3, -0.85);
+        sailPlate.matrixAutoUpdate = false;
+        const scPos = uW.clone().multiplyScalar(0.85).addScaledVector(upVec, -0.3).addScaledVector(nW, 0.475);
+        sailPlate.matrix.copy(makeOrientedBoxMatrix(uW, upVec, nW, 1.3, 0.06, 0.95, scPos));
         g.add(sailPlate);
         addMachUpd(m.id, (ms) => {
           setTri(sailMat, mixPal(th.mech, tone(th.goal), ms.on ? 0.35 : 0));
         });
       }
-      const blockSize = Number(m.extra?.block ?? 0);
-      if (blockSize > 0) {
+
+      // Tip block on Wall 6 (`cube_arm`): sits flush under the curled road tip along uW!
+      const bs = Number(m.extra?.block ?? 0);
+      if (bs > 0) {
         const len = Number(m.extra?.len ?? 2);
-        const blk = new THREE.Mesh(D.unitBox, D.tri(th.roof ?? th.mech));
-        blk.scale.set(blockSize, blockSize, blockSize);
-        blk.position.set(-len, 0, 0);
+        const BR = 0.08;
+        const blk = new THREE.Mesh(D.unitBox, D.tri(th.roof ?? th.mech, { polyOff: 1 }));
+        blk.matrixAutoUpdate = false;
+        const bPos = uW.clone().multiplyScalar(len + BR - 0.008 - bs / 2).addScaledVector(nW, -0.006 - bs / 2);
+        blk.matrix.copy(makeOrientedBoxMatrix(uW, upVec, nW.clone().negate(), bs, bs, bs, bPos));
         g.add(blk);
       }
     } else if (m.kind === 'wallLift') {
       const g = getGroup(`g_${m.id}`);
-      const plateMat = D.tri(th.mech, { fresh: true });
+      const ex = m.extra ?? {};
+      const ux = Number(ex.ux ?? 0), uy = Number(ex.uy ?? 0), uz = Number(ex.uz ?? 1);
+      const nx = Number(ex.nx ?? -1), ny = Number(ex.ny ?? 0), nz = Number(ex.nz ?? 0);
+      const uW = new THREE.Vector3(ux, uy, uz).normalize();
+      const nW = new THREE.Vector3(nx, ny, nz).normalize();
+      const w = Number(ex.w ?? 1.4);
+      const h = Number(ex.h ?? 1.0);
+      const lo = Number(ex.lo ?? 3.38);
+      const hi = Number(ex.hi ?? 4.5);
+      const cPos = new THREE.Vector3(Number(ex.cx ?? -3), Number(ex.cy ?? 0.5), Number(ex.cz ?? 1.2));
+
+      // Backing plate proud of the wall behind the moving loop
+      const plateMat = D.tri(th.mech, { fresh: true, polyOff: 1 });
       const plate = new THREE.Mesh(D.unitBox, plateMat);
-      plate.scale.set(0.08, 1.4, 1.9);
-      plate.position.set(-3.0, 0.5, 1.2);
+      plate.matrixAutoUpdate = false;
+      plate.matrix.copy(makeOrientedBoxMatrix(uW, upVec, nW, w + 0.5, h + 0.5, 0.06, cPos));
+      plate.userData.isRoad = true;
       g.add(plate);
+
+      // Twin vertical guide rails mounted on `cube_body` so they rotate & sink with the tower
+      const railParent = getGroup('cube_body');
+      const railMat = D.tri(th.mechDark ?? th.idle, { polyOff: 1 });
+      const railLen = hi - lo + h + 0.6;
+      const r0 = new THREE.Vector3(Number(ex.r0x ?? -3), Number(ex.r0y ?? 4.4), Number(ex.r0z ?? 0.15));
+      const r1 = new THREE.Vector3(Number(ex.r1x ?? -3), Number(ex.r1y ?? 4.4), Number(ex.r1z ?? 2.25));
+      for (const rc of [r0, r1]) {
+        const rail = new THREE.Mesh(D.unitBox, railMat);
+        rail.matrixAutoUpdate = false;
+        rail.matrix.copy(makeOrientedBoxMatrix(uW, upVec, nW, 0.08, railLen, 0.06, rc));
+        railParent.add(rail);
+      }
+
       addMachUpd(m.id, (ms) => {
-        setTri(plateMat, mixPal(th.mech, tone(th.goal), ms.ready ? 0.45 : 0));
+        setTri(plateMat, mixPal(th.mech, tone(th.goal), ms.ready ? 0.42 : 0));
       });
     }
   }
@@ -360,7 +529,6 @@ export function buildLevelScene(
   }
   const blooms = new Map<string, BloomInst>();
   const caps: CapAnchor[] = [];
-  const upVec = new THREE.Vector3(0, 1, 0);
 
   for (const m of snap.machines) {
     if (!m.key) continue;
@@ -375,7 +543,6 @@ export function buildLevelScene(
     rig.group.scale.setScalar(sz);
     holder.add(rig.group);
 
-    // Engage ripple ring
     const ripple = new THREE.Mesh(
       D.geo(new THREE.RingGeometry(0.46, 0.55, 36)),
       D.basic(FACE_COLORS[m.key], { opacity: 0, side: true }),
@@ -384,7 +551,6 @@ export function buildLevelScene(
     ripple.position.y = 0.03;
     holder.add(ripple);
 
-    // Hint focus halo ring (pulses brightly when hint highlights this machine)
     const ringHalo = new THREE.Mesh(
       D.geo(new THREE.RingGeometry(0.62, 0.78, 36)),
       D.basic('#FFE25A', { opacity: 0, side: true }),
@@ -481,7 +647,7 @@ export function buildLevelScene(
     gateMeshes.set(gt.id, { left, right });
   }
 
-  // 5. Hidden-Gap Ghost Bridge Shimmers (diegetic indicator when an occluder hides a hole!)
+  // 5. Hidden-Gap Ghost Bridge Shimmers + Optical Perspective-Join Glint Pool
   const ghostGaps: Array<{ mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial }> = [];
   for (const hg of snap.hiddenGaps) {
     const a = W3(hg.a), b = W3(hg.b);
@@ -498,6 +664,12 @@ export function buildLevelScene(
     ghostGaps.push({ mesh, mat });
   }
 
+  const joinGlints = Array.from({ length: 6 }, () => {
+    const s = D.sprite(tex.glow, 0.9, 0.9, '#FFF2B8', { opacity: 0, add: true, depthTest: false, order: 6 });
+    scene.add(s);
+    return s;
+  });
+
   // 6. Goal Beacon
   let goalRig: GoalRig | null = null;
   if (snap.goal) {
@@ -505,7 +677,7 @@ export function buildLevelScene(
     root.add(goalRig.group);
   }
 
-  // 7. Wheel + Subtle Spark Burst Pool (for perspJoin / latch / key / win moments)
+  // 7. Wheel + Spark Burst Pool
   const wheelRig: WheelRig = makeWheel(th, riderColor, D, tex);
   scene.add(wheelRig.root);
 
@@ -529,14 +701,44 @@ export function buildLevelScene(
       const spk = sparkPool[sparkCursor++ % sparkPool.length];
       spk.age = 0;
       spk.life = 0.55 + (i % 3) * 0.12;
-      const a = (i / count) * TAU + (sparkCursor * 0.37);
+      const a = (i / count) * TAU + sparkCursor * 0.37;
       spk.sprite.position.set(pos[0], pos[1] + 0.3, pos[2]);
       (spk.sprite.material as THREE.SpriteMaterial).color.set(color ?? th.spark);
       spk.vel.set(Math.cos(a) * 1.6, 1.8 + (i % 2) * 0.7, Math.sin(a) * 1.6);
     }
   };
 
-  // 8. Gentle Sky Clouds & Theme Drift Particles (minimal, serene, honors prefers-reduced-motion)
+  // 8. Per-Yaw Camera Framing (`yawFrames`)
+  const yawFrames = computeYawFrames(
+    def.yaws,
+    framePts,
+    built.roads,
+    snap.machines.filter((m) => m.key).map((m) => m.capPos),
+    frameCenter,
+  );
+  const bounds = yawFrames[0].bounds;
+
+  const boundsAtYaw = (yawRad: number): [number, number, number, number] => {
+    if (yawFrames.length === 1) return yawFrames[0].bounds;
+    if (yawRad <= yawFrames[0].yawRad) return yawFrames[0].bounds;
+    const last = yawFrames[yawFrames.length - 1];
+    if (yawRad >= last.yawRad) return last.bounds;
+    for (let i = 0; i < yawFrames.length - 1; i++) {
+      const a = yawFrames[i], b = yawFrames[i + 1];
+      if (yawRad >= a.yawRad && yawRad <= b.yawRad) {
+        const k = clamp((yawRad - a.yawRad) / Math.max(1e-4, b.yawRad - a.yawRad), 0, 1);
+        return [
+          lerp(a.bounds[0], b.bounds[0], k),
+          lerp(a.bounds[1], b.bounds[1], k),
+          lerp(a.bounds[2], b.bounds[2], k),
+          lerp(a.bounds[3], b.bounds[3], k),
+        ];
+      }
+    }
+    return bounds;
+  };
+
+  // 9. Gentle Sky Clouds & Theme Drift Particles (honors prefers-reduced-motion)
   if (!reduceMotion && def.ambient !== false) {
     const dark = lum(skyAt(th.sky, 0.5)) < 0.35;
     const cloudColor = dark ? mixHex(skyAt(th.sky, 0.1), '#FFFFFF', 0.2) : mixHex('#FFFFFF', skyAt(th.sky, 0.05), 0.08);
@@ -558,7 +760,12 @@ export function buildLevelScene(
     const driftCount = 8;
     for (let i = 0; i < driftCount; i++) {
       const sz = th.id === 'night' ? 0.26 : 0.15;
-      const s = D.sprite(driftTex, sz, sz, driftCol, { opacity: 0.75, add: th.id === 'night' || th.id === 'prism', depthTest: false, order: 4 });
+      const s = D.sprite(driftTex, sz, sz, driftCol, {
+        opacity: 0.75,
+        add: th.id === 'night' || th.id === 'prism',
+        depthTest: false,
+        order: 4,
+      });
       const ox = rng() * W, oy = rng() * H, ph = rng() * TAU;
       const vx = 0.22 * (0.6 + rng()), vy = (th.id === 'night' ? 0.12 : -0.16) * (0.6 + rng());
       scene.add(s);
@@ -571,9 +778,147 @@ export function buildLevelScene(
     }
   }
 
-  // 9. Atmospheric Haze & One-Time Layer Tagging for `wheelOnTop`
+  // 10. Atmospheric Haze & Initial Layer Tagging for `wheelOnTop`
   updateHazeForScene(haze, root, minRoadY, th);
-  tagWheelLayers(root, wheelRig.root);
+  tagStaticWheelLayers(root, wheelRig.root);
+
+  // State for dirty-flagged open-cap perspective join swapping & smart road occlusion
+  let lastCapSig = '';
+  const perspNeighbors = new Map<string, Set<string>>();
+  const activeGlintPositions: THREE.Vector3[] = [];
+
+  const updateOpticalSeamCaps = (yawRad: number, s: PenroseSnapshot, elapsed: number) => {
+    // Only recompute when camera yaw, cube rotation, or any dynamic machine value changes
+    let sig = `${Math.round(yawRad * 200)}|${Math.round(s.cubeRotY * 200)}|${Math.round(s.cubeSink * 100)}`;
+    for (const m of s.machines) {
+      if (m.on || m.kind !== 'pool') sig += `|${Math.round(m.value * 20)}`;
+    }
+    if (sig !== lastCapSig) {
+      lastCapSig = sig;
+      perspNeighbors.clear();
+      activeGlintPositions.length = 0;
+
+      // Build camera right/up/dir axes for exact orthographic projection
+      const R = SR.clone().applyAxisAngle(Y_AXIS, yawRad);
+      const U = SU.clone().applyAxisAngle(Y_AXIS, yawRad);
+
+      interface OpenEnd {
+        rig: RoadRig;
+        k: 0 | 1;
+        p: THREE.Vector3;
+        sx: number;
+        sy: number;
+        ox: number;
+        oy: number;
+      }
+      const ends: OpenEnd[] = [];
+      for (const rig of roadRigs) {
+        if (rig.road.closed || rig.road.isReflection || rig.road.localS.length < 2) continue;
+        // Refresh world AABB for dynamic roads
+        if (rig.hasDynamicTransform) {
+          rig.worldBox.makeEmpty();
+          for (const p of rig.road.wp) rig.worldBox.expandByPoint(new THREE.Vector3(p[0], p[1], p[2]));
+        }
+        for (const k of [0, 1] as const) {
+          const e = rig.road.end(k);
+          const p = new THREE.Vector3(e.p[0], e.p[1], e.p[2]);
+          const dx = p.x - center.x, dy = p.y - center.y, dz = p.z - center.z;
+          const sx = dx * R.x + dy * R.y + dz * R.z;
+          const sy = dx * U.x + dy * U.y + dz * U.z;
+          let ox = e.out[0] * R.x + e.out[1] * R.y + e.out[2] * R.z;
+          let oy = e.out[0] * U.x + e.out[1] * U.y + e.out[2] * U.z;
+          const ol = Math.hypot(ox, oy);
+          if (ol > 1e-5) { ox /= ol; oy /= ol; }
+          ends.push({ rig, k, p, sx, sy, ox, oy });
+        }
+      }
+
+      const openState = new Map<RoadRig, [boolean, boolean]>();
+      for (let i = 0; i < ends.length; i++) {
+        const A = ends[i];
+        for (let j = i + 1; j < ends.length; j++) {
+          const B = ends[j];
+          if (A.rig === B.rig) continue;
+          const sDist = Math.hypot(A.sx - B.sx, A.sy - B.sy);
+          if (sDist > 0.24) continue;
+          // Outward directions must face opposite each other on screen
+          const oppDot = -(A.ox * B.ox + A.oy * B.oy);
+          if (oppDot < 0.82) continue;
+
+          // Both 3D joins AND optical perspective joins benefit from open end-caps so no dark wall cuts the seam!
+          const sa = openState.get(A.rig) ?? [false, false];
+          sa[A.k] = true;
+          openState.set(A.rig, sa);
+
+          const sb = openState.get(B.rig) ?? [false, false];
+          sb[B.k] = true;
+          openState.set(B.rig, sb);
+
+          // Record perspective neighbor pair & visual seam glint for true optical depth-separated joins
+          const dist3D = A.p.distanceTo(B.p);
+          if (dist3D > 0.35) {
+            const na = perspNeighbors.get(A.rig.road.id) ?? new Set<string>();
+            na.add(B.rig.road.id);
+            perspNeighbors.set(A.rig.road.id, na);
+            const nb = perspNeighbors.get(B.rig.road.id) ?? new Set<string>();
+            nb.add(A.rig.road.id);
+            perspNeighbors.set(B.rig.road.id, nb);
+
+            // Pick the closer-to-camera endpoint for the subtle glint
+            if (activeGlintPositions.length < joinGlints.length) {
+              activeGlintPositions.push(A.p.clone().lerp(B.p, 0.5));
+            }
+          }
+        }
+      }
+
+      // Swap visible cap variant on any road whose open-cap state changed
+      for (const rig of roadRigs) {
+        if (rig.road.closed || rig.road.isReflection) continue;
+        const st = openState.get(rig) ?? [false, false];
+        const key: CapKey = `${st[0] ? '1' : '0'}${st[1] ? '1' : '0'}` as CapKey;
+        if (key !== rig.activeKey) {
+          rig.activeMesh.visible = false;
+          const next = getOrBuildRoadVariant(rig, key);
+          next.visible = true;
+          rig.activeMesh = next;
+          rig.activeKey = key;
+        }
+      }
+    }
+
+    // Pulse active optical-join glint sprites gently
+    for (let i = 0; i < joinGlints.length; i++) {
+      const spg = joinGlints[i];
+      if (i < activeGlintPositions.length) {
+        spg.position.copy(activeGlintPositions[i]);
+        (spg.material as THREE.SpriteMaterial).opacity = 0.24 + 0.12 * Math.sin(elapsed * 3.4 + i);
+      } else {
+        (spg.material as THREE.SpriteMaterial).opacity = 0;
+      }
+    }
+  };
+
+  // Smart road-over-road occlusion: distant elevated overpasses occlude the wheel (layer 2),
+  // while the wheel's current road, adjacent roads (<1.25m), and optical perspective-joined roads never clip the wheel!
+  const wheelPtScratch = new THREE.Vector3();
+  const updateRoadOcclusion = (s: PenroseSnapshot) => {
+    const curId = s.wheel.roadId;
+    const neighbors = perspNeighbors.get(curId);
+    wheelPtScratch.set(s.wheel.pos[0], s.wheel.pos[1], s.wheel.pos[2]);
+
+    for (const rig of roadRigs) {
+      if (rig.road.isReflection) continue;
+      const isCurrent = rig.road.id === curId;
+      const isPerspJoined = !!neighbors?.has(rig.road.id);
+      const isNearWheel = isCurrent || isPerspJoined || rig.worldBox.distanceToPoint(wheelPtScratch) < 1.25;
+      if (isNearWheel) {
+        rig.activeMesh.layers.disable(2);
+      } else {
+        rig.activeMesh.layers.enable(2);
+      }
+    }
+  };
 
   // Wheel orientation scratch vectors
   const wX = new THREE.Vector3(), wY = new THREE.Vector3(), wZ = new THREE.Vector3(), wM = new THREE.Matrix4();
@@ -586,20 +931,28 @@ export function buildLevelScene(
     camera: THREE.OrthographicCamera,
     renderer: THREE.WebGLRenderer,
   ) => {
-    // Sync Cube tower transform if present
+    // Sync Cube tower body & upper-storey reveal!
+    const showCubeUpper = s.wallIndex >= 3 || s.cubeSink > 0.1;
     if (cubeGroup) {
       cubeGroup.rotation.y = s.cubeRotY;
       cubeGroup.position.y = -s.cubeSink;
     }
-    if (cubeUpperGroup) {
-      cubeUpperGroup.visible = s.wallIndex >= 3 || s.cubeSink > 0.1;
-    }
+    const upperRoadsGrp = groups.get('cube_upper');
+    if (upperRoadsGrp) upperRoadsGrp.visible = showCubeUpper;
+    const sailGrp = groups.get('g_cube_sail');
+    if (sailGrp) sailGrp.visible = showCubeUpper;
+    const armGrp = groups.get('g_cube_arm');
+    if (armGrp) armGrp.visible = showCubeUpper;
 
-    // Sync dynamic road & machine groups from snapshot transforms
+    // Sync dynamic road & machine groups (including roadless machines like awning!)
     for (const [gid, mat] of Object.entries(s.roadTransforms)) {
       const grp = groups.get(gid);
       if (grp) applyMat4(grp, mat);
     }
+
+    // Update seamless open-cap perspective joins & smart road-over-road occlusion
+    updateOpticalSeamCaps(s.yawRad, s, elapsed);
+    updateRoadOcclusion(s);
 
     // Sync machines, blooms, dynamic road colors, and cap anchors
     const machById = new Map<string, MachineSnapshot>();
@@ -615,14 +968,12 @@ export function buildLevelScene(
     }
 
     for (const m of s.machines) {
-      // Dynamic road material tinting (idle -> mech -> goal highlight when ready)
       const dm = dynamicRoadMats.get(m.id);
       if (dm) {
         const targetPal = m.on ? th.mech : m.ready ? mixPal(th.idle, th.mech, 0.35) : th.idle;
         setTri(dm, targetPal);
       }
 
-      // Bloom spring & spin animation
       const b = blooms.get(m.id);
       if (b) {
         b.holder.visible = m.live;
@@ -648,7 +999,6 @@ export function buildLevelScene(
         b.ringHalo.scale.setScalar(b.size * (1 + (focused ? 0.18 * Math.sin(elapsed * 5.5) : 0)));
       }
 
-      // Custom machine visual updaters
       const upds = machineUpdaters.get(m.id);
       if (upds) {
         for (const fn of upds) fn(m, s, dt, elapsed);
@@ -748,6 +1098,7 @@ export function buildLevelScene(
     pad,
     hasOverlay: true,
     caps,
+    boundsAtYaw,
     sync,
     triggerSpark,
     dispose: () => {
@@ -758,12 +1109,12 @@ export function buildLevelScene(
 }
 
 /**
- * One-time layer assignment for `wheelOnTop`:
- * Layer 1 = wheel (drawn over road decks so optical perspective joins never clip it).
- * Layer 2 = opaque non-road occluders (towers, walls, awnings, sail bridges) so the wheel
- * still passes realistically *behind* occluding structures!
+ * One-time static layer assignment for `wheelOnTop`:
+ * Layer 1 = wheel.
+ * Layer 2 = opaque non-road occluders (towers, walls, awnings, sail bridges, companion blocks).
+ * Road meshes are dynamically toggled on/off layer 2 per active wheel road in `updateRoadOcclusion`.
  */
-function tagWheelLayers(worldRoot: THREE.Object3D, wheelRoot: THREE.Object3D): void {
+function tagStaticWheelLayers(worldRoot: THREE.Object3D, wheelRoot: THREE.Object3D): void {
   wheelRoot.traverse((o) => {
     o.layers.set(1);
   });
@@ -774,6 +1125,91 @@ function tagWheelLayers(worldRoot: THREE.Object3D, wheelRoot: THREE.Object3D): v
     if (Array.isArray(mat) ? mat.some((m) => m.transparent) : mat?.transparent) return;
     o.layers.enable(2);
   });
+}
+
+/* ---------- Procedural Monument Valley Grounding Piers & Terraces ---------- */
+
+/**
+ * Adds stepped Monument Valley stone plinths & slender piers under static holding loops
+ * and terrain anchors (used by `def.terrain` and beat-composer levels) so structures sit
+ * grounded over atmospheric haze without ever colliding with a lower road beneath them.
+ */
+function buildArchitecturalGrounding(
+  root: THREE.Group,
+  roads: readonly SimRoad[],
+  anchors: ReadonlyArray<[number, number, number]>,
+  th: ThemeDef,
+  D: LevelDisposer,
+  minRoadY: number,
+): void {
+  const baseZ = (Number.isFinite(minRoadY) ? minRoadY : 0) - 3.6;
+  const plinthMat = D.tri(mixPal(th.stone, tone(th.ink), 0.08), { polyOff: 1 });
+  const pierMat = D.tri(mixPal(th.stone, tone(th.ink), 0.16), { polyOff: 1 });
+
+  // Helper: check if dropping a column at sketch (x, y) from zTop down to zBot would clip any lower road
+  const hasLowerRoadUnder = (sx: number, sy: number, rPad: number, zTop: number): boolean => {
+    for (const r of roads) {
+      if (r.isReflection) continue;
+      for (const s of r.localS) {
+        // localS.p is in Three world coords [x, z_up, y_depth]
+        if (s.p[1] < zTop - 0.45 && Math.abs(s.p[0] - sx) < rPad + 0.7 && Math.abs(s.p[2] - sy) < rPad + 0.7) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // 1. Stepped terrace plinths beneath static horizontal closed holding loops
+  const placedCenters: Array<[number, number]> = [];
+  for (const r of roads) {
+    if (!r.closed || r.transform || r.isReflection || r.localS.length < 4) continue;
+    // Only ground horizontal loops (normal pointing up in world Y)
+    if (r.localS[0].n[1] < 0.85) continue;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, zAvg = 0;
+    for (const s of r.localS) {
+      if (s.p[0] < x0) x0 = s.p[0];
+      if (s.p[0] > x1) x1 = s.p[0];
+      if (s.p[2] < y0) y0 = s.p[2];
+      if (s.p[2] > y1) y1 = s.p[2];
+      zAvg += s.p[1];
+    }
+    zAvg /= r.localS.length;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const hw = Math.max(0.9, (x1 - x0) / 2 + 0.52);
+    const hh = Math.max(0.9, (y1 - y0) / 2 + 0.52);
+
+    // Subtle coping cap cleanly beneath the road's underside (-0.25)
+    addBox(root, cx - hw, cy - hh, zAvg - 0.65, cx + hw, cy + hh, zAvg - 0.25, plinthMat, D, true);
+    placedCenters.push([cx, cy]);
+
+    // Drop a stepped stone pier down into the haze if clear of any lower roads
+    if (!hasLowerRoadUnder(cx, cy, Math.min(hw, hh) * 0.6, zAvg - 0.65)) {
+      const pw = Math.max(0.55, hw * 0.64), ph = Math.max(0.55, hh * 0.64);
+      const midZ = Math.max(baseZ + 1.2, zAvg - 1.5);
+      addBox(root, cx - pw, cy - ph, midZ, cx + pw, cy + ph, zAvg - 0.65, plinthMat, D);
+      addBox(root, cx - pw * 0.72, cy - ph * 0.72, baseZ, cx + pw * 0.72, cy + ph * 0.72, midZ, pierMat, D);
+    }
+  }
+
+  // 2. Slender architectural piers at explicit terrain anchors (skipping duplicates close to loops)
+  for (const [ax, ay, rad] of anchors) {
+    if (placedCenters.some(([cx, cy]) => Math.hypot(cx - ax, cy - ay) < 1.6)) continue;
+    // Find highest static road sample near this anchor to tuck pier cleanly underneath it
+    let topZ = -Infinity;
+    for (const r of roads) {
+      if (r.transform || r.isReflection) continue;
+      for (const s of r.localS) {
+        if (Math.hypot(s.p[0] - ax, s.p[2] - ay) < Math.max(1.2, rad)) {
+          if (s.p[1] > topZ) topZ = s.p[1];
+        }
+      }
+    }
+    if (!Number.isFinite(topZ) || hasLowerRoadUnder(ax, ay, 0.5, topZ - 0.3)) continue;
+    const pr = clamp(rad * 0.45, 0.32, 0.65);
+    addBox(root, ax - pr, ay - pr, baseZ, ax + pr, ay + pr, topZ - 0.26, pierMat, D);
+    placedCenters.push([ax, ay]);
+  }
 }
 
 /* ---------- Declarative VisualProp Builder ---------- */
@@ -788,24 +1224,25 @@ interface PropContext {
   addMachUpd: (id: string, fn: MachineUpdater) => void;
   portalUpdaters: PortalUpdater[];
   generalUpdaters: Array<(t: number, dt: number, snap: PenroseSnapshot) => void>;
-  onCubeGroup: (cg: THREE.Group, ug: THREE.Group) => void;
+  onCubeGroup: (cg: THREE.Group) => void;
 }
 
 function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
-  const { root, getGroup, th, D, tex, addMachUpd, portalUpdaters, generalUpdaters } = ctx;
+  const { root, getGroup, th, D, tex, addMachUpd, portalUpdaters } = ctx;
 
   switch (prop.kind) {
     case 'box': {
       const parent = getGroup(prop.groupId);
       const pal = resolvePalette(th, prop.pal);
-      addBox(parent, prop.x0, prop.y0, prop.z0, prop.x1, prop.y1, prop.z1, D.tri(pal), D, !!prop.roadLike);
+      // Slight polygonOffset pushes support masonry cleanly behind flush road decks/walls
+      addBox(parent, prop.x0, prop.y0, prop.z0, prop.x1, prop.y1, prop.z1, D.tri(pal, { polyOff: 1 }), D, !!prop.roadLike);
       break;
     }
 
     case 'cyl': {
       const parent = getGroup(prop.groupId);
       const pal = resolvePalette(th, prop.pal);
-      const m = addCyl(parent, prop.x, prop.y, prop.r, prop.z0, prop.z1, D.tri(pal), D, prop.seg ?? 20, prop.rTop);
+      const m = addCyl(parent, prop.x, prop.y, prop.r, prop.z0, prop.z1, D.tri(pal, { polyOff: 1 }), D, prop.seg ?? 20, prop.rTop);
       if (prop.rotX) m.rotation.x = prop.rotX;
       if (prop.rotZ) m.rotation.z = prop.rotZ;
       break;
@@ -858,9 +1295,8 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
     case 'loopSlab': {
       const w = prop.w ?? 0.9;
       const pal = resolvePalette(th, prop.pal ?? 'stone');
-      const mat = D.tri(pal);
-      const z0 = prop.z, z1 = prop.z + 0.48;
-      // 4 framing bars leaving an airy central courtyard!
+      const mat = D.tri(pal, { polyOff: 1 });
+      const z0 = prop.z, z1 = prop.z + 0.46;
       addBox(root, prop.x0, prop.y0, z0, prop.x1, prop.y0 + w, z1, mat, D, true);
       addBox(root, prop.x0, prop.y1 - w, z0, prop.x1, prop.y1, z1, mat, D, true);
       addBox(root, prop.x0, prop.y0 + w, z0, prop.x0 + w, prop.y1 - w, z1, mat, D, true);
@@ -883,7 +1319,7 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
     }
 
     case 'cliff': {
-      const mat = D.tri(mixPal(th.stone, tone(th.ink), 0.12));
+      const mat = D.tri(mixPal(th.stone, tone(th.ink), 0.12), { polyOff: 1 });
       const h = Math.max(1.2, prop.z - prop.zBase);
       const m = new THREE.Mesh(D.geo(new THREE.CylinderGeometry(1.15, 0.4, h, 7)), mat);
       m.position.copy(V3(prop.x, prop.y, prop.zBase + h / 2));
@@ -946,7 +1382,6 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
       plane.userData.isRoad = true;
       root.add(plane);
 
-      // Tide gauge post with high-water band
       addCyl(root, prop.gaugeX, prop.gaugeY, 0.11, -0.4, prop.hi + 0.55, D.tri(th.stone), D, 12);
       addCyl(root, prop.gaugeX, prop.gaugeY, 0.145, prop.hi - 0.08, prop.hi + 0.08, D.basic(th.goal), D, 12);
 
@@ -960,8 +1395,7 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
     case 'pool': {
       const [x0, y0, x1, y1] = prop.pool;
       const w = x1 - x0, h = y1 - y0;
-      // Basin rim & dark bed
-      addBox(root, x0 - 0.14, y0 - 0.14, prop.wz - 0.36, x1 + 0.14, y1 + 0.14, prop.wz - 0.02, D.tri(th.stone), D, true);
+      addBox(root, x0 - 0.14, y0 - 0.14, prop.wz - 0.36, x1 + 0.14, y1 + 0.14, prop.wz - 0.02, D.tri(th.stone, { polyOff: 1 }), D, true);
       const waterMat = D.basic('#88CFE8', { opacity: 0.65, side: true });
       const water = new THREE.Mesh(D.geo(new THREE.PlaneGeometry(w, h)), waterMat);
       water.rotation.x = -Math.PI / 2;
@@ -969,7 +1403,6 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
       water.userData.isRoad = true;
       root.add(water);
 
-      // Ripple rings (expand & fade when wind ruffles the pool!)
       const ripples = Array.from({ length: 3 }, (_, i) => {
         const r = new THREE.Mesh(
           D.geo(new THREE.RingGeometry(0.18, 0.24, 24)),
@@ -982,7 +1415,6 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
         return r;
       });
 
-      // Overhead sky road + its faint reflection on the water
       let reflMat: THREE.ShaderMaterial | null = null;
       if (prop.skyRoadPts && prop.skyRoadPts.length >= 2) {
         const sh = prop.skyRoadH ?? 5;
@@ -1009,7 +1441,6 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
         }
       }
 
-      // Overhead gate + reflected barrier in the pool
       let gateReflMat: THREE.MeshBasicMaterial | null = null;
       if (prop.gate) {
         const gp = prop.gate.pos;
@@ -1111,7 +1542,7 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
       const size = new THREE.Vector2();
       const prevColor = new THREE.Color();
       let openSmooth = prop.fixed ? 1 : 0;
-      let rtAccum = 1; // render immediately on first open frame
+      let rtAccum = 1;
 
       portalUpdaters.push((s, dt, t, cam, renderer) => {
         const ms = s.machines.find((mm) => mm.id === prop.machineId);
@@ -1127,7 +1558,6 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
         near.pm.uniforms.uOpen.value = openSmooth;
         if (openSmooth < 0.02) return;
 
-        // Throttle portal RT rendering to ~25 Hz (half-res) for crisp 60fps on iPads/laptops
         rtAccum += dt;
         if (rtAccum < 0.04) return;
         rtAccum = 0;
@@ -1188,9 +1618,7 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
     }
 
     case 'clutchVisual': {
-      // `from` and `to` are in Three world coords (from SimRoad.end().p)
       const a = W3(prop.from), b = W3(prop.to);
-      const span = Math.max(0.2, a.distanceTo(b));
       const dir = b.clone().sub(a).normalize();
       const ang = Math.atan2(-dir.z, dir.x);
 
@@ -1202,7 +1630,6 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
       plank.userData.isRoad = true;
       root.add(plank);
 
-      // Catch-zone gold glow strip at the far dock
       const dockMat = D.basic('#FFD84D', { opacity: 0.35, side: true });
       const dock = new THREE.Mesh(D.unitBox, dockMat);
       dock.scale.set(0.32, 0.06, 1.02);
@@ -1212,7 +1639,6 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
       dock.userData.isRoad = true;
       root.add(dock);
 
-      // Crimson red warning bollards at maxLen (over-extend danger!)
       const warnPos = a.clone().addScaledVector(dir, prop.maxLen);
       const perp = new THREE.Vector3(-dir.z, 0, dir.x);
       const redMat = D.tri(tone('#FF4D4D'));
@@ -1245,11 +1671,9 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
       const signY = Math.sign(prop.dy) || -1;
       const midY = prop.y0 + signY * (beltLen / 2);
 
-      // Belt bed
-      const bedMat = D.tri(th.mechDark ?? th.idle);
+      const bedMat = D.tri(th.mechDark ?? th.idle, { polyOff: 1 });
       addBox(root, prop.x - 0.52, Math.min(prop.y0, prop.y0 + signY * beltLen), -0.26, prop.x + 0.52, Math.max(prop.y0, prop.y0 + signY * beltLen), -0.02, bedMat, D, true);
 
-      // Rolling chevron slats
       const slatCount = Math.max(5, Math.round(beltLen / 0.6));
       const slatMat = D.tri(th.mech);
       const slats = Array.from({ length: slatCount }, () => {
@@ -1260,7 +1684,6 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
         return m;
       });
 
-      // Diegetic live lane highlight marker (shows which lane current cadence delivers to!)
       const hlMat = D.basic('#FFD84D', { opacity: 0.75, side: true });
       const hl = new THREE.Mesh(D.unitBox, hlMat);
       hl.scale.set(1.16, 0.05, 0.96);
@@ -1290,14 +1713,12 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
       const dir = b.clone().sub(a).normalize();
       const ang = Math.atan2(-dir.z, dir.x);
 
-      // Overhead rail beam
       const rail = new THREE.Mesh(D.unitBox, D.tri(th.stone));
       rail.scale.set(len, 0.12, 0.16);
       rail.position.copy(a).lerp(b, 0.5);
       rail.rotation.y = ang;
       root.add(rail);
 
-      // Gold target ring on the rail marking the occlusion sweet spot
       if (prop.markDist !== undefined) {
         const ring = new THREE.Mesh(D.geo(new THREE.TorusGeometry(0.45, 0.045, 8, 24)), D.basic(th.goal));
         ring.rotation.x = Math.PI / 2;
@@ -1306,7 +1727,6 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
         root.add(ring);
       }
 
-      // The little companion block riding the rail (this is the occluder!)
       const blockMat = D.tri(th.mech, { fresh: true });
       const block = new THREE.Mesh(D.unitBox, blockMat);
       block.scale.set(1.3, 1.3, 1.0);
@@ -1322,10 +1742,8 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
 
     case 'liftColumn': {
       const maxH = prop.zBase + prop.floors * prop.step + 0.4;
-      // Central shaft column
       addCyl(root, prop.x, prop.y, 0.28, prop.zBase - 1.5, maxH, D.tri(th.stone), D, 16);
 
-      // Floor indicator collars (glow gold when the deck locks onto that floor!)
       const collars: THREE.MeshBasicMaterial[] = [];
       for (let i = 0; i <= prop.floors; i++) {
         const fz = prop.zBase + i * prop.step;
@@ -1336,11 +1754,10 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
         collars.push(cMat);
       }
 
-      // Moving platform slab (and optional trees on top) inside the lift's road group
       const liftG = getGroup(`g_${prop.machineId}`);
       if (prop.deckBox) {
         const [bx0, by0, bx1, by1] = prop.deckBox;
-        addBox(liftG, bx0, by0, -0.35, bx1, by1, -0.02, D.tri(th.mech), D, true);
+        addBox(liftG, bx0, by0, -0.38, bx1, by1, -0.04, D.tri(th.mech, { polyOff: 1 }), D, true);
       }
       if (prop.trees) {
         for (const [tx, ty] of prop.trees) {
@@ -1359,10 +1776,15 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
 
     case 'turntableVisual': {
       const [px, py, pz] = prop.pivot;
-      addCyl(root, px, py, prop.rad * 0.45, pz - 2.6, pz - 0.24, D.tri(th.stone), D, 18);
+      // Stationary pedestal column cleanly beneath the turntable drum
+      addCyl(root, px, py, prop.rad * 0.46, pz - 2.6, pz - 0.4, D.tri(th.stone), D, 18);
+      // Rotating drum sits cleanly underneath the road's -0.24 underside (top at -0.25 -> zero z-fighting!)
       const grp = getGroup(`g_${prop.machineId}`);
-      const disc = new THREE.Mesh(D.geo(new THREE.CylinderGeometry(prop.rad, prop.rad * 1.04, 0.26, 28)), D.tri(th.mech));
-      disc.position.y = -0.15;
+      const disc = new THREE.Mesh(
+        D.geo(new THREE.CylinderGeometry(prop.rad * 0.98, prop.rad * 1.04, 0.16, 28)),
+        D.tri(th.mechDark ?? th.mech, { polyOff: 1 }),
+      );
+      disc.position.y = -0.33;
       disc.userData.isRoad = true;
       grp.add(disc);
       break;
@@ -1370,10 +1792,14 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
 
     case 'crossDiscVisual': {
       const [cx, cy, cz] = prop.center;
-      addCyl(root, cx, cy, prop.rad * 0.65, cz - 2.6, cz - 0.28, D.tri(th.stone), D, 24);
+      addCyl(root, cx, cy, prop.rad * 0.65, cz - 2.6, cz - 0.4, D.tri(th.stone), D, 24);
       const grp = getGroup(`g_${prop.machineId}`);
-      const disc = new THREE.Mesh(D.geo(new THREE.CylinderGeometry(prop.rad, prop.rad, 0.28, 36)), D.tri(th.mech));
-      disc.position.y = -0.15;
+      // Drum sits cleanly underneath the cross-disc road curves (top at -0.25) with a stepped bevel rim
+      const disc = new THREE.Mesh(
+        D.geo(new THREE.CylinderGeometry(prop.rad * 1.04, prop.rad * 1.08, 0.18, 36)),
+        D.tri(th.mechDark ?? th.mech, { polyOff: 1 }),
+      );
+      disc.position.y = -0.34;
       disc.userData.isRoad = true;
       grp.add(disc);
       break;
@@ -1381,13 +1807,11 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
 
     case 'seesawVisual': {
       const [px, py, pz] = prop.pivot;
-      // Fulcrum wedge under pivot
-      addCyl(root, px, py, 0.42, pz - 2.2, pz - 0.16, D.tri(th.stone), D, 12, 0.22);
-      // Diegetic spring tension glow bar on the fulcrum
+      addCyl(root, px, py, 0.42, pz - 2.2, pz - 0.28, D.tri(th.stone), D, 12, 0.22);
       const glowMat = D.basic('#FFD84D', { opacity: 0.25 });
       const bar = new THREE.Mesh(D.unitBox, glowMat);
       bar.scale.set(0.9, 0.14, 0.9);
-      bar.position.copy(V3(px, py, pz - 0.2));
+      bar.position.copy(V3(px, py, pz - 0.34));
       root.add(bar);
       addMachUpd(prop.machineId, (ms) => {
         const c = Number(ms.extra?.c ?? 0);
@@ -1440,27 +1864,32 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
     }
 
     case 'cubeVisual': {
-      const { h, H, cr } = prop;
+      const { h, H, cr, storey } = prop;
       const R2 = cr - 0.02;
       const cube = new THREE.Group();
       root.add(cube);
 
-      // Plinth that the tower turns on (stationary)
+      // Stationary stepped circular plinth underneath the rotating tower
       addCyl(root, 0, 0, h * 1.75, -3.6, -0.62, D.tri(th.idle), D, 48);
       addCyl(root, 0, 0, h * 1.55, -0.62, -0.32, D.tri(th.roof ?? th.stone), D, 48);
       addCyl(root, 0, 0, h * 1.42, -0.32, -0.02, D.tri(sp(th, 0)), D, 48);
       addCyl(root, 0, 0, h * 1.36, -0.02, 0, D.tri(th.roof ?? th.stone), D, 48);
 
-      // Rounded tower body
-      const stone = D.tri(sp(th, 0));
+      // Rounded tower body (polyOff: 1 keeps wall-wrapped roads razor sharp with zero z-fighting!)
+      const stone = D.tri(sp(th, 0), { polyOff: 1 });
       addBox(cube, -h + R2, -h, 0, h - R2, h, H, stone, D);
       addBox(cube, -h, -h + R2, 0, h, h - R2, H, stone, D);
       for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
-        addCyl(cube, sx * (h - R2), sy * (h - R2), R2, 0, H, stone, D, 18);
+        addCyl(cube, sx * (h - R2), sy * (h - R2), R2, 0, H, stone, D, 20);
       }
 
+      // Thin flush storey cornice line separating lower and upper storeys
+      const trimMat = D.tri(th.roof ?? th.idle, { polyOff: 1 });
+      addBox(cube, -h - 0.02, -h + R2, storey - 0.12, h + 0.02, h - R2, storey - 0.04, trimMat, D);
+      addBox(cube, -h + R2, -h - 0.02, storey - 0.12, h - R2, h + 0.02, storey - 0.04, trimMat, D);
+
       // Roof cornice & 4 corner finials
-      addBox(cube, -h - 0.14, -h - 0.14, H, h + 0.14, h + 0.14, H + 0.14, D.tri(th.roof ?? th.stone), D);
+      addBox(cube, -h - 0.14, -h - 0.14, H, h + 0.14, h + 0.14, H + 0.14, D.tri(th.roof ?? th.stone, { polyOff: 1 }), D);
       for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
         const fx = sx * (h - 0.05), fy = sy * (h - 0.05);
         addCyl(cube, fx, fy, 0.2, H + 0.14, H + 0.5, D.tri(th.roof ?? th.stone), D, 14);
@@ -1469,9 +1898,7 @@ function buildVisualProp(prop: VisualProp, ctx: PropContext): void {
         cube.add(cone);
       }
 
-      const upper = new THREE.Group();
-      cube.add(upper);
-      ctx.onCubeGroup(cube, upper);
+      ctx.onCubeGroup(cube);
       break;
     }
   }

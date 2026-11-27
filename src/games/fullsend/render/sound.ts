@@ -12,7 +12,7 @@ const STOCK: Partial<Record<Cue, [SfxName, number, number?]>> = {
   ring: ['pickup', 0.5, 1.2], star: ['coin', 0.35, 1.4], smash: ['chitinCrunch', 0.45], roar: ['roar', 0.9], rumble: ['rumble', 0.8, 0.7],
   snap: ['screech', 0.4, 0.6], caught: ['hurt', 0.6], tick: ['count', 0.6], go: ['go', 0.7], medal: ['milestone', 0.6], miss: ['deny', 0.4],
   jetOn: ['ignite', 0.5], jetWeak: ['deny', 0.25, 0.8], fork: ['bell', 0.35], forkPick: ['uiTick', 0.5], menuMove: ['uiMove', 0.5], menuPick: ['uiSelect', 0.6],
-  trick: ['whoosh', 0.35, 1.6],
+  trick: ['whoosh', 0.35, 1.6], pace: ['chime', 0.4, 1.5], charge: ['ignite', 0.8, 0.8], pb: ['reward', 0.55, 1.1],
 };
 
 type Layer = ReturnType<typeof soundBeds>['music'];
@@ -20,6 +20,7 @@ type Layer = ReturnType<typeof soundBeds>['music'];
 const SCORE: Record<Layer, { bpm: number; root: number; bass: number[]; arp: number[]; wave: OscillatorType; level: number; kick: boolean }> = {
   menu: { bpm: 96, root: 57, bass: [0, 0, 5, 7], arp: [0, 4, 7, 11, 7, 4], wave: 'triangle', level: 0.05, kick: false },
   ground: { bpm: 118, root: 52, bass: [0, 0, 8, 7, 5, 5, 3, 7], arp: [0, 7, 12, 7, 15, 12, 7, 3], wave: 'square', level: 0.035, kick: true },
+  sprintGold: { bpm: 164, root: 55, bass: [0, 0, 0, 3, 5, 5, 7, 10], arp: [12, 19, 24, 19, 15, 19, 12, 15], wave: 'sawtooth', level: 0.05, kick: true },
   sprint: { bpm: 150, root: 52, bass: [0, 0, 0, 3, 5, 5, 7, 10], arp: [12, 15, 19, 15, 12, 10, 7, 10], wave: 'sawtooth', level: 0.04, kick: true },
   sky: { bpm: 100, root: 60, bass: [0, 5, 7, 5], arp: [0, 4, 7, 12, 16, 12, 7, 4], wave: 'triangle', level: 0.05, kick: false },
   moon: { bpm: 72, root: 50, bass: [0, 3, 7, 5], arp: [12, 19, 15, 22, 19, 15], wave: 'sine', level: 0.06, kick: false },

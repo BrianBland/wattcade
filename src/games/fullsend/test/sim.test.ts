@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGameSession, NullInput, runHeadless, testProfile } from '../../../core';
+import { createGameSession, NullInput, runHeadless, SCRIPTS, testProfile } from '../../../core';
 import type { InputState } from '../../../contracts';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
@@ -207,13 +207,13 @@ describe('mega ramp', () => {
 });
 
 describe('jet, rings and stars up high', () => {
-  it('a rider who jets (above the power line) to the rings catches them', () => {
-    const sm = runHeadless({ game: module, script: 'target-follow', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean: true, autojet: true } }).summary;
+  it('a rider who jets (spinning above the cadence line) to the rings catches them', () => {
+    const sm = runHeadless({ game: module, script: 'cadence-follow', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean: true, autojet: true } }).summary;
     expect(Number(sm.jetS)).toBeGreaterThan(2);
     expect(Number(sm.rings)).toBeGreaterThanOrEqual(3);
     expect(Number(sm.stars)).toBeGreaterThanOrEqual(1);
   });
-  it('holding the jet at Z2 power does nothing', () => {
+  it('holding the jet at an ordinary cadence does nothing (it never asks for threshold power in a recovery)', () => {
     const jetIn: InputState = { held: new Set(['b']), pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 0, source: 'script' };
     const s = createGameSession({ game: module, profile: testProfile(), input: { beginTick() {}, state: () => jetIn }, fake: { script: 'z2' }, simOpts: { tour: 'quick', autolean: true }, seed: 3 });
     let weak = 0;
@@ -233,8 +233,8 @@ describe('forks: pick your route', () => {
   it('taking the other branch changes the set pieces and scenery, not the sprint lengths', () => {
     const run = (forks: 'main' | 'alt') => runHeadless({ game: module, script: 'hook-responsive', minutes: 22, seed: 5, simOpts: { tour: 'quick', forks } });
     const a = run('main'), b = run('alt');
-    expect(a.summary.route).toBe('AAAAA');
-    expect(b.summary.route).toBe('BBBBB');
+    expect(a.summary.altRoutes).toBe(0);
+    expect(b.summary.altRoutes).toBe(5);
     const kinds = (r: typeof a) => r.events.filter((e) => e.type === 'setPiece').map((e) => (e.data as { kind: string }).kind);
     expect(kinds(a)).toEqual(TOURS.quick.sets.map((s) => s.kind));
     expect(kinds(b)).toEqual(TOURS.quick.sets.map((s) => s.alt!.kind));
@@ -280,5 +280,77 @@ describe('setup screen and saves', () => {
     expect(sv.rides).toBe(1);
     expect(sv.best.quick.golds).toBeGreaterThanOrEqual(2);
     expect(module.progressLine!(sv)).toMatch(/Quick Send: \d+ gold/);
+  });
+});
+
+describe('sprint scoring: the whole interval counts', () => {
+  /** A rider who sprints at `f(secondsIntoSprint, setIndex)` FTP during each sprint window and rides 0.6 FTP otherwise. */
+  const shaped = (name: string, f: (s: number, i: number) => number) => {
+    let st = -1, n = -1, was = false;
+    SCRIPTS[name] = { name, description: name, usesHooks: true, cadence: () => 90,
+      powerFtp: (t, e) => { const h = (e.hooks ?? {}) as { shielded?: boolean }; if (h.shielded) { if (!was) { st = t; n++; } was = true; return f(t - st, n); } was = false; return 0.6; } };
+    return name;
+  };
+  const eff = TOURS.quick.sets.map((q) => q.effortS);
+  const medalsOf = (script: string) => runHeadless({ game: module, script, minutes: 22, seed: 5, simOpts: { tour: 'quick', forks: 'main' } })
+    .events.filter((e) => e.type === 'setPiece').map((e) => Number((e.data as { medal: number }).medal));
+  it('a late 5 s kick after soft-pedalling no longer wins the 15–25 s set pieces', () => {
+    const m = medalsOf(shaped('fs-backload', (s, i) => (s > eff[i] - 5 ? 2.2 : 0.6)));
+    expect(m[1]).toBeLessThan(3); expect(m[3]).toBeLessThan(3); expect(m[4]).toBeLessThan(3);
+  });
+  it('going all out from GO and fading at the end still medals the leaps', () => {
+    const m = medalsOf(shaped('fs-frontload', (s, i) => (s < eff[i] - 5 ? 2.2 : 0.9)));
+    expect(m[1]).toBeGreaterThanOrEqual(2); expect(m[4]).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('personal targets', () => {
+  SCRIPTS['beginner-fs'] = { name: 'beginner-fs', description: '1.1 FTP sprints', usesHooks: true, cadence: () => 90,
+    powerFtp: (_t, e) => ((e.hooks as { shielded?: boolean } | undefined)?.shielded ? 1.1 : 0.6) };
+  const ride = (store: { data?: unknown }, script: string, difficulty = 1) => {
+    const prof = testProfile();
+    (prof as { gameData?: Record<string, unknown> }).gameData = store.data ? { fullsend: store.data } : {};
+    (prof.settings as { difficulty: number }).difficulty = difficulty;
+    const s = createGameSession({ game: module, profile: prof, input: new NullInput(), fake: { script }, simOpts: { tour: 'quick', forks: 'main' }, seed: 3, onSave: (d) => { store.data = d; } });
+    while (!s.sim.isOver()) s.step(300);
+    return { sm: s.sim.summary(), save: store.data as { pb: Record<string, number>; ghost?: Record<string, number[]> } };
+  };
+  it('after a ride your bests set the targets: a strong rider has to keep riding near them for gold', () => {
+    const store: { data?: unknown } = {};
+    const first = ride(store, 'hook-responsive');
+    expect(Number(first.sm.gold)).toBeGreaterThanOrEqual(2);
+    expect(Object.keys(first.save.pb).length).toBeGreaterThanOrEqual(4);
+    expect(first.save.ghost?.quick?.length).toBeGreaterThan(600); // the best run is saved as a ghost
+    const lazy = ride(store, 'beginner-fs');
+    expect(Number(lazy.sm.gold)).toBe(0); // 1.1 FTP is far below this rider's bests now
+  });
+  it('a new rider at 1.1 FTP medals more once targets are their own', () => {
+    const store: { data?: unknown } = {};
+    const a = ride(store, 'beginner-fs'), b = ride(store, 'beginner-fs');
+    const pts = (s: Record<string, number | string>) => Number(s.gold) * 3 + Number(s.silver) * 2 + Number(s.bronze);
+    expect(pts(b.sm)).toBeGreaterThan(pts(a.sm));
+    expect(Number(b.sm.missed)).toBeLessThan(Number(a.sm.missed));
+  });
+});
+
+describe('a tour only counts if you ride it', () => {
+  it('sitting still to the end finishes the session but not the tour', () => {
+    const r = runHeadless({ game: module, script: 'idle', minutes: 22, seed: 7, simOpts: { tour: 'quick' } });
+    expect(r.isOver).toBe(true);
+    expect(r.events.some((e) => e.type === 'tourComplete')).toBe(false);
+  });
+});
+
+describe('set pieces stay in the scenery you picked', () => {
+  it('up high when a set is due, you come back down first: the piece is in its own biome', () => {
+    const r = runHeadless({ game: module, script: 'hook-responsive', minutes: 32, seed: 3, simOpts: { tour: 'classic', forks: 'main', autolean: true } });
+    const biomes = r.events.filter((e) => e.type === 'setPiece').map((e) => (e.data as { biome: string }).biome);
+    expect(biomes).toEqual(TOURS.classic.sets.map((q) => q.biome));
+    expect(Number(r.summary.skyVisits)).toBeGreaterThanOrEqual(1);
+  });
+  it('a medal pushes the lift meter, but a hands-off rider still never reaches the sky', () => {
+    const sm = runHeadless({ game: module, script: 'hook-responsive', minutes: 22, seed: 3, simOpts: { tour: 'quick' } }).summary;
+    expect(Number(sm.gold)).toBeGreaterThanOrEqual(2);
+    expect(Number(sm.skyVisits)).toBe(0);
   });
 });

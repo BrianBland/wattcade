@@ -37,19 +37,31 @@ export interface PieceView {
   /** outrun: when the chaser slammed into the cave mouth (sim time), or -99. */
   crashAt: number;
   air: number; surfaced: boolean;
-  /** Live score as an FTP fraction (built-up speed, or the mean so far for dive/outrun). */
+  /** Live score as an FTP fraction: your mean power over the sprint so far (the whole interval counts, not a late kick). */
   live: number;
+  /** Highest power so far in this sprint (FTP fraction). */
+  peak: number;
+  /** Your best mean for a sprint this long (FTP fraction; 0 = none yet), for the meter's PB flag. */
+  pb: number;
   medal: Medal | -1;
   th: [number, number, number];
 }
 /** What Full Send keeps in profile.gameData.fullsend. */
 export interface FullSendSave {
   ver: 1; lastTour?: string; reducedFlash?: boolean; rides?: number; tipsSeen?: string[];
-  best?: Record<string, { golds: number; medals: string; topKph: number; longestChain: number; rings: number }>;
+  best?: Record<string, { golds: number; medals: string; topKph: number; longestChain: number; rings: number; score?: number }>;
   moonVisits?: number; maxAltM?: number;
+  /** Personal bests: best mean power (FTP fraction) for a sprint of each length (seconds), which sets your medal targets. */
+  pb?: Record<string, number>;
+  /** The ride with the best score on each tour, as metres ridden at each second of the ride (the ghost you race). */
+  ghost?: Record<string, number[]>;
 }
 export interface ForkOption { kind: PieceKind; biome: BiomeId; title: string }
-export interface SetResult { kind: PieceKind; biome: BiomeId; title: string; medal: Medal; detail: string }
+export interface SetResult {
+  kind: PieceKind; biome: BiomeId; title: string; medal: Medal; detail: string;
+  /** Sprint length (s), mean and peak power (W) over it, and whether the mean beat your previous best for that length. */
+  effortS: number; avgW: number; peakW: number; pb: boolean;
+}
 
 /** Where the next ground biome begins (m), the biomes either side, and how far ahead it was when it went up (m). */
 export interface Seam { x: number; from: BiomeId; to: BiomeId; lead: number }
@@ -89,7 +101,7 @@ export interface FullSendSnapshot {
   mega: number | null;
   /** The layer you're falling from (re-entry from the moon burns), when you last hit or left water, the jet (on / held but
    *  under the power line), the heights rings and stars float at on this layer (null = none here), and what you've caught. */
-  fromTier: Tier | null; splashAt: number; jet: 'on' | 'weak' | null; jetFtp: number;
+  fromTier: Tier | null; splashAt: number; jet: 'on' | 'weak' | null; jetRpm: number;
   airH: [number, number] | null; got: Array<{ id: number; kind: AirKind; at: number }>;
   rings: number; stars: number; chain: number;
   /** A fork in the road before the next set: two branches (same sprint length), the one you're on, and seconds left to choose. */
@@ -111,6 +123,14 @@ export interface FullSendSnapshot {
   hazards: HazardView[]; scorchAt: number; leapSlow: number;
   /** Speed round a loop (m/s; 0 when not in one). */
   loopV: number;
+  /** Ride score so far, and the best score on this tour before this ride (0 = none). */
+  score: number; bestScore: number;
+  /** Your best run on this tour at this point of the ride (metres ridden), or null with no best run saved. */
+  ghostX: number | null;
+  /** When the charge you built in a sprint fired at the lip (sim time), and how much faster it threw you than you were going. */
+  chargeAt: number; chargeGain: number;
+  /** False until you have pedalled enough of the ride for it to count as ridden (tour completion, saves, ghosts). */
+  ridden: boolean;
   hooks: Record<string, unknown>;
 }
 
@@ -208,7 +228,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     plungeM: T.num('plungeM', 45, 10, 200, 5, 'How far you fall off a sky island or the moon before splashing into the sea (m, each half)'),
     moonS: T.num('moonS', 60, 10, 600, 5, 'Seconds of cruising you get on the moon before you drift off and fall'),
     skyStartLift: T.num('skyStartLift', 0.3, 0, 1, 0.05, 'Lift meter on arrival at the sky islands (grace before you can fall off)'),
-    jetFtp: T.num('jetFtp', 1.0, 0.5, 2, 0.05, 'Jet (hold B / up in the air, up high) fires only while you hold at least this FTP fraction'),
+    jetRpm: T.num('jetRpm', 100, 70, 140, 1, 'Jet (hold B / up, up high) fires while you spin at least this cadence: a spin-up, not a power surge, so recoveries stay easy'),
     jetAccel: T.num('jetAccel', 45, 5, 150, 1, 'Jet thrust (m/s² upward) while it fires'),
     jetVyMax: T.num('jetVyMax', 22, 5, 80, 1, 'Fastest the jet climbs (m/s)'),
     jetGrade: T.num('jetGrade', 2, -2, 8, 0.5, 'Grade % on the trainer while jetting'),
@@ -226,6 +246,17 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     menuAutoS: T.num('menuAutoS', 30, 5, 120, 5, 'Seconds the setup screen waits before starting with the highlighted tour'),
     seaS: T.num('seaS', 40, 5, 300, 5, 'Seconds underwater after a fall before you breach back up to the road'),
     seaGrade: T.num('seaGrade', 1.5, 0, 6, 0.5, 'Extra grade % on the sea floor (water drag)'),
+    pbBronze: T.num('pbBronze', 0.86, 0.5, 1.1, 0.01, 'Once you have a best for a sprint length: bronze = this × your best mean power'),
+    pbSilver: T.num('pbSilver', 0.92, 0.5, 1.1, 0.01, 'Silver = this × your best mean power for that sprint length'),
+    pbGold: T.num('pbGold', 0.98, 0.5, 1.2, 0.01, 'Gold = this × your best mean power for that sprint length'),
+    medalFloor: T.num('medalFloor', 0.9, 0.5, 1.5, 0.05, 'No medal below this FTP fraction, however low your bests (silver/gold floors are +0.05 / +0.1)'),
+    pbFade: T.num('pbFade', 0.985, 0.9, 1, 0.005, 'A best you rode under (but tried, ≥ 70 % of it) fades by this each ride, so targets follow your form'),
+    pbExp: T.num('pbExp', 0.15, 0, 0.4, 0.01, 'Guessing a best for a new sprint length from another: power × (known s / new s)^this'),
+    liftMedal: T.num('liftMedal', 0.1, 0, 0.5, 0.01, 'Lift per medal step on a sprint (gold = 3×); it still drains unless you land clean'),
+    liftMedalFill: T.num('liftMedalFill', 0.4, 0, 2, 0.05, 'Clean landings fill lift faster in the recovery after a medal: +this per medal step'),
+    descentSkyS: T.num('descentSkyS', 9, 3, 30, 1, 'Seconds before the next approach that you drop off the sky islands, so the set piece is in the scenery you picked'),
+    descentMoonS: T.num('descentMoonS', 16, 5, 40, 1, 'Seconds before the next approach that the moon throws you off (re-entry), for the same reason'),
+    riddenFrac: T.num('riddenFrac', 0.5, 0, 1, 0.05, 'Share of the ride you must pedal (≥ 0.3 FTP) for the tour to count as finished'),
     seamM: T.num('seamM', 450, 150, 1500, 25, 'Most metres ahead the next biome begins (its gateway) once the fork closes; closer if the phase would end first'),
   };
   const th: Record<PieceKind, () => [number, number, number]> = {} as never;
@@ -279,12 +310,52 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let fromTier: Tier | null = null, splashAt = -99, jet: 'on' | 'weak' | null = null, jetS = 0, moonDoneAt = -1;
   let chaseX = 0, chaseV = 0, caveDecel = 0; // outrun payoff: the chaser charging the cave mouth
   const caught = new Set<number>(); const got: Array<{ id: number; kind: AirKind; at: number }> = [];
-  let rings = 0, stars = 0, chain = 0, longestChain = 0, prevX = 0, wantPower: number | undefined;
+  let rings = 0, stars = 0, chain = 0, longestChain = 0, prevX = 0, wantCad: number | undefined;
   /** Rotation from leaning since takeoff (rad, + = back), how long a full lean has been held, and the last landed flip. */
   let spun = 0, leanHeld = 0, flips = 0, flip: { name: string; at: number } | null = null;
   /** In a leap: the ballistic height (y adds your steering), steering offset, flight time (bullet-time seconds), what's
    *  coming out of the pit, and hits taken. */
   let leapY = 0, dodge = 0, leapT = 0, hazards: Hazard[] = [], scorched = 0, scorchAt = -99;
+  /** Sprint scoring: peak power (FTP fraction) in this sprint; the charge fired at the lip; lift fill boost after a medal. */
+  let peak = 0, chargeAt = -99, chargeGain = 0, fillBoost = 1;
+  /** A forced descent (so the next set piece is on the ground) keeps your flow through the splashdown. */
+  let keepFlow: number | null = null;
+  /** Riding time, pedalling time (≥ 0.3 FTP), and metres ridden at each whole second (the ghost of a best run). */
+  let rideS = 0, pedalS = 0; const trace: number[] = [];
+  /** Personal bests at the start of this ride (targets), and this ride's best mean per sprint length. */
+  const pbs: Record<string, number> = { ...(save.pb ?? {}) };
+  const rideBest: Record<string, number> = {};
+  const difficulty = () => clamp(Number(ctx.profile.settings?.difficulty) || 1, 0.5, 1.5);
+  /** Your best mean (FTP fraction) for a sprint this long: the saved one, else a guess from the nearest length you have. */
+  function bestFor(effortS: number): number {
+    const own = pbs[String(effortS)];
+    if (own > 0) return own;
+    let best = 0, near = Infinity;
+    for (const [k, b] of Object.entries(pbs)) {
+      const d = Number(k);
+      if (!(b > 0) || !(d > 0)) continue;
+      const dist = Math.abs(Math.log(d / effortS));
+      if (dist < near) { near = dist; best = b * (d / effortS) ** tun.pbExp(); }
+    }
+    return best;
+  }
+  /** Medal targets [bronze, silver, gold] as FTP fractions: from your bests once you have one, else the defaults; both × difficulty. */
+  function targetsFor(kind: PieceKind, effortS: number): [number, number, number] {
+    const k = difficulty(), best = bestFor(effortS);
+    if (!(best > 0)) { const d = th[kind](); return [d[0] * k, d[1] * k, d[2] * k]; }
+    const f = tun.medalFloor();
+    return [Math.max(f, best * tun.pbBronze() * k), Math.max(f + 0.05, best * tun.pbSilver() * k), Math.max(f + 0.1, best * tun.pbGold() * k)];
+  }
+  const medalString = () => results.map((r) => MEDAL_NAMES[r.medal][0]).join('');
+  /** One number for the ride: medals, new bests, style and the altitude layer. */
+  const scoreNow = () => results.reduce((a, r) => a + r.medal * 100 + (r.pb ? 50 : 0), 0)
+    + style * 15 + flips * 10 + rings * 10 + stars * 3 + perfects * 2 + skyVisits * 20 + moonVisits * 40;
+  const ghostAt = (): number | null => {
+    const tr = save.ghost?.[tour.id];
+    if (!tr || tr.length < 2 || menu) return null;
+    const i = Math.min(tr.length - 2, Math.floor(rideS)), f = Math.min(1, rideS - i);
+    return tr[i] + (tr[i + 1] - tr[i]) * f;
+  };
 
   const scale = () => tun.tourScale();
   /** Branch taken at each set's fork (0 = the tour's plan, 1 = its alternative). */
@@ -340,10 +411,21 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   function finishRide() {
     const sm = sim.summary();
     const golds = Number(sm.gold), b = save.best?.[tour.id];
-    const medals = String(sm.medals);
-    if (!b || golds > b.golds || (golds === b.golds && medalScore(medals) > medalScore(b.medals))) {
-      save.best = { ...(save.best ?? {}), [tour.id]: { golds, medals, topKph: Number(sm.topKph), longestChain: Number(sm.longestChain), rings: Number(sm.rings) } };
+    const medals = medalString(), score = scoreNow(), prevScore = b?.score ?? 0;
+    let rec = b ? { ...b } : null;
+    if (!rec || golds > rec.golds || (golds === rec.golds && medalScore(medals) > medalScore(rec.medals))) {
+      rec = { golds, medals, topKph: Number(sm.topKph), longestChain: Number(sm.longestChain), rings: Number(sm.rings) };
     }
+    rec.score = Math.max(score, prevScore);
+    save.best = { ...(save.best ?? {}), [tour.id]: rec };
+    if (score > prevScore && trace.length > 1) save.ghost = { ...(save.ghost ?? {}), [tour.id]: trace.slice() };
+    // bests: a new one replaces the old; one you tried for but rode under fades a little, so targets follow your form
+    const pb = { ...(save.pb ?? {}) };
+    for (const [k, m] of Object.entries(rideBest)) {
+      const old = pb[k] ?? 0;
+      pb[k] = +(m >= old ? m : m >= old * 0.7 ? Math.max(m, old * tun.pbFade()) : old).toFixed(3);
+    }
+    save.pb = pb;
     save.rides = (save.rides ?? 0) + 1;
     save.moonVisits = (save.moonVisits ?? 0) + moonVisits;
     save.maxAltM = Math.max(save.maxAltM ?? 0, Math.round(peakAlt));
@@ -365,6 +447,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     }
   };
   const go = (p: Phase) => { phase = p; phaseT = 0; };
+  const ridden = () => rideS > 0 && pedalS >= tun.riddenFrac() * rideS;
   const setMode = (m: Mode) => { mode = m; modeT = 0; };
   /** Features reached at the end of the sprint ride toward you at your own speed, so the sprint lasts exactly `effortS`. */
   const atEnd = (kind: PieceKind) => kind === 'smash' || kind === 'leap' || kind === 'loop';
@@ -413,7 +496,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
 
   function startSet(i: number) {
     setIndex = i;
-    const s = setAt(i)!, t = th[s.kind]();
+    const s = setAt(i)!, t = targetsFor(s.kind, s.effortS);
     const lay = toTier ?? tier; // up on the sky islands or the moon, the set piece happens up there
     const biome: BiomeId = lay === 'sky' || lay === 'moon' ? tierBiome(lay) : s.biome;
     const g = tun.gravity(), vB = targetSpeed(t[0], speedPerFtp()) * 0.97;
@@ -425,16 +508,22 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       kind: s.kind, biome, title: pieceTitle(s.kind, biome), finale: !!s.finale,
       x0: x + 1e4, len, n: s.kind === 'smash' ? Math.round(tun.smashN()) : 0, spacing: 2.4, count: 0, hitAt: [], toppledAt: -1,
       chaser: chaserFor(biome), gap: tun.chaseGap(), caught: 0, caughtAt: -99, crashAt: -99, air: 1, surfaced: false,
-      live: 0, medal: -1, th: t,
+      live: 0, peak: 0, pb: pbs[String(s.effortS)] ?? 0, medal: -1, th: t,
     };
-    fracSum = 0; fracN = 0;
+    fracSum = 0; fracN = 0; peak = 0; fillBoost = 1;
     go('approach');
   }
 
   function finishPiece(medal: Medal, detail: string) {
     if (!piece) return;
     piece.medal = medal;
-    const r: SetResult = { kind: piece.kind, biome: piece.biome, title: piece.title, medal, detail };
+    const s = set(), effortS = s?.effortS ?? 0, mean = fracN ? fracSum / fracN : 0, key = String(effortS), prev = pbs[key] ?? 0;
+    rideBest[key] = Math.max(rideBest[key] ?? 0, mean);
+    const ftp = ctx.profile.ftp || 0;
+    const r: SetResult = { kind: piece.kind, biome: piece.biome, title: piece.title, medal, detail,
+      effortS, avgW: Math.round(mean * ftp), peakW: Math.round(peak * ftp), pb: prev > 0 && mean > prev };
+    // a medal gives you a push toward the sky, but only clean landings keep it (it drains without flow)
+    if (medal > 0 && tier !== 'moon') { lift = Math.min(1, lift + tun.liftMedal() * medal); fillBoost = 1 + tun.liftMedalFill() * medal; }
     results.push(r); last = { ...r, at: ctx.clock.now() };
     ctx.emit({ type: 'setPiece', data: { kind: piece.kind, biome: piece.biome, medal, caught: piece.caught, finale: piece.finale } });
   }
@@ -450,9 +539,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   function arrive() {
     if (!piece) return;
     piece.x0 = x;
-    const live = v / speedPerFtp();
+    // the whole sprint counts: the rocket fires the charge you built (your mean power) at the lip, not your last few seconds
+    const live = fracN ? fracSum / fracN : 0;
     piece.live = live;
-    const medal = medalFor(live / 0.97, piece.th);
+    const medal = medalFor(live, piece.th), vNow = v;
+    v = targetSpeed(live, speedPerFtp());
+    chargeGain = vNow > 0.1 ? v / vNow - 1 : 0; chargeAt = ctx.clock.now();
     go('payoff');
     if (piece.kind === 'leap') {
       const a = (tun.launchDeg() * Math.PI) / 180;
@@ -461,7 +553,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       const pit = piece.biome === 'sky' ? 0 : Math.round(tun.leapHazards());
       hazards = leapHazards(pit, piece.x0, piece.len, vx, vy, tun.gravity(), terrainSeed % 1000 + setIndex * 7);
     } else if (piece.kind === 'smash') {
-      piece.count = smashCount(live / 0.97, piece.th, piece.n);
+      piece.count = smashCount(live, piece.th, piece.n);
       pendingMedal = medal; setMode('smash');
     } else if (piece.kind === 'loop') {
       loopV0 = v; loopV = v; loopPhi = 0; loopDir = 1;
@@ -637,7 +729,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       if (tun.maxGrade() !== maxGrade) { maxGrade = tun.maxGrade(); terrain = makeTerrain(terrainSeed, maxGrade); }
       const bike = ctx.bike(), input = ctx.input();
       frac = Math.max(0, bike.ftpFraction || 0);
+      // sprint scoring reads the power as it is now (the 3 s average would short-change the first seconds of every sprint)
+      const nowW = bike.raw && bike.raw.lastPacketAgeS < 3 ? bike.raw.power : bike.power3s;
+      const nowF = clamp((nowW || 0) / Math.max(1, ctx.profile.ftp || 0), 0, 3);
       phaseT += dt;
+      rideS += dt; if (frac >= 0.3) pedalS += dt;
+      if (rideS >= trace.length) trace.push(Math.round(x));
       const s = set();
 
       // hills flatten for set pieces and come back for the cruise
@@ -683,9 +780,9 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           if (s.kind === 'outrun') { piece.gap = tun.chaseGap(); piece.x0 = x; }
         }
       } else if (phase === 'effort' && s && piece) {
-        fracSum += Math.min(frac, 2.5); fracN++;
+        fracSum += nowF; fracN++; peak = Math.max(peak, nowF); piece.peak = peak;
         if (atEnd(s.kind)) {
-          piece.live = v / speedPerFtp();
+          piece.live = fracSum / fracN;
           piece.x0 = x + v * Math.max(0, phaseS() - phaseT);
           if (phaseT >= phaseS()) arrive();
         } else if (s.kind === 'dive') {
@@ -724,18 +821,31 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       } else if (phase === 'recovery') {
         if (phaseT >= phaseS()) startSet(setIndex + 1);
       } else if (phase === 'cooldown') {
-        if (phaseT >= phaseS()) { go('done'); ctx.emit({ type: 'tourComplete', data: { tour: tour.id } }); finishRide(); }
+        if (phaseT >= phaseS()) { // a tour only counts (achievements, bests, the ghost) if you actually rode it
+          go('done');
+          if (ridden()) { ctx.emit({ type: 'tourComplete', data: { tour: tour.id } }); finishRide(); }
+        }
       }
 
       // altitude: keep your flow up and the lift meter fills; up high, an empty meter drops you off the edge
       tierT += dt;
       if (cruising() && !toTier) {
         lift = tier === 'moon' ? Math.max(0, lift - dt / tun.moonS()) // the moon is a prize: a fixed stay, then you drift off
-          : clamp(lift + ((flow - tun.liftFloor()) / Math.max(0.01, tun.flowMax())) * dt / tun.liftFillS(), 0, 1);
+          : clamp(lift + ((flow - tun.liftFloor()) / Math.max(0.01, tun.flowMax())) * (flow > tun.liftFloor() ? fillBoost : 1) * dt / tun.liftFillS(), 0, 1);
         if (tier === 'sky' && lift <= 0 && mode === 'road') plunge(now);
         if (tier === 'moon' && lift <= 0 && moonDoneAt < 0) moonDoneAt = now; // out of moon time: a mega ramp throws you off
         const due = tier === 'moon' ? moonDoneAt >= 0 : tier === 'sea' ? tierT >= tun.seaS() || lift >= 1 : lift >= 1;
-        if (due && !megaArmed && mode === 'road') { megaX = x + tun.megaLead(); megaArmed = true; ctx.emit({ type: 'megaRamp', data: { tier } }); }
+        // no launch up a layer just before a set piece: you would only have to come straight back down
+        const roomUp = tier === 'sea' || tier === 'moon' || phase === 'cooldown'
+          || phaseS() - phaseT > (tier === 'ground' ? tun.descentSkyS() : tun.descentMoonS()) + 25;
+        if (due && roomUp && !megaArmed && mode === 'road') { megaX = x + tun.megaLead(); megaArmed = true; ctx.emit({ type: 'megaRamp', data: { tier } }); }
+      }
+      // a set piece is coming: leave the sky islands (fall to the sea, then breach) or the moon (re-entry), so it plays out in
+      // the scenery you picked at the fork, not up here
+      if ((phase === 'recovery' || phase === 'warmup') && !toTier && (mode === 'road' || mode === 'hop')) {
+        const left = phaseS() - phaseT;
+        if (tier === 'sky' && left <= tun.descentSkyS()) { keepFlow = flow; plunge(now); }
+        else if (tier === 'moon' && left <= tun.descentMoonS()) { keepFlow = flow; leaveMoon(now); }
       }
       if (megaArmed && megaX !== null && !cruising() && x < megaX - MEGA.len - MEGA.padFrom) { megaArmed = false; megaX = null; } // a set piece came first
       if (!megaArmed && megaX !== null && x > megaX + 400) megaX = null;
@@ -747,13 +857,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       // jet (up high only): hold B / up and pedal above the power line, and the rocket lifts you
       const canJet = (tier === 'sky' || tier === 'moon') && !toTier && (mode === 'road' || mode === 'hop') && phase !== 'effort' && phase !== 'payoff';
       let wantJet = input.held.has('b') || input.held.has('up');
-      wantPower = undefined;
+      wantCad = undefined;
       if (opts.autojet && canJet) {
         const r = nextRing();
         wantJet = !!r && r.h > y - roadH(r.x) + 1 && (r.x - x) / Math.max(1, v) < 1.6;
-        if (wantJet) wantPower = tun.jetFtp() + 0.15;
+        if (wantJet) wantCad = tun.jetRpm() + 8;
       }
-      jet = canJet && wantJet ? (frac >= tun.jetFtp() ? 'on' : 'weak') : null;
+      // the jet is a spin-up (cadence, any easy power), so chasing rings never turns a recovery into threshold work
+      const rpm = bike.raw && bike.raw.lastPacketAgeS < 3 ? bike.raw.cadence : bike.cadence3s; // the jet answers your legs at once
+      jet = canJet && wantJet ? ((rpm || 0) >= tun.jetRpm() && frac >= 0.2 ? 'on' : 'weak') : null;
       if (jet === 'on' && mode === 'road') { setMode('hop'); vy = 3; hopT0 = now; y = roadH(x); } // jet off the road any time
 
       // movement on the road
@@ -794,7 +906,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
             if (fromTier === 'moon') vy = Math.max(vy, -tun.reentryV()); // air drag: a long, steady burn you can watch
             transMix = clamp((ground - y) / fallM, 0, 1);
             if (ground - y >= fallM) {
-              tier = 'sea'; toTier = null; plunging = false; transMix = 0; tierT = 0; megaX = null; lift = 0; flow = 0; splashdowns++; warp++; landGrade = null;
+              tier = 'sea'; toTier = null; plunging = false; transMix = 0; tierT = 0; megaX = null; lift = 0; flow = keepFlow ?? 0; keepFlow = null; splashdowns++; warp++; landGrade = null;
               fromTier = null; splashAt = now; chain = 0;
               y = ground + tun.plungeM(); vy = Math.min(vy, -10); bouncing = true; edgeX = null; // the splashdown is never graded
               ctx.emit({ type: 'biomeReached', data: { biome: shown() } });
@@ -885,7 +997,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       if (mode === 'hop' && now - hopT0 > 0.5 && !toTier) offerTip('lean', 'Airtime! Lean with the paddles or ◀ ▶ so you land parallel to the slope.', now);
       if (landGrade === 'perfect' || landGrade === 'good') offerTip('landing', 'Clean landing: that adds FLOW, free speed for the same watts. Land crossed up and you bounce.', now);
       if (tier === 'ground' && lift > 0.25) offerTip('lift', 'Keep the flow going to fill LIFT. When it\'s full, your next jump launches you into the sky.', now);
-      if (tier === 'sky' && !toTier) offerTip('sky', `Sky Islands! Hold B and pedal above ${Math.round(tun.jetFtp() * 100)}% FTP to jet up to the rings.`, now);
+      if (tier === 'sky' && !toTier) offerTip('sky', `Sky Islands! Hold B and spin above ${Math.round(tun.jetRpm())} rpm (easy gear) to jet up to the rings.`, now);
       if (tier === 'moon' && !toTier) offerTip('moon', 'The Moon: low gravity and limited time. Rings give you more moon time.', now);
       if (tier === 'sea' && !toTier) offerTip('sea', 'Splashdown! Keep pedalling: you\'ll breach back up to the road.', now);
       if (wind < -0.3) offerTip('wind', 'Headwind: it\'s heavier for a while. A tailwind gives it back.', now);
@@ -901,7 +1013,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         { button: 'left', label: 'Lean back (in the air)', shortLabel: 'Back', active: air, displayOrder: 0 },
         { button: 'right', label: 'Lean forward (in the air)', shortLabel: 'Fwd', active: air, displayOrder: 1 },
         { button: 'a', label: 'Trick (in the air)', shortLabel: 'Trick', active: air },
-        { button: 'b', label: `Jet (sky and moon): hold and pedal above ${Math.round(tun.jetFtp() * 100)}% FTP to climb to the rings`, shortLabel: 'Jet', active: (tier === 'sky' || tier === 'moon') && !toTier },
+        { button: 'b', label: `Jet (sky and moon): hold and spin above ${Math.round(tun.jetRpm())} rpm to climb to the rings`, shortLabel: 'Jet', active: (tier === 'sky' || tier === 'moon') && !toTier },
       ];
       if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose tour / options' }, { button: 'a', label: 'Start the ride', shortLabel: 'Start' }], playControls: controls };
       const base = { gears: true, controls, touchControls: ['left', 'right', 'a', 'b'] as GameHud['touchControls'] };
@@ -918,7 +1030,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           ...controls.filter((c) => c.button !== 'left' && c.button !== 'right'),
         ];
       }
-      if (jet) return { ...base, targetZone: { min: powerZone(tun.jetFtp()), max: 5, label: 'Jet: push!', source: 'power' } };
+      if (jet) return { ...base, targetZone: { min: 1, max: 2, label: 'Jet: spin, stay easy' }, targetCadence: { min: tun.jetRpm(), label: 'Jet: spin it up' } };
       if (phase === 'warmup') return { ...base, targetZone: { min: 1, max: 2, label: 'Warm-up' } };
       return { ...base, targetZone: { min: 1, max: 2, label: phase === 'cooldown' || phase === 'done' ? 'Cool-down' : 'Recover' } };
     },
@@ -949,14 +1061,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         tier, lift, alt: y - roadH(x), toTier, warp, edgeX, mega: megaX,
         fork, visited: [...visited],
         menu: menu ? { row: menuRow, tour: tour.id, reducedFlash, left: Math.max(0, tun.menuAutoS() - menuT),
-          tours: TOUR_IDS.map((id) => { const b = save.best?.[id]; return { id, name: TOURS[id].name, minutes: tourMinutes(TOURS[id], tun.approachS()), best: b ? `${b.medals} · ${b.golds} gold` : null }; }) } : null,
+          tours: TOUR_IDS.map((id) => { const b = save.best?.[id]; return { id, name: TOURS[id].name, minutes: tourMinutes(TOURS[id], tun.approachS()), best: b ? `${b.medals} · ${b.golds} gold${b.score ? ` · best ${b.score} pts` : ""}` : null }; }) } : null,
         reducedFlash, tip: tip ? { id: tip.id, text: tip.text, age: now - tip.at } : null, wind, crashAt,
-        fromTier, splashAt, jet, jetFtp: tun.jetFtp(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
+        fromTier, splashAt, jet, jetRpm: tun.jetRpm(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
         fromLobby: !!lobbyBiome, loopV: mode === 'loop' ? loopV : 0,
         flip: flip ? { name: flip.name, age: now - flip.at } : null, spun,
         hazards: phase === 'payoff' && piece?.kind === 'leap' && (mode === 'air' || mode === 'fall') ? hazards.map((z) => ({ x: z.x, y: hazardY(z, leapT), vy: z.vy - z.g * (leapT - z.t0), hit: z.hit })) : [],
         scorchAt, leapSlow: phase === 'payoff' && piece?.kind === 'leap' && mode === 'air' ? 1 - (1 - tun.leapSlowMo()) * Math.sin(Math.PI * clamp((x - launchX) / Math.max(1, piece.x0 + piece.len - launchX), 0, 1)) ** 1.5 : 1,
-        hooks: { shielded: phase === 'effort', seg: phase, lobbyBiome: cur, ...(wantPower !== undefined ? { powerFtp: wantPower } : {}) },
+        score: scoreNow(), bestScore: save.best?.[tour.id]?.score ?? 0, ghostX: ghostAt(), chargeAt, chargeGain, ridden: ridden(),
+        hooks: { shielded: phase === 'effort', seg: phase, lobbyBiome: cur, ...(wantCad !== undefined ? { cadence: wantCad } : {}) },
       };
     },
     isOver: () => !menu && phase === 'done',
@@ -968,7 +1081,10 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         tour: tour.name, sets: results.length, gold: n(3), silver: n(2), bronze: n(1), missed: n(0),
         topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, perfectLandings: perfects, badLandings: bads, flowPeakPct: Math.round(flowPeak * 100), hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
         skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain, flips, scorched,
-        distanceKm: +(x / 1000).toFixed(1), route: route.map((r) => (r ? 'B' : 'A')).join(''), biomesSeen: new Set(visited).size, medals: results.map((r) => MEDAL_NAMES[r.medal][0]).join(''),
+        distanceKm: +(x / 1000).toFixed(1), altRoutes: route.filter((r) => r).length, biomesSeen: new Set(visited).size,
+        score: scoreNow(), newBests: results.filter((r) => r.pb).length,
+        bestSprintW: results.reduce((a, r) => Math.max(a, r.peakW), 0),
+        sprintAvgW: results.length ? Math.round(results.reduce((a, r) => a + r.avgW, 0) / results.length) : 0,
       };
     },
     dispose() { ctx.resistance.clear('terrain'); },

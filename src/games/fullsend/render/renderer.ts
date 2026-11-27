@@ -19,7 +19,8 @@ import { AIR_CELL, airItemAt, bumpH, DIVE, diveDip, MEGA, megaLift } from '../si
 import { FullSendSound } from './sound';
 import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
 import { drawCloudDeck, drawFireball, drawTrail, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
-import { layout, type FullSendLayout } from './layout';
+import { cardBox, layout, type FullSendLayout } from './layout';
+import { cardHeadline, cardRows, cardVisible, ghostCall, horizonPreview, pace, PACE_TEXT, sprintIntensity } from './sprint';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
 import { drawMegaRamp } from './mega';
@@ -73,6 +74,8 @@ export class FullSendRenderer implements GameRenderer {
   /** The distant sign: which message it shows and where the far layer was when that message went up. */
   private signKey = ''; private signBase = 0; private farOff = 0;
   private L!: FullSendLayout;
+  /** Sprint escalation (0..1), the pace you were last on and when it changed, and the last charge seen (for the call-out). */
+  private heat = 0; private paceSeen = { key: '', medal: -1, at: -99 }; private chargeSeen = -99; private chargeShown = { at: -99, gain: 0 };
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets; send?: (action: unknown) => void }) {
     void loadFonts();
@@ -249,6 +252,7 @@ export class FullSendRenderer implements GameRenderer {
     };
     if (!blend) midProps(null, g); else this.layer(blend, (l, gg) => midProps(l, gg)); // props are never cut
 
+
     // ---- the gap / water / loop sit behind the road surface ----
     const gapX0 = p?.kind === 'leap' ? sx(p.x0) : NaN, gapX1 = p?.kind === 'leap' ? sx(p.x0 + p.len) : NaN;
     const inGap = (x: number) => x > gapX0 && x < gapX1;
@@ -397,6 +401,14 @@ export class FullSendRenderer implements GameRenderer {
 
     // ---- the rider and the rocket ----
     const look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
+    if (s.ghostX != null && s.phase !== 'done' && s.tier === 'ground' && !s.toTier) { // the ghost of your best run on this tour
+      const gx = sx(s.ghostX);
+      if (gx > -30 && gx < W + 30 && Math.abs(gx - sx(s.x)) > 6) {
+        g.save(); g.globalAlpha = 0.32; g.translate(Math.round(gx), Math.round(roadY(s.ghostX))); g.rotate(-Math.atan((roadH(s.ghostX + 0.5) - roadH(s.ghostX - 0.5))));
+        drawRider(g, look, bike.crankRevs + 0.37, s.ghostX, { t, speed: 14, gear: null });
+        g.restore(); g.globalAlpha = 1;
+      }
+    }
     const air = s.mode === 'air' || s.mode === 'fall' || s.mode === 'rescue';
     const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : rampLift(p, s.x)) : p?.kind === 'dive' ? rampLift(p, s.x) : 0) + (s.mode === 'road' ? megaLift(s.mega, s.x) : 0) + hop.h;
     const inLoop = p?.kind === 'loop' && (s.mode === 'loop' || s.mode === 'drop');
@@ -465,12 +477,21 @@ export class FullSendRenderer implements GameRenderer {
       }
     };
     if (!blend) foreProps(null, g); else this.layer(blend, (l, gg) => foreProps(l, gg));
+    // the set piece you're sprinting for, on the horizon from the approach on: it grows as you close in. Drawn over the
+    // scenery (it's the target, like the sign) with an outline so it reads through trees.
+    if (p && (s.phase === 'approach' || s.phase === 'effort') && !(p.kind === 'dive' && s.phase === 'effort')) {
+      const hp = horizonPreview(p.x0 - s.x, (W - RX) / PPM, W, midBase + 4, roadY0);
+      if (hp) this.preview(g, p, hp, t, W);
+    }
     // riding through a portal: the scene has already swapped behind this flash
     drawPortalFlash(g, W, H, rx, ryy - 10, portalFlash(t - this.portalAt) * (s.reducedFlash ? 0.3 : cross === 'dive' || cross === 'surface' || this.portalTo === 'underwater' ? 0.35 : 0.7), this.portalTo);
     const lines = Math.max(0, Math.min(1, (s.v - 20) / 50));
+    // the sprint escalates with your pace and power: more speed lines, a heat glow at the edges, a rising shake
+    const heat = sprintIntensity(s, p);
+    this.heat += (heat - this.heat) * Math.min(1, dt * 3);
     if (lines > 0) {
-      g.globalAlpha = 0.35 * lines; g.fillStyle = '#ffffff';
-      for (let i = 0; i < 14; i++) {
+      g.globalAlpha = (0.35 + 0.3 * this.heat) * lines; g.fillStyle = this.heat > 0.7 ? '#fff2c0' : '#ffffff';
+      for (let i = 0; i < 14 + Math.round(22 * this.heat); i++) {
         const y = hash01(i * 5 + 1) * UH, len = 10 + hash01(i * 5 + 2) * 30;
         const x = W - (((t * (300 + hash01(i) * 300)) + hash01(i * 5 + 3) * W) % (W + len));
         g.fillRect(Math.round(x), Math.round(y), Math.round(len), 1);
@@ -488,6 +509,8 @@ export class FullSendRenderer implements GameRenderer {
     if (s.piece && s.piece.crashAt !== sn.cave) { if (s.piece.crashAt > 0) this.shake = Math.max(this.shake, 9); sn.cave = s.piece.crashAt; }
     if (s.piece && s.piece.caughtAt !== sn.caught) { if (s.piece.caughtAt > 0) this.shake = Math.max(this.shake, 5); sn.caught = s.piece.caughtAt; }
     if (s.jet === 'on') this.shake = Math.max(this.shake, 0.8);
+    if (this.heat > 0.45) this.shake = Math.max(this.shake, 0.4 + 1.4 * (this.heat - 0.45) / 0.55);
+    if (s.chargeAt !== this.chargeSeen) { this.chargeSeen = s.chargeAt; if (s.chargeAt > 0 && s.chargeGain > 0.03) { this.shake = Math.max(this.shake, 6); this.chargeShown = { at: now, gain: s.chargeGain }; } }
     this.shake *= Math.exp(-dt * 7);
     const sh = s.reducedFlash ? 0 : this.shake;
     const dx = Math.round(Math.sin(t * 91) * sh) * this.px, dy = Math.round(Math.cos(t * 77) * sh) * this.px;
@@ -508,6 +531,10 @@ export class FullSendRenderer implements GameRenderer {
       for (let i = 0; i < 10; i++) { const e = 10 - i; g.globalAlpha = 0.025 * bt * e / 2; g.fillRect(0, 0, W, i * 3); g.fillRect(0, H - i * 3, W, i * 3); g.fillRect(0, 0, i * 4, H); g.fillRect(W - i * 4, 0, i * 4, H); }
       g.globalAlpha = 1;
     }
+    if (this.heat > 0.05) { // heat glow at the edges
+      for (let i = 0; i < 8; i++) { g.globalAlpha = 0.03 * this.heat * (8 - i); g.fillStyle = this.heat > 0.8 ? '#ffb030' : '#ff5a2a'; g.fillRect(0, 0, i * 4 + 2, H); g.fillRect(W - i * 4 - 2, 0, i * 4 + 2, H); }
+      g.globalAlpha = 1;
+    }
     if (this.dusk > 0.01) { g.globalAlpha = this.dusk * 0.42; g.fillStyle = '#0a1030'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
     const m = this.g;
     m.imageSmoothingEnabled = false;
@@ -521,7 +548,7 @@ export class FullSendRenderer implements GameRenderer {
     this.cam = { x: Math.round(r.x + dx), y: Math.round(r.y + dy), s: r.w / W };
     this.farOff = s.camX * (PPM / k) * DISTANT.parallax;
     m.drawImage(this.far, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
-    if (hand < 0.35 && !s.menu) { // the distant sign stands behind the hills and trees
+    if (hand < 0.35 && !s.menu && !cardVisible(s)) { // the distant sign stands behind the hills and trees (the end card replaces it)
       m.globalAlpha = 1 - hand / 0.35;
       const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
       this.drawDistant(s, signMessage(s, c?.m ?? null));
@@ -629,15 +656,38 @@ export class FullSendRenderer implements GameRenderer {
     } else if (s.phase === 'effort' && p && c) {
       const word = p.kind === 'dive' ? 'SWIM FOR IT!' : p.kind === 'outrun' ? 'RUN!' : 'SPRINT!';
       txt(`${word} ${p.kind === 'dive' ? '' : mmss(c.s)}`.trim(), cxm, B.y + 26, 34, '#ff4d6d');
+      if (p.kind !== 'dive' && c.s <= 3 && c.s > 0.6) { // the last three seconds, big
+        const n = Math.ceil(c.s), k2 = s.reducedFlash ? 0 : 1 - (c.s % 1);
+        m.globalAlpha = 0.85; txt(String(n), this.cssW / 2, L.UH * 0.42, 80 + 24 * k2, '#ffd23b', 'center', 900, true, 7); m.globalAlpha = 1;
+      }
       if (c.s < 0.6 && p.kind !== 'dive' && p.kind !== 'outrun' && !s.reducedFlash) txt('GO GO GO', this.cssW / 2, L.UH * 0.38, 60, '#ffd23b', 'center', 900, true, 6);
       this.meter(s, p);
+      // pace: the medal your mean power is on course for; it pops when you move up a step
+      const pc = pace(p), key = `${s.setIndex}`;
+      if (this.paceSeen.key !== key) this.paceSeen = { key, medal: pc, at: -99 };
+      else if (pc !== this.paceSeen.medal) this.paceSeen = { key, medal: pc, at: pc > this.paceSeen.medal ? this.lastNow : -99 };
+      const pop = s.reducedFlash ? 0 : Math.max(0, 0.35 - (this.lastNow - this.paceSeen.at)) * 1.6;
+      const M2 = L.meter;
+      txt(PACE_TEXT[pc], M2.x + M2.w / 2, M2.y + M2.h + 16, 18 * (1 + pop), pc ? MEDAL_COLORS[pc] : '#ff4d6d', 'center', 900, true, 4);
     } else if (s.phase === 'payoff' && p?.kind === 'loop' && s.mode === 'loop') {
       txt('KEEP PEDALLING!', cxm, B.y + 26, 34, s.reducedFlash ? '#ffd23b' : (Math.sin(s.t * 10) > 0 ? '#ffd23b' : '#ffffff'));
       this.meter(s, p);
     } else if (s.phase === 'recovery' || s.phase === 'warmup') {
       txt(s.phase === 'warmup' ? `WARM-UP · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : 'RECOVER', cxm, B.y + 18, 18, '#ffffff', 'center', 900, true, 4);
-    } else if (s.phase === 'done') {
-      txt(s.phase === 'done' ? 'TOUR COMPLETE!' : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`, cxm, B.y + 22, s.phase === 'done' ? 34 : 20, s.phase === 'done' ? '#ffd23b' : '#ffffff');
+    } else if (s.phase === 'done' || s.phase === 'cooldown') {
+      const msg = s.phase === 'done' ? (s.ridden ? 'TOUR COMPLETE!' : 'RIDE OVER') : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`;
+      txt(msg, cxm, B.y + 22, s.phase === 'done' ? 34 : 20, s.phase === 'done' ? '#ffd23b' : '#ffffff');
+    }
+    if (cardVisible(s)) this.card(s, txt);
+    // the ghost of your best run: how far ahead or behind you are (under the medal coins)
+    const gc = s.phase !== 'done' && !cardVisible(s) ? ghostCall(s.x, s.ghostX) : null;
+    if (gc) txt(gc.text, rx0, st.y + 62, 12, gc.ahead ? '#7af0ff' : '#ff9a7a', 'right', 900, true, 3);
+    // the charge you built fires at the lip
+    const ca = this.lastNow - this.chargeShown.at;
+    if (ca >= 0 && ca < 1.4) {
+      m.globalAlpha = Math.min(1, (1.4 - ca) * 2.5);
+      txt(`CHARGE! +${Math.round(this.chargeShown.gain * 100)}%`, L.riderX, Math.min(L.roadY - 90, this.riderY - 60) - ca * 16, 26, '#ffb030', 'center', 900, true, 5);
+      m.globalAlpha = 1;
     }
 
     // medal stamp
@@ -650,7 +700,7 @@ export class FullSendRenderer implements GameRenderer {
       m.fillText(label, (S.x + S.w / 2) * d + 3 * d, (S.y + S.h * 0.4) * d + 3 * d);
       m.fillStyle = MEDAL_COLORS[s.last.medal]; m.fillText(label, (S.x + S.w / 2) * d, (S.y + S.h * 0.4) * d);
       m.font = font(800, 16); m.fillStyle = '#ffffff';
-      m.fillText(`${s.last.title} · ${s.last.detail}`, (S.x + S.w / 2) * d, (S.y + S.h * 0.85) * d);
+      m.fillText(`${s.last.title} · ${s.last.detail}${s.last.avgW ? ` · ${s.last.avgW} W` : ''}${s.last.pb ? ' · NEW PB!' : ''}`, (S.x + S.w / 2) * d, (S.y + S.h * 0.85) * d);
       m.globalAlpha = 1;
     }
     if (s.trick && s.trick.age < 1.4) {
@@ -682,7 +732,7 @@ export class FullSendRenderer implements GameRenderer {
     }
     if (s.jet) {
       m.textAlign = 'center'; m.font = font(900, s.jet === 'on' ? 16 : 14, s.jet === 'on'); m.fillStyle = s.jet === 'on' ? '#ffb030' : '#ff7a5a';
-      const txt = s.jet === 'on' ? 'JET!' : `PEDAL HARDER · JET NEEDS ${Math.round(s.jetFtp * 100)}% FTP`;
+      const txt = s.jet === 'on' ? 'JET!' : `SPIN IT UP · JET NEEDS ${Math.round(s.jetRpm)} RPM`;
       m.lineWidth = 4 * d; m.strokeStyle = 'rgba(10,12,40,0.8)'; m.lineJoin = 'round';
       m.strokeText(txt, L.riderX * d, (this.riderY + 26) * d); m.fillText(txt, L.riderX * d, (this.riderY + 26) * d);
     }
@@ -752,6 +802,69 @@ export class FullSendRenderer implements GameRenderer {
       m.fillStyle = MEDAL_COLORS[i + 1]; m.fillRect((fx - 1) * d, (M.y - 4) * d, 2 * d, (M.h * 0.7 + 8) * d);
       m.beginPath(); m.moveTo((fx + 1) * d, (M.y - 4) * d); m.lineTo((fx + 9) * d, (M.y - 1) * d); m.lineTo((fx + 1) * d, (M.y + 2) * d); m.fill();
     }
+    if (p.pb > 0) { // your best for a sprint this long: beat it for a new best
+      const fx = M.x + (M.w - sk) * Math.min(1, p.pb / maxF) + sk / 2;
+      m.fillStyle = '#7af0ff'; m.fillRect((fx - 1) * d, (M.y - 6) * d, 2 * d, (M.h * 0.7 + 12) * d);
+      m.font = fsFont(900, 10 * d, true); m.textAlign = 'center'; m.fillText('PB', fx * d, (M.y - 11) * d);
+    }
+  }
+
+  /** The set piece you're sprinting for, seen from afar: a hazy silhouette on the horizon (buffer px, scale `hp.sc`). */
+  private preview(g: G, p: PieceView, hp: { x: number; y: number; sc: number; alpha: number }, t: number, W: number) {
+    const look = LOOKS[p.biome], z = Math.max(0.22, hp.sc), x = Math.round(hp.x), y = Math.round(hp.y);
+    g.save(); g.globalAlpha = hp.alpha * (0.85 + 0.15 * hp.sc);
+    g.shadowColor = 'rgba(10,12,30,0.9)'; g.shadowBlur = 0; g.shadowOffsetX = 1; g.shadowOffsetY = 1;
+    g.fillStyle = mixColor(look.groundDark, look.haze, 0.45 * (1 - hp.sc));
+    if (p.kind === 'leap') { // the launch ramp, the gap and the far rim
+      const gw = Math.min(p.len * PPM, W * 0.9) * z, ch = Math.max(3, 26 * z), rw = RAMP_M * PPM * z * 0.6;
+      g.fillRect(x - rw - 40 * z, y - ch * 0.3, rw + 40 * z, ch);
+      g.beginPath(); g.moveTo(x - rw, y - ch * 0.3); g.lineTo(x, y - ch * 0.3 - RAMP_H * PPM * z * 0.6); g.lineTo(x, y - ch * 0.3); g.fill();
+      g.fillRect(x + gw, y - ch * 0.3, Math.max(8, 60 * z), ch);
+    } else if (p.kind === 'smash') { // a wall of bales / crates
+      const ww = Math.min(p.n * p.spacing * PPM, W) * z, wh = Math.max(3, 3 * 2.4 * PPM * z), cell = Math.max(2, 2.4 * PPM * z);
+      g.fillStyle = mixColor(p.biome === 'countryside' ? '#d9b24c' : look.roadEdge, look.haze, 0.4 * (1 - hp.sc));
+      g.fillRect(x, y - wh, ww, wh);
+      g.globalAlpha *= 0.5; g.fillStyle = look.groundDark;
+      for (let cx = x; cx < x + ww; cx += cell) g.fillRect(Math.round(cx), y - wh, 1, wh);
+    } else if (p.kind === 'loop') { // a ring standing on the road
+      const R = Math.max(3, p.len * PPM * z);
+      g.beginPath(); g.arc(x + R, y - R, R, 0, Math.PI * 2);
+      g.strokeStyle = '#1a1d2a'; g.lineWidth = Math.max(3, 5 * z); g.stroke();
+      g.strokeStyle = '#e8ecf4'; g.lineWidth = Math.max(1.5, 3 * z); g.stroke();
+    } else if (p.kind === 'outrun') { // the bolt-hole: a dark cave mouth in a rock mound
+      const mw = Math.max(10, 70 * PPM * z * 0.5), mh = Math.max(6, 20 * PPM * z * 0.5);
+      g.beginPath(); g.ellipse(x + mw / 2, y, mw / 2, mh, 0, Math.PI, 0); g.fill();
+      g.fillStyle = '#05040d'; g.beginPath(); g.ellipse(x + mw * 0.3, y, mw * 0.12, mh * 0.5, 0, Math.PI, 0); g.fill();
+    } else if (p.kind === 'dive') { // the water you dive into
+      g.fillStyle = mixColor('#2a6fb0', look.haze, 0.4 * (1 - hp.sc)); g.fillRect(x, y - 2, Math.min(W - x, p.len * PPM * z), Math.max(2, 6 * z));
+    }
+    g.globalAlpha = hp.alpha * (0.6 + 0.4 * Math.sin(t * 6)); g.fillStyle = '#ffd23b'; // a marker so it reads as the target
+    const my = y - Math.max(14, (p.kind === 'loop' ? 2 * p.len * PPM : 40) * z) - 8;
+    g.beginPath(); g.moveTo(x - 6, my); g.lineTo(x + 6, my); g.lineTo(x, my + 7); g.fill();
+    g.restore();
+  }
+
+  /** End-of-tour card: score against your best, then each set piece with its medal, watts and any new best. */
+  private card(s: FullSendSnapshot, txt: (t: string, x: number, y: number, size: number, color: string, align?: CanvasTextAlign, weight?: number, italic?: boolean, outline?: number) => void) {
+    const m = this.g, d = this.dpr, rows = cardRows(s.results), C = cardBox(this.L, this.cssW, rows.length);
+    const a = s.phase === 'done' ? 1 : Math.min(1, (s.phaseT - 4) / 0.6);
+    m.globalAlpha = a;
+    m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((C.x + 5) * d, (C.y + 5) * d, C.w * d, C.h * d);
+    m.fillStyle = '#0e6b3c'; m.fillRect(C.x * d, C.y * d, C.w * d, C.h * d);
+    m.lineWidth = 3 * d; m.strokeStyle = '#ffffff'; m.strokeRect((C.x + 6) * d, (C.y + 6) * d, (C.w - 12) * d, (C.h - 12) * d);
+    const hs = Math.min(1, C.headH / 64);
+    txt(s.tourName.toUpperCase(), C.x + C.w / 2, C.y + 22 * hs, 20 * hs, '#ffffff', 'center', 900, true, 0);
+    txt(cardHeadline(s.score, s.bestScore), C.x + C.w / 2, C.y + 46 * hs, 15 * hs, s.score > s.bestScore ? '#ffd23b' : '#cfe8d8', 'center', 900, false, 0);
+    const fs = Math.max(8, Math.min(15, C.rowH * 0.55));
+    rows.forEach((r, i) => {
+      const y = C.y + C.headH + i * C.rowH + C.rowH / 2;
+      m.fillStyle = 'rgba(255,255,255,0.18)'; if (i) m.fillRect((C.x + 18) * d, (y - C.rowH / 2) * d, (C.w - 36) * d, 1 * d);
+      m.beginPath(); m.arc((C.x + 26) * d, y * d, Math.min(7, C.rowH * 0.3) * d, 0, Math.PI * 2); m.fillStyle = MEDAL_COLORS[r.medal]; m.fill();
+      txt(r.title, C.x + 40, y, fs, '#ffffff', 'left', 900, true, 0);
+      txt(r.watts, C.x + C.w - (r.pb ? 64 : 20), y, fs * 0.85, '#cfe8d8', 'right', 700, false, 0);
+      if (r.pb) txt('NEW PB', C.x + C.w - 18, y, fs * 0.85, '#7af0ff', 'right', 900, true, 0);
+    });
+    m.globalAlpha = 1;
   }
 
   /** The one big sign everything is on: it stands far off (slow parallax) so it stays put long enough to read, and it is

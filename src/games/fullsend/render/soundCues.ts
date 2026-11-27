@@ -1,11 +1,12 @@
 // Pure: which one-shot sounds a frame should fire (by diffing two snapshots) and what the continuous voices are doing.
 // Kept apart from the WebAudio glue so it runs (and is tested) in Node.
 import type { FullSendSnapshot } from '../sim/sim';
+import { pace } from './sprint';
 
 export type Cue =
   | 'land' | 'landHard' | 'perfect' | 'clean' | 'crash' | 'launch' | 'moonShot' | 'arrive' | 'edge' | 'reentry'
   | 'splash' | 'breach' | 'ring' | 'star' | 'smash' | 'roar' | 'rumble' | 'snap' | 'caught' | 'tick' | 'go'
-  | 'medal' | 'miss' | 'jetOn' | 'jetWeak' | 'fork' | 'forkPick' | 'menuMove' | 'menuPick' | 'trick';
+  | 'medal' | 'miss' | 'pace' | 'charge' | 'pb' | 'jetOn' | 'jetWeak' | 'fork' | 'forkPick' | 'menuMove' | 'menuPick' | 'trick';
 
 type S = FullSendSnapshot;
 
@@ -49,7 +50,14 @@ export function soundCues(a: S | null, b: S): Cue[] {
     if (lb !== la && lb >= 1 && lb <= 3) out.push('tick');
   }
   if (b.phase === 'effort' && a.phase === 'approach') out.push('go');
-  if (b.results.length > a.results.length) out.push(b.results[b.results.length - 1].medal > 0 ? 'medal' : 'miss');
+  if (b.results.length > a.results.length) {
+    const r = b.results[b.results.length - 1];
+    out.push(r.medal > 0 ? 'medal' : 'miss');
+    if (r.pb) out.push('pb');
+  }
+  // moving up a pace step mid-sprint, and the charge firing at the lip
+  if (p && q && b.phase === 'effort' && a.phase === 'effort' && p.kind !== 'dive' && pace(p) > pace(q)) out.push('pace');
+  if (b.chargeAt !== a.chargeAt && b.chargeGain > 0.03) out.push('charge');
   return out;
 }
 
@@ -58,7 +66,7 @@ export function soundBeds(s: S) {
   const rocket = s.menu ? 0 : Math.min(1, 0.15 + 0.6 * Math.min(1.6, s.ftpFrac) / 1.6 + (s.jet === 'on' ? 0.3 : 0));
   const wind = s.menu ? 0 : Math.min(1, s.v / 90) * (s.tier === 'moon' ? 0.1 : s.tier === 'sea' ? 0.3 : 1) + Math.abs(s.wind) * 0.3;
   const reentry = s.fromTier === 'moon' && s.toTier === 'sea' ? Math.min(1, Math.max(0, (-s.vy - 12) / 30)) : 0;
-  const music: 'menu' | 'ground' | 'sky' | 'moon' | 'sea' | 'sprint' | 'done' = s.menu ? 'menu' : s.phase === 'done' ? 'done'
-    : s.phase === 'effort' ? 'sprint' : (s.toTier ?? s.tier) === 'sky' ? 'sky' : (s.toTier ?? s.tier) === 'moon' ? 'moon' : s.tier === 'sea' ? 'sea' : 'ground';
+  const music: 'menu' | 'ground' | 'sky' | 'moon' | 'sea' | 'sprint' | 'sprintGold' | 'done' = s.menu ? 'menu' : s.phase === 'done' ? 'done'
+    : s.phase === 'effort' ? (s.piece && s.piece.kind !== 'dive' && pace(s.piece) === 3 ? 'sprintGold' : 'sprint') : (s.toTier ?? s.tier) === 'sky' ? 'sky' : (s.toTier ?? s.tier) === 'moon' ? 'moon' : s.tier === 'sea' ? 'sea' : 'ground';
   return { rocket, rocketHz: 55 + 70 * Math.min(1.6, s.ftpFrac) + (s.jet === 'on' ? 40 : 0), wind, windHz: 300 + s.v * 9, jet: s.jet === 'on' ? 1 : 0, reentry, muffled: s.tier === 'sea', music };
 }

@@ -20,6 +20,7 @@ import { heroPerkLook, drawPerkPicker, drawPerkBadges, drawPerkParticles, drawDr
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
 import { runResultLine } from './runResult';
+import { drawFinishBike, drawFinishLine } from './finish32';
 
 const DNF_S = 2.1;
 const ACTION_COLOR: Record<string, string> = { strike: '#ffd84a', ward: '#7fe7ff', rally: '#8fd8ff', potion: '#ff6b8a' };
@@ -597,6 +598,10 @@ export function createRenderer(): GameRenderer {
         pixelRing(gg, fx_, fy_, (big ? 1.4 : 0.55) * TS, col, true, 0.5, big ? Math.min(1, f.t / 1.8) : 1);
         if (big) pixelTarget(gg, fx_, fy_, TS * 0.3, col);
       }
+      if (s.finishSeq) {
+        drawFinishLine(gg, s.finishSeq.lineX, s.finishSeq.lineY, TS, t);
+        if (s.finishSeq.stage === 'findBike') drawFinishBike(gg, s.finishSeq.bikeX, s.finishSeq.bikeY, TS, t, color, 'findBike');
+      }
       // y-sorted actors
       type A = { y: number; d: () => void };
       eliteLabels.length = 0;
@@ -605,6 +610,10 @@ export function createRenderer(): GameRenderer {
       const fb = s.flail && s.enemies.find((e) => e.kind === 'boss');
       if (s.flail && fb && artReady() && s.flail.mode !== 'hand') { const f = s.flail; actors.push({ y: Math.max(f.y, fb.y + 0.01), d: () => drawFlail(f, fb, TS) }); }
       actors.push({ y: p.y, d: () => { if (hideHero) return;
+        if (s.finishSeq && s.finishSeq.stage !== 'findBike') {
+          drawFinishBike(gg, p.x, p.y, TS, t, color, s.finishSeq.stage);
+          return;
+        }
         const px = p.x * TS, py = p.y * TS + p.r * TS * 1.1, face = Math.cos(s.aim.angle) >= 0 ? 1 : -1;
         const bob = p.moving ? -Math.abs(Math.sin(t * 10)) * TS * 0.07 : 0;
         shadow(px, py, TS * 0.32);
@@ -1160,6 +1169,10 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = exp ? '#ffe08a' : wind ? '#ff7a2a' : B.tide > 0 ? '#7dff5a' : '#ddd';
       fillText(gg, exp ? 'EXPOSED: x2 damage. Sprint and Strike now!' : wind ? 'Big attack coming: Ward to parry' : B.cycle === 'stagger' ? 'Staggered!' : B.tide > 0 ? `Turning Tide: boss takes +${Math.round(B.tide * 100)}%` : 'Watch for the big attack',bx+bw/2,by+43*hu,bw);
       gg.textAlign = 'left';
+    } else if (s.finishSeq) {
+      gg.fillStyle = '#ffd84a'; gg.textAlign = 'center'; gg.font = pixelFont(fs);
+      const msg = s.finishSeq.stage === 'findBike' ? 'Find your bike!' : s.finishSeq.stage === 'rideToLine' ? 'Pedal across the Finish Line!' : 'VICTORY — STAGE COMPLETE!';
+      fillText(gg, msg, W / 2, L + 14 * u); gg.textAlign = 'left';
     } else if (s.stairsOpen) {
       gg.fillStyle = '#ffd84a'; gg.textAlign = 'center'; gg.font = pixelFont(fs);
       fillText(gg, 'Stairs open — descend!', W / 2, L + 14 * u); gg.textAlign = 'left';

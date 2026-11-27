@@ -181,10 +181,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     smashN: T.num('smashN', 36, 3, 60, 1, 'Hay-bale columns (or crates, stalls…) in a smash wall'),
     smashHoldS: T.num('smashHoldS', 6, 0, 20, 0.5, 'Seconds the debris stuck to you keeps dragging after a smash'),
     loopGravity: T.num('loopGravity', 24, 6, 120, 1, 'Gravity in loops (lower = bigger loop, longer ride round it)'),
-    loopSpoolS: T.num('loopSpoolS', 0.7, 0.3, 5, 0.1, 'In a loop your pedalling drives the bike: seconds for speed to follow your power (stop pedalling and you fall off)'),
+    loopSpoolS: T.num('loopSpoolS', 0.7, 0.3, 5, 0.1, 'In a loop the sprint you rode (or harder pedalling) drives the bike: seconds for speed to follow it'),
     loopSlowMo: T.num('loopSlowMo', 0.6, 0.2, 1, 0.05, 'Slow-motion factor in loops (stretches the ride round so the trainer grade can follow)'),
     chaseGap: T.num('chaseGap', 18, 5, 60, 1, 'Starting gap (m) to whatever is chasing you in an Outrun'),
     chaseMaxGap: T.num('chaseMaxGap', 24, 10, 80, 1, 'It never falls further behind than this (m), so it stays on screen'),
+    chaseSpoolS: T.num('chaseSpoolS', 4, 1, 10, 0.25, 'Outrun: seconds for the chaser to wind up to its pace (slower than your rocket, so the jump off recovery is yours)'),
+    chaseSlow: T.num('chaseSlow', 0.85, 0.4, 1, 0.05, 'Outrun: speed you keep when it catches you (it stumbles too, so one slip is one catch, not a spiral)'),
     caveLen: T.num('caveLen', 40, 20, 80, 1, 'Outrun: how deep the bolt-hole cave at the end is (m)'),
     caveStop: T.num('caveStop', 0.6, 0.2, 0.95, 0.05, 'Outrun: how deep into the cave you coast to a stop (fraction of its length)'),
     caveCreep: T.num('caveCreep', 4, 0, 10, 0.5, 'Outrun: rolling speed you keep in the cave (m/s)'),
@@ -291,7 +293,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let seam: Seam | null = null;
   let piece: PieceView | null = null;
   let fracSum = 0, fracN = 0;
-  let loopV0 = 0, loopV = 0, loopPhi = 0, loopDir = 1;
+  let loopV0 = 0, loopV = 0, loopPhi = 0, loopDir = 1, loopDrive = 0;
   let fallFromX = 0, fallFromY = 0, rescueToX = 0;
   let trick: { name: string; t0: number } | null = null, trickCount = 0, style = 0;
   let last: (SetResult & { at: number }) | null = null;
@@ -308,7 +310,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let megaX: number | null = null, megaArmed = false; // the mega ramp ahead (or just behind) and whether it still launches you
   let launchVy = 1, skyVisits = 0, moonVisits = 0, splashdowns = 0, peakAlt = 0;
   let fromTier: Tier | null = null, splashAt = -99, jet: 'on' | 'weak' | null = null, jetS = 0, moonDoneAt = -1;
-  let chaseX = 0, chaseV = 0, caveDecel = 0; // outrun payoff: the chaser charging the cave mouth
+  let chaseX = 0, chaseV = 0, caveDecel = 0, chaseRun = 0, chaseLead = 0; // outrun payoff: the chaser charging the cave mouth
   const caught = new Set<number>(); const got: Array<{ id: number; kind: AirKind; at: number }> = [];
   let rings = 0, stars = 0, chain = 0, longestChain = 0, prevX = 0, wantCad: number | undefined;
   /** Rotation from leaning since takeoff (rad, + = back), how long a full lean has been held, and the last landed flip. */
@@ -556,7 +558,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       piece.count = smashCount(live, piece.th, piece.n);
       pendingMedal = medal; setMode('smash');
     } else if (piece.kind === 'loop') {
-      loopV0 = v; loopV = v; loopPhi = 0; loopDir = 1;
+      loopV0 = v; loopV = v; loopPhi = 0; loopDir = 1; loopDrive = medal > 0 ? live : 0; // a medal sprint carries you round; miss it and only pedalling now will
       pendingMedal = medal; setMode('loop');
     }
   }
@@ -639,8 +641,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     if (piece.kind === 'loop') {
       const R = piece.len, g = tun.loopGravity(), dts = dt * tun.loopSlowMo();
       if (mode === 'loop') {
-        // you pedal round: speed chases what your power asks for, while gravity pulls back on the way up
-        const vt = targetSpeed(frac, speedPerFtp());
+        // the sprint's momentum carries you round (you've already done the work); pedalling harder still helps
+        const vt = targetSpeed(Math.max(frac, loopDrive), speedPerFtp());
         piece.live = frac; // the meter shows what you're putting in round the loop
         if (loopDir > 0) {
           loopV += ((vt - loopV) / tun.loopSpoolS() - g * Math.sin(loopPhi)) * dts;
@@ -777,7 +779,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         if (phaseT >= phaseS()) {
           go('effort');
           if (s.kind === 'dive') piece.x0 = x;
-          if (s.kind === 'outrun') { piece.gap = tun.chaseGap(); piece.x0 = x; }
+          if (s.kind === 'outrun') { piece.gap = tun.chaseGap(); piece.x0 = x; chaseRun = v; chaseLead = piece.gap; } // it starts from your speed and spools up as you do
         }
       } else if (phase === 'effort' && s && piece) {
         fracSum += nowF; fracN++; peak = Math.max(peak, nowF); piece.peak = peak;
@@ -799,9 +801,11 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         } else if (s.kind === 'outrun') {
           piece.live = fracSum / fracN;
           const vChase = targetSpeed(piece.th[0], speedPerFtp()) * 0.97;
-          piece.gap = Math.min(tun.chaseMaxGap(), piece.gap + (v - vChase) * dt);
+          chaseRun = spool(chaseRun, vChase, dt, tun.chaseSpoolS());
+          // the real lead is banked (a fast start buys room for the fade, like a mean-power target); the screen caps it
+          chaseLead += (v - chaseRun) * dt; piece.gap = Math.min(tun.chaseMaxGap(), chaseLead);
           piece.x0 = x + v * Math.max(0, phaseS() - phaseT); // the cave you're racing for
-          if (piece.gap <= 0) { piece.caught++; piece.caughtAt = now; piece.gap = 25; v *= 0.6; }
+          if (piece.gap <= 0) { piece.caught++; piece.caughtAt = now; chaseLead = piece.gap = tun.chaseGap(); v *= tun.chaseSlow(); chaseRun = Math.min(chaseRun, v * tun.chaseSlow()); }
           if (phaseT >= phaseS()) {
             const m = medalFor(piece.live, piece.th);
             finishPiece(piece.caught ? (Math.min(m, 1) as Medal) : m, piece.caught ? `caught ${piece.caught}×` : `${Math.round(piece.gap)} m clear`);

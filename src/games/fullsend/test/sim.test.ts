@@ -138,10 +138,21 @@ describe('loops: pedal round', () => {
     expect(r.snap().piece!.len).toBeGreaterThan(20); // a big loop
     expect(finish(r).detail).toBe('pedalled round');
   });
-  it('stop pedalling in the loop and you fall off or roll back', () => {
+  it('ease off once the sprint ends and the sprint you rode still carries you round', () => {
     const r = toLoop();
-    const fb = r.s.fakeBike!; fb.script = null; fb.manual = { cadence: 0, power: 0, hr: null };
-    const res = finish(r);
+    const fb = r.s.fakeBike!; fb.script = null; fb.manual = { cadence: 85, power: 120, hr: null }; // a recovery spin
+    expect(finish(r).detail).toBe('pedalled round');
+  });
+  it('a sprint that missed and no pedalling in the loop: you fall off or roll back', () => {
+    SCRIPTS['weak-loop'] = { name: 'weak-loop', description: '0.8 FTP sprints, then nothing', usesHooks: true, cadence: () => 80,
+      powerFtp: (_t, e) => ((e.hooks as { shielded?: boolean } | undefined)?.shielded ? 0.8 : 0.5) };
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'weak-loop' }, simOpts: { tour: 'classic', forks: 'main' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 30 && !(snap().mode === 'loop'); i++) s.step(1);
+    expect(snap().mode).toBe('loop');
+    const fb = s.fakeBike!; fb.script = null; fb.manual = { cadence: 0, power: 0, hr: null };
+    for (let i = 0; i < 30 * 30 && snap().phase === 'payoff' && snap().piece?.medal === -1; i++) s.step(1);
+    const res = snap().results.at(-1)!;
     expect(res.medal).toBe(0); expect(res.detail).not.toBe('pedalled round');
   });
 });
@@ -159,6 +170,33 @@ describe('outrun: duck into the cave', () => {
     expect(p.crashAt).toBeGreaterThan(0);
     expect(snap().x).toBeGreaterThan(mouth + 5); // inside
     expect(snap().x).toBeLessThan(mouth + p.len); // and still in the dark
+  });
+});
+
+describe('outrun: the chaser is fair against your own bests', () => {
+  SCRIPTS['even-fs'] = { name: 'even-fs', description: '1.6 FTP sprints', usesHooks: true, cadence: () => 90,
+    powerFtp: (_t, e) => ((e.hooks as { shielded?: boolean } | undefined)?.shielded ? 1.6 : 0.6) };
+  SCRIPTS['weak-fs'] = { name: 'weak-fs', description: '1.0 FTP sprints', usesHooks: true, cadence: () => 90,
+    powerFtp: (_t, e) => ((e.hooks as { shielded?: boolean } | undefined)?.shielded ? 1.0 : 0.6) };
+  const outrun = (store: { data?: unknown }, script: string) => {
+    const prof = testProfile();
+    (prof as { gameData?: Record<string, unknown> }).gameData = store.data ? { fullsend: store.data } : {};
+    const s = createGameSession({ game: module, profile: prof, input: new NullInput(), fake: { script }, simOpts: { tour: 'quick', forks: 'main' }, seed: 3, onSave: (d) => { store.data = d; } });
+    while (!s.sim.isOver()) s.step(300);
+    return (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot().results.find((r) => r.kind === 'outrun')!;
+  };
+  it('matching your best off a recovery spin keeps you clear', () => {
+    const store: { data?: unknown } = {};
+    outrun(store, 'even-fs');
+    const again = outrun(store, 'even-fs'); // now the chaser runs at your personal bronze pace
+    expect(again.detail).toMatch(/clear/); expect(again.medal).toBe(3);
+  });
+  it('falling well short gets you caught, but a catch is a stumble, not a spiral', () => {
+    const store: { data?: unknown } = {};
+    outrun(store, 'even-fs');
+    const weak = outrun(store, 'weak-fs');
+    expect(weak.detail).toMatch(/caught/);
+    expect(Number(/caught (\d+)/.exec(weak.detail)![1])).toBeLessThanOrEqual(8);
   });
 });
 

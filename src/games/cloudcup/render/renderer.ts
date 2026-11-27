@@ -6,6 +6,8 @@ import * as T from 'three';
 import { NO_INSETS, type GameRenderer, type Insets } from '../../../contracts';
 import { classes, LAP, type RaceView } from '../sim/race';
 import { buildEndCourse } from './endCourses';
+import { venueTextures } from './venueTextures';
+import { districtRelic } from './districtRelic';
 import { valley, saddle, onClimb, passRate } from '../sim/pass';
 import { courses, winchCut } from '../sim/track';
 import { lapAt, LIP, LAUNCH_SPEED, CATCH, DROP, RESCUE, easeBetween } from '../sim/deck';
@@ -76,10 +78,12 @@ export class Renderer implements GameRenderer {
   private cranes!: ReturnType<typeof buildCranes>;
   private yards = new Map<
     number,
-    { root: T.Group; animate: (time: number, distance: number, state: RaceView) => void }
+    { root: T.Group; sky: T.Mesh; animate: (time: number, distance: number, state: RaceView) => void }
   >();
-  private yardMaps?: [T.Texture, T.Texture, T.Texture, T.Texture, T.Texture, T.Texture];
+  private yardMaps?: [T.Texture, T.Texture, T.Texture, T.Texture];
+  private venueArt!: ReturnType<typeof venueTextures>;
   private activeCourse = -1;
+  private horizon?: T.Mesh;
   private camera = new T.PerspectiveCamera(58, 1, 0.15, 360);
   private gl!: T.WebGLRenderer;
   private assets?: Promise<void>;
@@ -243,18 +247,17 @@ export class Renderer implements GameRenderer {
     this.routeMap.width = 180;
     this.routeMap.height = 114;
     this.resize(host.clientWidth, host.clientHeight);
+    this.venueArt = venueTextures(loader, this.gl.capabilities.getMaxAnisotropy());
     this.assets = Promise.all(
-      ['slag-road', 'salvage-enamel', 'kiln-plates', 'kiln-bricks', 'stormglass', 'grit'].map((name) =>
+      ['slag-road', 'salvage-enamel', 'kiln-plates', 'kiln-bricks'].map((name) =>
         loader.loadAsync('/scrapjet/' + name + '.webp'),
       ),
-    ).then(([road, enamel, plates, brick, sky, grit]) => {
+    ).then(([road, enamel, plates, brick]) => {
       if (this.disposed) {
-        [road, enamel, plates, brick, sky, grit].forEach((t) => t.dispose());
+        [road, enamel, plates, brick].forEach((t) => t.dispose());
         return;
       }
-      sky.colorSpace = T.SRGBColorSpace;
-      this.yardMaps = [road, enamel, plates, brick, sky, grit];
-      this.setCourse(0);
+      this.yardMaps = [road, enamel, plates, brick];
     });
     this.assets = Promise.all([this.assets, ...skinLoads]).then(() => undefined);
   }
@@ -272,34 +275,71 @@ export class Renderer implements GameRenderer {
       id === 4 ? '#a2adba' : id === 3 ? '#bc9275' : storm ? '#716f92' : id === 1 ? '#475b70' : '#d28d70',
     );
     this.root.classList.toggle('kiln-night', id === 1);
+    (this.scene.fog as T.FogExp2).density = id === 4 ? 0.005 : id === 3 ? 0.006 : 0.008;
+    this.skyLight.intensity = id === 4 ? 1.38 : id === 3 ? 1.68 : 2.1;
     this.skyLight.color.set(storm ? '#b7c7ee' : id === 1 ? '#adafc1' : '#ffead1');
-    this.skyLight.groundColor.set(storm ? '#62677c' : id === 1 ? '#435360' : '#8d6575');
+    this.skyLight.groundColor.set(
+      id === 4 ? '#506069' : storm ? '#62677c' : id === 1 ? '#435360' : '#8d6575',
+    );
     this.sun.color.set(id === 4 ? '#ffd6a3' : storm ? '#ffd4b8' : id === 1 ? '#adcbe6' : '#fff1bd');
     const previous = this.yards.get(this.activeCourse);
     if (previous) previous.root.visible = false;
     let yard = this.yards.get(id);
     if (!yard) {
       const root = new T.Group();
-      const [road, enamel, plates, brick, sky, grit] = this.yardMaps;
+      const map = this.venueArt(
+        (['magnet-horizon', 'kiln-horizon', 'storm-horizon', 'bowl-horizon', 'pass-horizon'] as const)[id],
+      );
+      map.wrapS = T.RepeatWrapping;
+      const [road, enamel, plates, brick] = this.yardMaps;
       const aniso = this.gl.capabilities.getMaxAnisotropy();
       const animate =
         id >= 3
-          ? buildEndCourse(root, id === 3, grit)
+          ? buildEndCourse(root, id === 3, this.venueArt)
           : storm
-            ? buildCauseway(root, courses[id], sky)
+            ? buildCauseway(root, courses[id], map)
             : id === 1
               ? buildFiringWorks(root, courses[id], plates, brick, aniso)
               : buildYard(root, road, enamel, aniso, courses[id]);
+      if (id < 3) districtRelic(root, courses[id], id, this.venueArt);
       timingLine(
         root,
         courses[id],
         id === 3 ? 2.3 : id === 4 ? 1.43 : storm ? stormWidth(0) : id === 1 ? 1.58 : 1.32,
       );
-      yard = { root, animate };
+      const sky = new T.Mesh(
+        new T.SphereGeometry(120, 64, 32),
+        new T.MeshBasicMaterial({
+          map,
+          side: T.BackSide,
+          fog: false,
+          toneMapped: false,
+          depthTest: false,
+          depthWrite: false,
+        }),
+      );
+      if (id === 4) {
+        // Match the base of the distant massif to the mist over the last
+        // forest ridge. Keep the clear upper sky and lit summit colours.
+        sky.material.onBeforeCompile = (shader) => {
+          shader.uniforms.valleyMist = { value: new T.Color('#adb9c6') };
+          shader.fragmentShader =
+            'uniform vec3 valleyMist;\n' +
+            shader.fragmentShader.replace(
+              '#include <map_fragment>',
+              '#include <map_fragment>\ndiffuseColor.rgb=mix(diffuseColor.rgb,valleyMist,.38*(1.-smoothstep(.49,.6,vMapUv.y)));',
+            );
+        };
+      }
+      sky.renderOrder = -10000;
+      sky.frustumCulled = false;
+      root.add(sky);
+      yard = { root, sky, animate };
       this.yards.set(id, yard);
       this.scene.add(root);
     }
     yard.root.visible = true;
+    this.horizon = yard.sky;
     this.animateYard = yard.animate;
     this.touchdowns.fill(0);
     this.jumpCounts.fill(0);
@@ -462,7 +502,9 @@ export class Renderer implements GameRenderer {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
     }
-    this.stage.style.backgroundPosition = 50 + Math.sin(f.yaw) * 34 + '% 48%';
+    // Infinite-distance scenery follows translation only. Camera rotation, roll and FOV
+    // project both the skyline and surveyed track through the same view matrix.
+    this.horizon?.position.copy(this.camera.position);
     const p = world(s.at, s.x, 1.05);
     this.sparks.visible = !!s.impact;
     if (s.impact) {
@@ -660,6 +702,7 @@ export class Renderer implements GameRenderer {
       textures = new Set<T.Texture>(this.yardMaps);
     this.scene.traverse((obj) => {
       const m = obj as T.Mesh;
+      if (m instanceof T.InstancedMesh) m.dispose();
       if (m.geometry) geometries.add(m.geometry);
       if (m.material)
         for (const mat of Array.isArray(m.material) ? m.material : [m.material]) materials.add(mat);

@@ -3,13 +3,12 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #55323d url('/scrapjet/magnet-mile.webp') center/cover;
+  background: #55323d;
 }
 .scrapjet-stage {
   position: absolute;
   overflow: hidden;
-  background: #b17968 url('/scrapjet/magnet-mile.webp') center/auto 110% no-repeat;
-  background-size: max(135%, 196vh) auto;
+  background: #b17968;
 }
 .scrapjet-stage > canvas {
   display: block;
@@ -193,7 +192,6 @@
 }
 
 .scrapjet-stage.kiln-dusk, .scrapjet-world.kiln-night {
-  background-image: url('/scrapjet/kiln-night.webp');
   background-color: #253947;
 }
 .sj-speed.pressure { --dial-color: #aa8061; }
@@ -233,9 +231,7 @@
 
 .scrapjet-stage.storm-shelf, .scrapjet-world.storm-night {
   background-color: #363a59;
-  background-image: url('/scrapjet/stormglass.webp');
 }
 
-.scrapjet-stage.cinder-sky, .scrapjet-world.cinder-sky { background-image:url('/scrapjet/bowl-sky.webp'); background-color:#c89768; }
-.scrapjet-stage.cable-sky, .scrapjet-world.cable-sky { background-image:url('/scrapjet/pass-sky.webp'); background-color:#acbcca; }
-.scrapjet-stage.cinder-sky, .scrapjet-stage.cable-sky { background-size: cover; }
+.scrapjet-stage.cinder-sky, .scrapjet-world.cinder-sky { background-color:#c89768; }
+.scrapjet-stage.cable-sky, .scrapjet-world.cable-sky { background-color:#acbcca; }

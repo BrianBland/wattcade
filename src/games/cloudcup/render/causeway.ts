@@ -131,7 +131,7 @@ function glassDeck(sky: T.Texture) {
           '#include <opaque_fragment>',
           `
       vec3 ray=reflect(normalize(deckWorld-cameraPosition),normalize(inverseTransformDirection(normal,viewMatrix)));
-      vec2 skyUV=vec2(.5+.37*ray.x,.43+.46*max(0.,ray.y));
+      vec2 skyUV=vec2(atan(ray.z,-ray.x)/(2.*PI),.5+asin(clamp(ray.y,-1.,1.))/PI);
       float fres=pow(1.-clamp(dot(normal,normalize(vViewPosition)),0.,1.),2.);
       outgoingLight+=texture2D(stormSky,skyUV).rgb*(.16+.70*fres)*(1.-seam*.78)*(1.-trim*.65);
       float edgeBand=1.-smoothstep(.003,.011+fwidth(edge),abs(edge-.94));

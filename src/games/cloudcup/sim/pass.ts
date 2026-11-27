@@ -34,6 +34,11 @@ export function passGrade(at: number, cut: boolean) {
   const d = wrap(at);
   return onClimb(at) ? (cut ? 4 : 2.5) * Math.max(0, Math.min(1, (d - valley) / 24, (saddle - d) / 24)) : 0;
 }
+// Both decks lie on the same hillside where their edges overlap at the fork.
+// Race stations agree on progress, while physical map coordinates agree on height.
+export function climbHeight(worldZ: number) {
+  return 15 * Math.max(0, Math.min(1, (190 - worldZ) / climb));
+}
 export function passPoint(at: number, cut: boolean) {
   const d = wrap(at - valley),
     u = Math.min(1, d / climb);
@@ -52,7 +57,7 @@ export function passPoint(at: number, cut: boolean) {
       z = a + (metres - road[a]) / (road[b] - road[a]);
       x = amplitude * offset(z / climb);
     }
-    return { x, y: 15 * u, z: 190 - z };
+    return { x, y: climbHeight(190 - z), z: 190 - z };
   }
   const arc = Math.PI * radius,
     back = d - straight;

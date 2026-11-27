@@ -969,12 +969,13 @@ export class TdRenderer implements GameRenderer {
     g.restore();
   }
 
-  /** Fireballs climb from the launcher's mouth and drop onto their road point; Mortar rounds arc high from their pad. */
+  /** Fireballs climb from the launcher's mouth and drop onto their road point; Mortar rounds arc high from their barrel's mouth. */
   private drawShells(g: CanvasRenderingContext2D, s: TdSnapshot, muzzle: { x: number; y: number }) {
     const k = this.k, dt = 1 / 60;
     for (const sh of s.shells) {
       if (sh.tower) {
-        const a = this.P(sh.x0, sh.y0), end = this.P(sh.x1, sh.y1), x = a.x + (end.x - a.x) * sh.k, y0 = a.y + (end.y - a.y) * sh.k;
+        // Launch from the barrel's mouth (the art's `muzzle` anchor at rest, so the barrel's recoil doesn't drag it).
+        const a = this.towerOrigin(s, sh.pad, Infinity) ?? this.P(sh.x0, sh.y0), end = this.P(sh.x1, sh.y1), x = a.x + (end.x - a.x) * sh.k, y0 = a.y + (end.y - a.y) * sh.k;
         const lift = Math.sin(Math.PI * sh.k) * 20 * k, sc = 1 + 0.5 * Math.sin(Math.PI * sh.k);
         this.blasts.drawShell(g, x, y0, lift, sc, k, dt);
         continue;

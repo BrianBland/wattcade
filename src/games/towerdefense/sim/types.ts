@@ -39,8 +39,8 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'text'; x: number; y: number; text: string; color: string }
   | { id: number; t0: number; life: number; kind: 'baseHit'; dmg: number };
 /** A turret fireball in flight (`k` 0 → 1) toward a road point; it bursts with radius `r`. */
-/** `tower`: a Mortar round lobbed from the pad at (x0, y0); otherwise the turret's fireball. */
-export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: number; r: number; tower?: true }
+/** `tower`: a Mortar round; `pad` is the tower that fired it (its art's muzzle is the launch point). */
+export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: number; r: number; tower?: true; pad?: number }
 /** Burning road left by a fireball; `k` = share of its burn time left. */
 export interface BurnView { x: number; y: number; r: number; k: number }
 /** `burstAt`/`burstS`: a Flamethrower's last burst started then and lasts that long (its aim is locked meanwhile). */

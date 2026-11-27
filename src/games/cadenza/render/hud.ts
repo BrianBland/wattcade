@@ -56,7 +56,25 @@ const CSS = `
 .ws-recap .grid span { color:#fff9; }
 .ws-recap canvas { width:100%; height:16px; border-radius:2px; }
 .ws-recap .ls { font-size:18px; letter-spacing:3px; }
+.ws-bands { display:flex; gap:8px; align-items:stretch; }
+.ws-band { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
+.ws-band svg { width:18px; height:14px; flex:none; fill:none; stroke:var(--acc-t); stroke-width:2; filter:drop-shadow(0 1px 1px #000); }
+.ws-band .col { position:relative; flex:1; width:16px; border:2px solid var(--acc); border-radius:3px; background:#0009; overflow:hidden; }
+.ws-band .col s { position:absolute; left:0; right:0; bottom:0; background:var(--acc); opacity:.18; }
+.ws-band .col i { position:absolute; left:0; right:0; bottom:0; background:linear-gradient(0deg, var(--acc), #fff); transition:height .15s; }
+.ws-band .col u { position:absolute; left:-2px; right:-2px; height:2px; background:#fff; opacity:.85; }
+.ws-band.low .col { border-color:#fff; animation:ws-throb .5s ease-in-out infinite alternate; }
+.ws-band.low .col i { background:linear-gradient(0deg,#ff3d5a,#ffb020); }
+.ws-bands.steady .ws-band.low .col { animation:none; box-shadow:0 0 0 2px #fff; }
+.ws-bands.flow .col { border-color:#ffd24a; box-shadow:0 0 10px #ffd24a88; }
+.ws-bands.flow .col i { background:linear-gradient(0deg,#ffb020,#fff3b0); }
+@keyframes ws-throb { from { box-shadow:0 0 0 0 #fff0; } to { box-shadow:0 0 10px 2px #fffc; } }
 `;
+/** Band bar icons, matching the block shapes: low = flat bar, mid = diamond, high = triangle. */
+const BAND_ICONS = ['<rect x="2" y="5" width="14" height="4"/>', '<path d="M9 1 L15 7 L9 13 L3 7 Z"/>', '<path d="M9 1 L16 13 L2 13 Z"/>'];
+const BAND_NAMES = ['Low', 'Mid', 'High'];
+/** Bar fill and rate-fill heights (% of the column); rate fills to 100 % at 4 blocks/s. */
+export const bandBarView = (level: number, rate: number) => ({ fill: Math.round(100 * Math.max(0, Math.min(1, level))), rate: Math.round(100 * Math.max(0, Math.min(1, rate / 4))) });
 
 const RATING: Record<string, { label: string; color: string; icon: string }> = {
   perfect: { label: 'PERFECT LAUNCH', color: '#fff36b', icon: '★' }, great: { label: 'GREAT LAUNCH', color: '#b6ff3b', icon: '◆' },
@@ -72,6 +90,7 @@ export class Hud {
   private score = this.el('ws-box ws-score'); private zone = this.el('ws-box ws-zone'); private song = this.el('ws-box ws-song');
   private shield = this.el('ws-box ws-shield'); private callout = this.el('ws-box ws-callout'); private menu = this.el('ws-box ws-menu');
   private launch = this.el('ws-box ws-launch'); private recapEl = this.el('ws-box ws-recap'); private popEl = document.createElement('div');
+  private bandsEl = this.el('ws-box ws-bands');
   private scoreText = document.createElement('div');
   private popUntil = 0; private recapUntil = 0; private launchKey = '';
   private send?: (a: unknown) => void;
@@ -80,7 +99,9 @@ export class Hud {
   constructor(container: HTMLElement) {
     if (!document.getElementById('ws-hud-css')) { const st = document.createElement('style'); st.id = 'ws-hud-css'; st.textContent = CSS; document.head.appendChild(st); }
     this.root = document.createElement('div'); this.root.className = 'ws-hud';
-    for (const e of [this.score, this.zone, this.song, this.shield, this.callout, this.menu, this.launch, this.recapEl]) this.root.appendChild(e);
+    for (const e of [this.score, this.zone, this.song, this.shield, this.callout, this.menu, this.launch, this.recapEl, this.bandsEl]) this.root.appendChild(e);
+    this.bandsEl.innerHTML = BAND_ICONS.map((icon, b) => `<div class="ws-band" data-band="${b}" aria-label="${BAND_NAMES[b]}"><svg viewBox="0 0 18 14">${icon}</svg><div class="col"><s></s><i></i><u></u></div></div>`).join('');
+    this.bandsEl.style.display = 'none';
     this.popEl.className = 'ws-pop'; this.score.append(this.scoreText, this.popEl);
     this.shield.appendChild(document.createElement('i'));
     container.appendChild(this.root);
@@ -91,7 +112,7 @@ export class Hud {
     const put = (e: HTMLElement, b: Box) => Object.assign(e.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
     put(this.score, L.score); put(this.zone, L.zone); put(this.song, L.song); put(this.shield, L.shield); put(this.callout, L.callout);
     Object.assign(this.menu.style, { left: `${L.menu.x}px`, width: `${L.menu.w}px`, height: 'auto', maxHeight: `${L.menu.h}px`,
-      top: `${L.menu.y + L.menu.h / 2}px`, transform: 'translateY(-50%)' }); put(this.launch, L.launch); put(this.recapEl, L.recap);
+      top: `${L.menu.y + L.menu.h / 2}px`, transform: 'translateY(-50%)' }); put(this.launch, L.launch); put(this.recapEl, L.recap); put(this.bandsEl, L.bands);
   }
   dispose() { this.root.remove(); }
   /** A short flourish under the score (chain milestones; `bad` = greyed, e.g. a broken chain). */
@@ -127,11 +148,28 @@ export class Hud {
     }
   }
 
+  /** Band ship: three vertical bars (shape icon, faint rate fill, target tick), pulsing when low, gold in flow. */
+  private updateBands(s: CadenzaSnapshot) {
+    const B = s.menu ? undefined : s.bands;
+    this.bandsEl.style.display = B ? '' : 'none';
+    if (!B) return;
+    this.bandsEl.classList.toggle('flow', B.flowOn);
+    this.bandsEl.classList.toggle('steady', s.reducedFlash);
+    this.bandsEl.querySelectorAll<HTMLElement>('.ws-band').forEach((el, b) => {
+      const v = bandBarView(B.level[b], B.rate[b]);
+      el.classList.toggle('low', B.low[b]);
+      (el.querySelector('i') as HTMLElement).style.height = `${v.fill}%`;
+      (el.querySelector('s') as HTMLElement).style.height = `${v.rate}%`;
+      (el.querySelector('u') as HTMLElement).style.bottom = `${Math.round(100 * B.target)}%`;
+    });
+  }
+
   update(s: CadenzaSnapshot, accent: string, now: number) {
     this.root.style.setProperty('--acc', accent);
     if (now > this.popUntil) this.popEl.classList.remove('on');
     if (now > this.recapUntil) this.recapEl.classList.remove('on');
     this.updateLaunch(s);
+    this.updateBands(s);
     if (s.menu) {
       this.callout.classList.remove('on');
       this.effortKey = ''; this.calloutUntil = 0;
@@ -141,7 +179,7 @@ export class Hud {
       if (key !== this.lastKey) {
         this.lastKey = key;
         const row = (i: number, label: string, val: string, cls = '') => `<div class="ws-row${m.row === i ? ' f' : ''} ${cls}" data-i="${i}">${label}${val ? `<em>◀ ${val} ▶</em>` : ''}</div>`;
-        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, 'Ship<canvas width="144" height="96" aria-label="Ship preview"></canvas>', m.ships.find(s => s.id === m.ship)?.name ?? 'Triad')}${m.ships.filter(s => s.locked).map(s => `<small>${esc(s.name)} · ${esc(s.hint)}</small>`).join('')}${row(5, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
+        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, 'Ship<canvas width="144" height="96" aria-label="Ship preview"></canvas>', m.ships.find(s => s.id === m.ship)?.name ?? 'Triad')}${m.ship === 'lancer' && !m.ships.find(s => s.id === 'lancer')?.locked ? '<small>Lancer · keep the bass, body and air alive</small>' : ''}${m.ships.filter(s => s.locked).map(s => `<small>${esc(s.name)} · ${esc(s.hint)}</small>`).join('')}${row(5, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
         const canvas=this.menu.querySelector<HTMLCanvasElement>('canvas');
         const preview=canvas&&typeof CanvasRenderingContext2D!=='undefined'?canvas.getContext('2d'):null;
         if(preview){preview.translate(72,30);preview.scale(64,64);drawShip(preview,m.ship,accent,now);}

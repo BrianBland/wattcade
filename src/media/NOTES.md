@@ -1,5 +1,7 @@
 # media — music core (SPEC §5.6)
 
+CONTRACT CHANGE (owner-approved, Lancer band ship): `MusicFx` gained optional `bands?: [n,n,n]` (linear low/mid/high gains, LR4 split at 150 Hz / 2 kHz on the master), `flow?: number` (0..1 wet: ¾-beat echo on mids + highs, 4-comb algorithmic reverb) and `beatS?: number`. Additive: games that never send `bands` keep today's graph (`player/bandFx.ts` is built lazily on the first `bands`); once built, omitted fields mean flat and dry. Applied directly by the repo owner, not pending.
+
 CONTRACT-REQUEST: (#64) add optional `MediaCoverage {t0,t1,rhythm,structure}` and `MediaTimeline.coverage?: MediaCoverage[]` + `MediaTimeline.frozenUntilS?: Seconds`, and optional `MediaContext.announce?(id: string, t: Seconds): void`. Additive/optional; full-file timelines omit them (meaning fully analysed, nothing frozen). Needed so music games can tell unanalysed from weakly-analysed audio, skip mandatory cadence challenges on uncertain rhythm, and keep announced cues fixed across rolling revisions. — Approved by the owner and applied in this PR (#64 PR 3).
 
 ## Pure (Node + browser, tested)

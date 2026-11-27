@@ -14,6 +14,7 @@ export interface Layout {
   menu: Box;     // pre-game menu: the area it may fill (the panel is content-sized, centred within)
   launch: Box;   // the launch meter (bottom centre, above the shell HUD)
   recap: Box;    // end-of-song recap card
+  bands: Box;    // band ship (Lancer): the three band bars, under the song line (left)
 }
 
 export function layout(W: number, H: number, insetB: number): Layout {
@@ -36,5 +37,7 @@ export function layout(W: number, H: number, insetB: number): Layout {
   const rw = Math.min(W - 2 * pad, 300), rh = Math.min(250, UH - 2 * pad);
   const recapTop = narrow ? Math.max(pad, (UH - rh) / 2) : Math.min(UH - rh - pad, zone.y + zone.h + 10);
   const recap: Box = { x: narrow ? (W - rw) / 2 : W - pad - rw, y: Math.max(pad, recapTop), w: rw, h: rh };
-  return { UH, viewOffsetY: b / 2, score, zone, shield, song, callout, menu, launch, recap };
+  const bandsTop = (narrow ? shield.y + shield.h : song.y + song.h) + 8, bh = Math.max(40, Math.min(110, UH - bandsTop - pad));
+  const bands: Box = { x: pad, y: Math.max(pad, Math.min(bandsTop, UH - bh - pad)), w: Math.min(colW, 112), h: bh };
+  return { UH, viewOffsetY: b / 2, score, zone, shield, song, callout, menu, launch, recap, bands };
 }

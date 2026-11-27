@@ -44,6 +44,8 @@ export class CadenzaRenderer implements GameRenderer {
   private steering = new SteeringInterpolation();
   private shake = 0; private hurt = 0; private down = 0; private lastDown = -1;
   private motion = 0.6;
+  /** Band ship (Lancer): blocks built with band shapes, per-band hit pulses, eased low highlights, next block to pulse. */
+  private bandShapes = false; private bandPulse = [0, 0, 0]; private bandLow = [0, 0, 0]; private bandNext = 0;
   private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3(); private camUp = new THREE.Vector3(0, 1, 0); private camInit = false;
   private fr = newFrame(); private fc = newFrame(); private v = new THREE.Vector3(); private s = new THREE.Vector3(); private m = new THREE.Matrix4();
   private white = new THREE.Color('#ffffff'); private worldUp = new THREE.Vector3(0, 1, 0);
@@ -111,7 +113,7 @@ export class CadenzaRenderer implements GameRenderer {
     const fromS = Math.max(0, this.windowBucket * 30 - 20), toS = Math.min(t.durationS, (this.windowBucket + 1) * 30 + 90);
     disposeObjects(this.world); this.world.clear();
     this.world.add(buildTrackMeshes(this.path!, fromS, toS));
-    this.blocks = new Blocks(this.path!, fromS, toS);
+    this.blocks = new Blocks(this.path!, fromS, toS, { bands: this.bandShapes });
     this.gauge = new Gauge(this.path!);
     this.world.add(this.blocks.group, this.gauge.mesh);
     this.lastRecap = -2;
@@ -135,7 +137,9 @@ export class CadenzaRenderer implements GameRenderer {
     const p = s.menu ? 0 : Math.max(0, s.p);
     const seek = Math.abs(p - this.lastP) > 3;
     if (seek) this.camInit = false; // seeks snap the chase camera to the new road
-    if (s.track !== this.track || Math.floor(p / 30) !== this.windowBucket) this.build(s.track, p);
+    const bandShip = !!s.bands && !s.menu;
+    const reshape = bandShip !== this.bandShapes; this.bandShapes = bandShip;
+    if (reshape || s.track !== this.track || Math.floor(p / 30) !== this.windowBucket) this.build(s.track, p);
     const t = this.track!, path = this.path!;
     const tNow = now(), dt = Math.min(0.1, tNow - this.lastT); this.lastT = tNow;
     const shipX = this.steering.sample(s, tNow, seek || !!s.menu);
@@ -168,6 +172,10 @@ export class CadenzaRenderer implements GameRenderer {
       else if (c.type === 'grey') play('hurt', { vol: 0.6 });
       else if (c.type === 'newBest') play('levelup');
       else if (c.type === 'menuMove') play('uiMove');
+      else if (c.type === 'flow') {
+        if (c.data?.on) { this.hud.pop('IN THE MIX', tNow); this.craft.ring(1); play('chime', { vol: 0.5 }); }
+        else this.hud.pop('OUT OF THE MIX', tNow, true);
+      }
     }
 
     // music-driven uniforms
@@ -189,6 +197,10 @@ export class CadenzaRenderer implements GameRenderer {
     U.uBeat.value = beat * fx; U.uDown.value = this.down * fx; U.uBeatAge.value = s.menu ? 9 : p - lastBeat;
     U.uBands.value.set(bands[0], bands[1], bands[2]).multiplyScalar(s.menu ? 0.3 : fx);
     U.uTime.value = tNow % 1000;
+    this.updateBands(s, t, p, dt, reduced, seek);
+    const flow = s.bands && !s.menu ? s.bands.flow : 0;
+    if (flow > 0) U.uFog.value.multiplyScalar(1 - 0.3 * flow);
+    (this.scene.background as THREE.Color).copy(U.uFog.value);
     const buildProg = s.effort.phase === 'climb' && zone.kind === 'build' ? (p - zone.t0) / Math.max(1, zone.t1 - zone.t0) : 0;
     U.uAcid.value = (drop ? 0.85 : s.overdrive ? 0.6 : buildProg * 0.35) * fx;
 
@@ -208,7 +220,10 @@ export class CadenzaRenderer implements GameRenderer {
     const under = this.degradation.level, over = s.menu ? 0 : s.effort.over * this.motion;
     const tier = s.chain >= 100 ? 3 : s.chain >= 50 ? 2 : s.chain >= 25 ? 1 : 0;
     this.craft.update(dt, tNow, { overdrive: s.overdrive, ghost: !!s.dropout, bank: this.bank, beat: beat * fx, over, under, tier }, this.fr.r, this.fr.u);
-    this.musicFx?.({ degrade: under });
+    if (s.bands && !s.menu) {
+      const beatS = bi >= 0 && bi + 1 < t.beats.length ? t.beats[bi + 1] - t.beats[bi] : 0.5;
+      this.musicFx?.({ degrade: under, bands: [s.bands.gain[0], s.bands.gain[1], s.bands.gain[2]], flow: flow * (1 - under), beatS });
+    } else this.musicFx?.({ degrade: under });
 
     // blocks
     const speed = s.menu ? 0 : sampleAt(t.speed, t.hz, p);
@@ -261,14 +276,32 @@ export class CadenzaRenderer implements GameRenderer {
     this.city!.follow(this.camera, this.fr.f, tNow);
 
     this.post.set({
-      bloom: (0.32 + 0.3 * this.motion + (drop ? 0.25 : 0) + 0.3 * beat * fx + (s.overdrive ? 0.2 : 0)) * 0.85,
+      bloom: (0.32 + 0.3 * this.motion + (drop ? 0.25 : 0) + 0.3 * beat * fx + (s.overdrive ? 0.2 : 0)) * 0.85 + 0.25 * flow * (reduced ? 0.5 : 1),
       aberr: (0.0012 + 0.006 * this.down + 0.004 * beat * (drop ? 1 : 0.4) + 0.01 * this.hurt) * fx,
-      hurt: this.hurt * fx, time: tNow % 100, gray: under * (reduced ? 0.5 : 1),
+      hurt: this.hurt * fx, time: tNow % 100, gray: under * (reduced ? 0.5 : 1), sat: flow * (1 - under), darken: flow * (1 - under),
     });
     if (this.lastRecap === -2) this.lastRecap = s.recaps.length - 1;
     else if (s.recaps.length - 1 > this.lastRecap) { this.lastRecap = s.recaps.length - 1; this.hud.recap(s.recaps[this.lastRecap], tNow); }
     this.hud.update(s, `#${U.uAcc.value.getHexString()}`, tNow);
     this.post.render();
+  }
+
+  /** Band ship uniforms: hit pulses per band (from its blocks reaching the ship), low highlights, flow. Inert otherwise. */
+  private updateBands(s: CadenzaSnapshot, t: Track, p: number, dt: number, reduced: boolean, seek: boolean) {
+    const on = !!s.bands && !s.menu;
+    if (!on) { U.uBandPulse.value.set(0, 0, 0); U.uBandLow.value.set(0, 0, 0); U.uFlow.value = 0; this.bandNext = 0; return; }
+    const blocks = t.blocks;
+    if (seek || this.bandNext > blocks.length || (this.bandNext > 0 && blocks[this.bandNext - 1].t > p)) {
+      let lo = 0, hi = blocks.length; while (lo < hi) { const m = (lo + hi) >> 1; if (blocks[m].t <= p) lo = m + 1; else hi = m; }
+      this.bandNext = lo;
+    }
+    for (let b = 0; b < 3; b++) this.bandPulse[b] = Math.max(0, this.bandPulse[b] - dt / 0.25);
+    while (this.bandNext < blocks.length && blocks[this.bandNext].t <= p) { const b = blocks[this.bandNext++]; if (b.color >= 0) this.bandPulse[b.band ?? 1] = 1; }
+    for (let b = 0; b < 3; b++) this.bandLow[b] += ((s.bands!.low[b] ? 1 : 0) - this.bandLow[b]) * Math.min(1, dt / 0.15);
+    const k = reduced ? 0.35 : 1;
+    U.uBandPulse.value.set(this.bandPulse[0] * k, this.bandPulse[1] * k, this.bandPulse[2] * k);
+    U.uBandLow.value.set(this.bandLow[0], this.bandLow[1], this.bandLow[2]);
+    U.uFlow.value = s.bands!.flow; U.uBandFlash.value = reduced ? 0 : 1;
   }
 
   private queueFireworks(t: number, n: number) {

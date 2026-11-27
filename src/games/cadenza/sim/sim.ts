@@ -4,7 +4,8 @@ import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZO
 import { rideIndexAt } from './ride';
 import { advanceCoaching, freshCoaching, type Direction } from './coaching';
 import { Announcements } from './announcements';
-import { SHIPS, selectedShip, unlockedShips, type ShipId } from '../ships';
+import { SHIPS, selectedShip, shipBehavior, unlockedShips, type ShipId } from '../ships';
+import { advanceBands, bandCatch, bandGain, bandMine, bandMiss, bandTimes, BAND_DEFAULTS, F_STAR, freshBands, type BandEvent, type BandParams } from './bands';
 
 export type TrainerStyle = 'grade' | 'erg';
 export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
@@ -53,6 +54,8 @@ export interface CadenzaSnapshot {
   /** Finished songs, oldest first (the renderer shows the newest as a recap card). */
   recaps: SongRecap[];
   hooks: { powerFtp: number };
+  /** Lancer only: the three band bars (low / mid / high), their rates, low flags, the target tick, flow and the music gains. */
+  bands?: { level: number[]; rate: number[]; low: boolean[]; target: number; flow: number; flowOn: boolean; gain: number[] };
 }
 
 const MENU_ROWS = 6;
@@ -82,6 +85,28 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     underDrain: t.num('underDrain', 4, 0, 20, 0.5, 'Shield % per second drained while under the power target'),
     underGrace: t.num('underGraceS', 1.5, 0, 6, 0.25, 'Seconds under target before the shield starts draining'),
   };
+  // Lancer (band ship) knobs; read only while a Lancer ride is running.
+  const B = BAND_DEFAULTS;
+  const bandTun = {
+    target: t.num('bandTarget', B.target, 0.3, 1, 0.05, 'Lancer: band bar target tick'),
+    lowOn: t.num('bandLowOn', B.lowOn, 0.05, 0.8, 0.05, 'Lancer: a band bar under this is low (ducked + highlighted)'),
+    lowOff: t.num('bandLowOff', B.lowOff, 0.05, 0.9, 0.05, 'Lancer: a low band bar recovers above this'),
+    flowOn: t.num('flowOn', B.flowOn, 0.5, 1, 0.05, 'Lancer: every active bar at or above this enters flow'),
+    flowHoldS: t.num('flowHoldS', B.flowHoldS, 0, 15, 0.5, 'Lancer: seconds the flow condition must hold'),
+    flowOff: t.num('flowOff', B.flowOff, 0.3, 1, 0.05, 'Lancer: an active bar under this (for flowOffS) leaves flow'),
+    flowOffS: t.num('flowOffS', B.flowOffS, 0, 5, 0.25, 'Lancer: seconds under flowOff before flow ends'),
+    flowMinChain: t.num('flowMinChain', B.flowMinChain, 0, 100, 1, 'Lancer: chain needed to enter flow'),
+    gain: t.num('bandGain', B.gain, 0.01, 0.2, 0.005, 'Lancer: bar gained per caught block'),
+    miss: t.num('bandMiss', B.miss, 0, 0.2, 0.005, 'Lancer: bar lost per missed block'),
+    mine: t.num('bandMine', B.mine, 0, 0.6, 0.05, 'Lancer: every bar lost per mine hit'),
+    windowS: t.num('bandWindowS', B.windowS, 1, 10, 0.5, 'Lancer: ± seconds of blocks counted for a band\'s drain rate'),
+    duckDb: t.num('duckDb', B.duckDb, -30, 0, 1, 'Lancer: music gain of an empty band (dB)'),
+    fStar: {
+      casual: t.num('bandDrainCatchCasual', F_STAR.casual, 0.3, 1, 0.01, 'Lancer: catch rate that holds a bar steady (casual)'),
+      pro: t.num('bandDrainCatchPro', F_STAR.pro, 0.3, 1, 0.01, 'Lancer: catch rate that holds a bar steady (pro)'),
+      elite: t.num('bandDrainCatchElite', F_STAR.elite, 0.3, 1, 0.01, 'Lancer: catch rate that holds a bar steady (elite)'),
+    },
+  };
   const save: CadenzaSave = { ...(ctx.load<CadenzaSave>() ?? {}) };
   let ship = selectedShip(ctx.profile);
   const availableShips = unlockedShips(ctx.profile);
@@ -94,7 +119,9 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let trainer: TrainerStyle = opts.trainer ?? save.trainer ?? 'grade';
   let menu = opts.menu !== false && !opts.autopilot && !opts.difficulty;
   let menuRow: number = MENU.start, menuT = 0;
-  let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+  const isBands = () => shipBehavior(ship) === 'bands';
+  const trackOpts = () => ({ difficulty, mode, seed, maxGrade: tun.maxGrade(), ...(isBands() ? { perBandGap: true } : {}) });
+  let track = buildTrack(timeline, trackOpts());
   let blockState = new Uint8Array(track.blocks.length);
   let revision = timeline.revision ?? 0;
   const announcements = new Announcements(ctx.media);
@@ -114,6 +141,14 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let nextLaunch = 0, launchSum = 0, launchT = 0, launchActive = false, launchResult: { rating: LaunchRating; bonus: number; ratio: number; at: number } | null = null;
   let launches = 0, perfectLaunches = 0, launchBonus = 0;
   const recaps: SongRecap[] = [];
+  // Lancer band bars (only when the ride started with the band ship)
+  let bandsOn = false, bands = freshBands(), bandTrack: typeof track | null = null, bandTimesCache = bandTimes([]);
+  const bandParams = (): BandParams => ({
+    ...BAND_DEFAULTS, target: bandTun.target(), lowOn: bandTun.lowOn(), lowOff: bandTun.lowOff(), flowOn: bandTun.flowOn(),
+    flowHoldS: bandTun.flowHoldS(), flowOff: bandTun.flowOff(), flowOffS: bandTun.flowOffS(), flowMinChain: bandTun.flowMinChain(),
+    gain: bandTun.gain(), miss: bandTun.miss(), mine: bandTun.mine(), windowS: bandTun.windowS(), duckDb: bandTun.duckDb(), fStar: bandTun.fStar[difficulty](),
+  });
+  const bandCue = (ev: BandEvent) => { if (ev) cue('flow', { on: ev === 'flowOn' }, false); };
   const freshSong = () => ({ score0: score, collected: 0, missed: 0, maxChain: 0, chain0: chain, launches: [] as LaunchRating[], strip: [] as number[], t: 0, onS: 0, targetS: 0 });
   let song = { score0: 0, collected: 0, missed: 0, maxChain: 0, chain0: 0, launches: [] as LaunchRating[], strip: [] as number[], t: 0, onS: 0, targetS: 0 };
   const closeSong = (k: number) => {
@@ -137,7 +172,8 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
 
   const startRide = () => {
     menu = false;
-    track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+    track = buildTrack(timeline, trackOpts());
+    bandsOn = isBands(); bands = freshBands(); bandTrack = null;
     announcements.setTrack(track, position());
     blockState = new Uint8Array(track.blocks.length);
     save.lastDifficulty = difficulty; save.lastMode = mode; save.reducedFlash = reducedFlash; save.trainer = trainer; save.ship = ship; ctx.save(save);
@@ -237,7 +273,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     receive(a: unknown) { if (a && typeof a === 'object' && 'type' in a) actions.push(a as { type: string; value?: unknown }); },
     update(dt) {
       if ((timeline.revision ?? 0) !== revision) {
-        const next = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+        const next = buildTrack(timeline, trackOpts());
         // Ahead-only commits: the engine holds the clock before the analyzed horizon is exhausted.
         const from = Math.max(announcements.untilS, timeline.frozenUntilS ?? 0,
           started ? timeline.updateFromS ?? (timeline.frozenUntilS === undefined ? position() + 35 : 0) : 0,
@@ -344,16 +380,26 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
             if (isChainMilestone(chain)) cue('chain', { n: chain }, false);
             score += Math.round(COLOR_POINTS[b.color] * mult());
             blockState[nextBlock] = BLOCK.HIT;
-          } else { cleanChain = 0; missed++; song.missed++; zoneClean = false; blockState[nextBlock] = BLOCK.MISS; }
+            if (bandsOn) bandCatch(bands, b.band ?? 1, bandParams());
+          } else {
+            cleanChain = 0; missed++; song.missed++; zoneClean = false; blockState[nextBlock] = BLOCK.MISS;
+            if (bandsOn) bandMiss(bands, b.band ?? 1, bandParams());
+          }
         } else if (caught) {
           if (chain >= 25) cue('chainBreak', { n: chain }, false);
           greysHit++; chain = 0; cleanChain = 0; zoneClean = false; blockState[nextBlock] = BLOCK.GREY_HIT; cue('grey', undefined, false);
+          if (bandsOn) bandCue(bandMine(bands, bandParams()));
           if (dropoutLeft < 0) {
             shield -= tun.greyHit();
             if (shield <= 0) { shield = 0; dropoutLeft = tun.rebootS(); dropouts++; cleanChain = 0; cue('dropout'); }
           }
         } else { greysDodged++; blockState[nextBlock] = BLOCK.GREY_DODGED; }
         nextBlock++;
+      }
+
+      if (bandsOn && started) {
+        if (bandTrack !== track) { bandTrack = track; bandTimesCache = bandTimes(track.blocks); } // rolling revisions keep the bar levels
+        bandCue(advanceBands(bands, bandTimesCache, p, dt, { chain, blocked: dropoutLeft >= 0 || e.phase === 'recover' }, bandParams()));
       }
 
       if (!done && p >= track.durationS - 0.05) {
@@ -411,6 +457,10 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
         // The fake rider prepares during the countdown, just as a rider can now do without an over-power warning.
         hooks: { powerFtp: lastEffort.countdown ? ZONE_FLOOR[DIFF[difficulty].dropZone] + 0.03
           : lastEffort.phase === 'recover' ? 0.5 : lastEffort.floorFtp + 0.03 },
+        ...(bandsOn && !menu ? { bands: {
+          level: [...bands.level], rate: [...bands.rate], low: [...bands.low], target: bandTun.target(), flow: bands.flow, flowOn: bands.flowOn,
+          gain: bands.level.map((l) => bandGain(l, { lowOn: bandTun.lowOn(), duckDb: bandTun.duckDb() })),
+        } } : {}),
       };
     },
     isOver: () => !menu && done,
@@ -422,6 +472,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
         greysHit, greysDodged, dropouts, cleanZones, drops, dropsHeld, overdriveS: Math.round(overdriveS), underDrainS: Math.round(underDrainS),
         launches, perfectLaunches, launchBonus,
         zones: Math.max(0, zoneIdx + 1), songs: timeline.songs.length, songsDone, difficulty, mode, trainer,
+        ...(bandsOn ? { flowS: Math.round(bands.flowS) } : {}),
       };
     },
   };

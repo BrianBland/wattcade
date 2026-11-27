@@ -18,6 +18,11 @@ export const U = {
   uMotion: { value: 1 },    // effort-driven motion / tunnel light strength
   uCraftM: { value: 0 },    // metres travelled by the craft
   uNear: { value: 60 }, uFar: { value: 560 },
+  // Lancer (band ship) only; zero / inert for every other ship.
+  uBandPulse: { value: new THREE.Vector3() }, // 1 when a block of that band reaches the ship, 0.25 s decay
+  uBandLow: { value: new THREE.Vector3() },   // 0..1 per band: its bar is low (highlight its blocks)
+  uFlow: { value: 0 },                        // 0..1 in the mix
+  uBandFlash: { value: 1 },                   // 0 under reduced flashing: steady highlight instead of a throb
 };
 
 export const GLSL_COMMON = /* glsl */ `

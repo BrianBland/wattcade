@@ -36,5 +36,14 @@ Sprints/launches require rhythm ≥ 0.6 throughout countdown/sprint; gaps/low co
 `test/rolling.test.ts`: real RollingQueue with shifting grids/sections, every announced ID/time, frozen samples, gaps/0.6.
 Touch HUD uses Z Left / A Right; duplicate arrows remain in help. Nearby road/city/blocks only (≤140 s); dispose replaced GPU resources; clamp shader light before bloom (× 0.85).
 
+## Lancer band ship (`ships.ts` SHIP_BEHAVIOR, `sim/bands.ts`; everything gated on it, other ships unchanged)
+Blocks carry their onset `band`; Lancer tracks use `perBandGap` (minGap × 1.0/1.4/1.8 per band, global floor × 0.6). Bars start 0.6;
+dL/dt = −k·r_b (r_b = band blocks in ±4 s ÷ 8 s, eased 1 s, cap 4/s; r = 0 holds), catch +0.06, miss −0.03, mine −0.20 all; k = f*·g − (1−f*)·m,
+f* 0.70/0.80/0.88. Low (duck + highlight) < 0.35 until > 0.45; duck smoothstep to −15 dB. Flow: ≥ 2 active bands (r > 0.1) all ≥ 0.80 for
+4 s, chain ≥ 16, no dropout / recover phase; out < 0.70 for 1 s, mine, dropout, recover. Knobs `cadenza.band*`/`flow*`/`duckDb`. Snapshot
+`bands`, cue `flow`, summary `flowS`; scoring unchanged. Render: bar / diamond / tetra meshes (`uBand`, `uBandPulse`, `uBandLow`), flow
+`uSat`/`uDarken` + bloom + darker fog; reduced flashing = steady outline, ×0.35 pulses, half bloom. MusicFx `bands`/`flow`/`beatS` → `media/player/bandFx.ts`.
+`/dev/cadenza.html?ship=lancer`; `scripts/cadenza-lancer-smoke.mjs` (shaders + real-AudioContext crossover/duck/flow); `test/bands|lancer*.test.ts`.
+
 ## Achievement correctness
 Overdrive requires `setDone`. Unbroken uses `maxCleanChain`, reset by misses, gray hits or dropouts; catches during dropout do not build it. Scoring combo stays unchanged. Sharpshooter also requires zero dropouts. Existing rewards and block-count gates stay; automated accuracy is not evidence for raising human thresholds.

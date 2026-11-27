@@ -3,6 +3,8 @@ import { progTime } from '../mix/plan';
 import type { RangeSource } from '../online/rolling';
 import { STREAM_PAUSE_LEAD_S, STREAM_RESUME_LEAD_S } from '../online/buffer';
 import { scheduleDeck, type ParamEvent } from './schedule';
+import { BandFx } from './bandFx';
+import type { MusicFx } from '../../contracts';
 
 /**
  * Plays a MixPlan from decoded buffers on the AudioContext clock (browser only).
@@ -15,7 +17,8 @@ import { scheduleDeck, type ParamEvent } from './schedule';
  * there is nothing to correct. Only the current and next songs are kept decoded (~85 MB each).
  *
  * Deck: source → low shelf → peaking mid → high shelf → gain → master; echo send from the EQ into a feedback delay.
- * Master → game FX (gentle lowpass) → out. FX are bypassed (flat) unless a game sets them.
+ * Master → [band FX: crossover gains + flow echo/reverb, built lazily on the first MusicFx.bands/flow] → game FX (gentle lowpass) → out.
+ * FX are bypassed (flat) unless a game sets them.
  */
 export interface EngineOpts {
   resolveUrl(id: string): Promise<string>;
@@ -87,6 +90,7 @@ export class MixEngine {
   private master: GainNode;
   private fx: { lp: BiquadFilterNode } | null = null;
   private fxDegrade = 0;
+  private bandFx: BandFx | null = null;
   private decks: Deck[] = [];
   private plan: MixPlan | null = null;
   private ranges: RangeSource | undefined;
@@ -135,12 +139,28 @@ export class MixEngine {
   onEnded(cb: () => void): () => void { this.endedCbs.add(cb); return () => { this.endedCbs.delete(cb); }; }
   setVolume(v: number): void { const g = this.master.gain; g.cancelScheduledValues(0); g.setTargetAtTime(Math.max(0, Math.min(1, v)), this.ctx.currentTime, 0.05); }
 
-  /** Underpowered riding gently muffles music, without hard gain modulation or bit crushing. */
-  setFx(o: { degrade: number }): void {
+  /**
+   * Underpowered riding gently muffles music, without hard gain modulation or bit crushing. Optional `bands` / `flow`
+   * (band ship) insert a crossover with per-band gains and flow echo / reverb ahead of the lowpass; once built, a call
+   * without them returns it to flat and dry.
+   */
+  setFx(o: MusicFx): void {
     const d = Number.isFinite(o.degrade) ? Math.max(0, Math.min(1, o.degrade)) : 0, fx = this.fx;
-    if (!fx || Math.abs(d - this.fxDegrade) < 0.005) return;
+    if (!fx) return;
+    // Built the first time a game sends bands (the band ship does from its first ride frame, so the crossover never
+    // switches in mid-phrase); after that, omitted fields mean flat and dry (e.g. teardown's { degrade: 0 }).
+    if (!this.bandFx && (o.bands || (o.flow ?? 0) > 0)) this.buildBandFx(fx.lp);
+    this.bandFx?.set(o.bands, o.flow, o.beatS);
+    if (Math.abs(d - this.fxDegrade) < 0.005) return;
     this.fxDegrade = d;
     fx.lp.frequency.setTargetAtTime(20000 * Math.pow(3000 / 20000, d), this.ctx.currentTime, 0.08);
+  }
+  /** Debug/test view of the band FX: band gains and whether the flow sends are wired (null until a game asks). */
+  bandFxState(): { bands: readonly number[]; sends: boolean } | null { return this.bandFx ? { bands: this.bandFx.bandValues, sends: this.bandFx.sendsConnected } : null; }
+  private buildBandFx(out: AudioNode) {
+    const b = new BandFx(this.ctx);
+    this.master.disconnect(); this.master.connect(b.input); b.output.connect(out);
+    this.bandFx = b;
   }
   private buildFx(): AudioNode | null {
     const c = this.ctx;

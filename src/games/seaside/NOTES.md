@@ -33,8 +33,8 @@
   (`CYPRESS.clear`) → `rideCam(LAND_S)` = Sunset start; Sunset ends at `LIFT_S` (the hard right). #195 `endingShots.ts`:
   cliff path off the bend → over the road at `CLIFF.passS` (Lou's car under) → angel climb `SUNWARD`; `ending.ts` set.
 - `worldView.ts`: eye / atmos / calm / roll / post (+ `shimmer` heat haze) per frame; streaming + dissolves on a wall
-  clock; bar pitch from the view direction. `fishingRig.ts` shared rod; `traffic.ts`/`cars.ts`, `birds.ts`; HUD kit `pixelHud.ts` (bitmap font, pixel panels); `shopView.ts` dioramas (+ seeds); `perf.ts` governor.
+  clock; bar pitch from the view direction. `fishingRig.ts` shared rod; `traffic.ts`/`cars.ts`, `birds.ts`; HUD kit `pixelHud.ts` (bitmap font, pixel panels; the shop counter uses it too); `barsLight` dims the bars in dark sets; `shopView.ts` dioramas (+ seeds); `perf.ts` governor.
 - Sound (#197, `docs/seaside/AUDIO.md`): pure `soundMix.ts` (beds, voices, `SoundTicker`, `musicFor`); `sound.ts`, `music.ts` play it.
 ## Verification (no media committed): typecheck, test, `npm run sim -- --game seaside --script z2 --minutes 150`
-- `scripts/seaside-{morning,belly,island,cavern,flight,ending,shop,sound}-review.ts`, `seaside-{bench,hitch,pops}.ts`, `/dev/seaside-play.html`. Frames are
+- `scripts/seaside-tour.ts` (3 stills per scene, rollers → angel), `scripts/seaside-{morning,belly,island,cavern,flight,ending,shop,sound}-review.ts`, `seaside-{bench,hitch,pops}.ts`, `/dev/seaside-play.html`. Frames are
   fill-bound (view capped at 1.5 px/CSS px). Swiftshader ms/frame: coast ≈ 250, belly ≈ 100, island 110–1100, cave ≈ 430, hall ≈ 290. iPad fps unmeasured.

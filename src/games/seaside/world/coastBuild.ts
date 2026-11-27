@@ -256,7 +256,7 @@ function board(g: VoxelGrid, p: { x: number; z: number; tx: number; tz: number }
 }
 
 /** Metres back from the pier's end where the rider stops to fish (render/morningShots.ts uses the same). */
-export const PIER_FISH_BACK = 60;
+export const PIER_FISH_BACK = 50; // between the lamps (every 40 m from 20 m along): none in the eyeline at the rail
 
 export function morningScatter(): ScatterRule[] {
   const T1 = CH1.turnout, P = pierGeom();

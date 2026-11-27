@@ -175,3 +175,15 @@ export const unitFor = (h: number, k = 0.4) => Math.max(2, Math.floor((h * k) / 
 export const hasGlyph = (ch: string) => GLYPHS.has(ch) || GLYPHS.has(ALIAS[ch] ?? '');
 /** Every glyph's rows are the same width and 7 or 9 tall (tests). */
 export const glyphTable = () => [...GLYPHS.entries()];
+
+/** A chevron pointing right (dir 1) or left (−1) with its point at (x, y): a 2-pixel stroke, `k` steps up and down
+ *  from the point, in whole `u`-pixel cells. Returns its bounds. */
+export function pixelChevron(g: CanvasRenderingContext2D, x: number, y: number, k: number, u: number, dir: 1 | -1, color: string): Box {
+  g.fillStyle = color;
+  const x0 = Math.round(x / u) * u, y0 = Math.round(y / u) * u;
+  for (let i = -k; i <= k; i++) {
+    const a = Math.abs(i) * u;
+    g.fillRect(dir > 0 ? x0 - a - 2 * u : x0 + a, y0 + i * u, 2 * u, u);
+  }
+  return { x: dir > 0 ? x0 - (k + 2) * u : x0, y: y0 - k * u, w: (k + 2) * u, h: (2 * k + 1) * u };
+}

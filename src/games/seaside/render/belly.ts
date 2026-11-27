@@ -109,7 +109,7 @@ export class BellySet {
     }
     const post = fx.haze > 0 ? { bloom: lerp(BELLY_POST.bloom ?? 0.9, 2.6, fx.haze), threshold: lerp(BELLY_POST.threshold ?? 0.95, 0.3, fx.haze) } : undefined;
     this.view.frame({ t, routeS: shot.s, speed: shot.speed, look: snap.look.name, dream: snap.look.dream, eye: pose.eye, aim: pose.target,
-      bars: shot.bars, barsDrop: fx.unfold ?? 0, cadence: bike.cadence || 70, atmos, roll: fx.roll, post });
+      bars: shot.bars, barsLight: lerp(0.7, 1, fx.flood), barsDrop: fx.unfold ?? 0, cadence: bike.cadence || 70, atmos, roll: fx.roll, post });
     return shot;
   }
 

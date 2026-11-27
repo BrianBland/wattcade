@@ -153,7 +153,7 @@ export class CavernSet {
       ...(black > 0 && { zenith: new THREE.Color(sk.zenith).lerp(new THREE.Color(0), black).getHex(), horizon: new THREE.Color(sk.horizon).lerp(new THREE.Color(0), black).getHex(), sunColor: new THREE.Color(sk.sunColor).lerp(new THREE.Color(0), black).getHex() }) };
     this.view.terrain.root.visible = black < 0.98; // nothing out there in the void
     this.view.frame({ t, routeS: shot.s, speed: shot.speed, look: snap.look.name, dream: snap.look.dream, eye, aim: pose.target,
-      bars: shot.bars, barsDrop: shot.fx.gate?.unfold ?? 0, cadence: cadence || 80, atmos, post: { shimmer: shot.fx.shimmer } });
+      bars: shot.bars, barsLight: 0.45, barsDrop: shot.fx.gate?.unfold ?? 0, cadence: cadence || 80, atmos, post: { shimmer: shot.fx.shimmer } });
     this.rig.update(shot.rod ? snap.fishing : null, t, shot.place ?? { waterY: LAVA_Y });
     return shot;
   }

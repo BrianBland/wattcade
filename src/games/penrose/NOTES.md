@@ -16,5 +16,6 @@ An isometric Monument Valley-style cycling puzzle ride. Holding loops keep the w
   - `themes.ts`: 7 theme palettes, three-tone camera-yaw-compensated shader + atmospheric `HAZE`, `LevelDisposer`, shared canvas textures.
   - `blooms.ts`: 7 procedural 3D blooms, themed wheel incorporating `profile.color`, standing pennant+shaft goal beacon, `makeRibbon`.
   - `sceneBuilder.ts`: declarative `VisualProp` builder, one-time `wheelOnTop` layer tagging, throttled half-res portal `WebGLRenderTarget`s, reflection pools, diegetic cues (hidden-gap ghost bridges, conveyor live lane highlight, lift floor beacons, clutch catch glow & recoil, hint focus halos, spark bursts), and `prefers-reduced-motion`-aware sky life.
+  - `sound.ts`: Monument Valley-inspired modal pentatonic WebAudio soundscape routed exclusively through `src/audio/sfx.ts`.
   - `renderer.ts`: mounts WebGL view inside `layout(W, H, insets)`, renders auto-fading micro-toasts, 2-tier hints, direct 3D cap tap targets, and the Chapters & Levels picker modal.
 - `scenarios.ts`: Node headless scenarios (`autopilot-tour`, `idle-safe-z2`, `intervals-effort-level`), verified alongside all 42 levels in `test/campaign.test.ts`.

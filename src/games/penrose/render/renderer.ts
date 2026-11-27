@@ -15,6 +15,7 @@ import { clamp } from '../sim/math';
 import type { FaceKey, PenroseAction, PenroseSnapshot, SimEvent } from '../sim/types';
 import { layout } from './layout';
 import { buildLevelScene, type BuiltScene, eventSparkColor } from './sceneBuilder';
+import { PenroseAudio } from './sound';
 import {
   createHazeUniforms,
   createSharedTextures,
@@ -127,6 +128,7 @@ export class PenroseRenderer implements GameRenderer {
   private depthOnlyMat: THREE.MeshBasicMaterial | null = null;
   private textures: SharedTextures | null = null;
   private haze = createHazeUniforms();
+  private audio = new PenroseAudio();
   private built: BuiltScene | null = null;
 
   private send: (a: PenroseAction) => void = () => {};
@@ -291,6 +293,7 @@ export class PenroseRenderer implements GameRenderer {
     this.built = buildLevelScene(snap, this.haze, this.textures, this.riderColor, this.reduceMotion);
     const th = THEMES[snap.theme] ?? THEMES.dusk;
     if (this.skyEl) this.skyEl.style.background = skyCss(th);
+    this.audio.setThemeAmbient(snap.theme);
 
     // Create direct 3D cap tap buttons for every interactive machine
     if (this.badgesEl) {
@@ -343,6 +346,7 @@ export class PenroseRenderer implements GameRenderer {
     for (const ev of snap.events) {
       if (ev.id <= this.lastEventId) continue;
       this.lastEventId = ev.id;
+      this.audio.handleEvent(ev, snap.theme);
 
       if (ev.pos && this.built && (
         ev.kind === 'perspJoin' || ev.kind === 'latch' || ev.kind === 'key' ||
@@ -512,11 +516,14 @@ export class PenroseRenderer implements GameRenderer {
     this.syncPicker(snap);
   }
 
-  ending(): void {}
+  ending(): void {
+    this.audio.dispose();
+  }
 
   unmount(): void {
     this.ro?.disconnect();
     this.ro = null;
+    this.audio.dispose();
     this.built?.dispose();
     this.built = null;
     this.depthOnlyMat?.dispose();

@@ -49,3 +49,7 @@ jobs:
           npx wrangler versions upload --preview-alias "$ALIAS" --message "live ${GITHUB_SHA::8}: ${LIVE_MESSAGE:0:80}"
           npx wrangler versions upload --preview-alias live --message "live feed at ${GITHUB_SHA::8}"
           echo "::notice title=Live version::${LIVE_BASE}"
+          echo "LIVE_BASE=${LIVE_BASE}" >> "$GITHUB_ENV"
+      - name: Smoke test (load every game from another origin, as the prod page does)
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: npx tsx scripts/live/smoke.ts "https://live-${WORKERS_HOST}/live/feed.json" "$LIVE_BASE"

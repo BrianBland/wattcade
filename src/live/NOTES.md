@@ -14,7 +14,10 @@ chunk from its URL (absolute base, so chunks/assets/workers resolve there; modul
 Each game has three layers pinned per profile in localStorage (`store.ts`): sim, render, tuning (null = built-in).
 - tuning: `TuningRegistry.applyDefaults` moves untouched tunables at once; rider overrides stay.
 - art: GameHost unmounts the renderer and mounts the version's, same sim; only when `snapshotFormat` matches the running sim.
-- logic: pinned, takes effect the next time the game starts. "Skip logic" leaves the sim where it is (skipped hash kept).
+- logic: pinned; a game with `GameSim.checkpoint()` hands over mid-ride when it returns state (Dynamo: in the Garage,
+  between runs): the save is backed up, `session.swapSim(mod, state)` starts the new sim with `{resume: state}`, and the
+  renderer follows if its pin or `snapshotFormat` needs it. Games without checkpoints take it on the next start.
+  "Skip logic" leaves the sim where it is (skipped hash kept).
 - shell changes: flagged in the tray; they need a reload (not offered mid-ride).
 `feed.ts` holds the pure rules (`planApply`, `pendingFor`, `gameHistory`); `host.ts` applies them to a running game;
 `ui.tsx` is the chip (top right while riding) and the pause menu's Versions list (rollback, "Built-in copy", save backups).
@@ -26,7 +29,8 @@ carries its own copies of shared code; only `audio/sfx` and `audio/voices` forwa
 `SHARED_MODULES`), so other module-level state isn't shared with the shell.
 
 **Known limits**: public-dir assets referenced with literal `/path` (Scrapjet's `/scrapjet/`) still load from prod;
-`BASE_URL` ones load from the version. Logic swaps mid-ride (checkpoint handoff) are step 2. The `versions upload
---preview-alias` path hasn't run against Cloudflare yet; `LIVE_DEBUG=1` adds `live/shell-modules.json` for hash debugging.
+`BASE_URL` ones load from the version. Only Dynamo has a checkpoint so far. After each publish CI runs
+`scripts/live/smoke.ts`: headless Chrome on the live origin imports every game chunk and its renderer cross-origin. `LIVE_DEBUG=1` adds `live/shell-modules.json` for hash debugging.
 
-Tests: `feed.test.ts`, `store.test.ts`, `build.test.ts`, `src/core/tuningLive.test.ts`.
+Tests: `feed.test.ts`, `store.test.ts`, `build.test.ts`, `src/core/tuningLive.test.ts`, swapSim in `src/core/core.test.ts`,
+Garage checkpoint in `src/games/towerdefense/test/sim.test.ts`.

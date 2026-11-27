@@ -32,7 +32,7 @@
 - `pixel.ts`: geometry, nearest-neighbour mask rotation, viewport sizing, paddle/pinch zoom with hysteresis and limits.
 - Camera focus eases toward the hero/boss midpoint; only new floors reset it.
 - `font.ts`: original 5×7 alphabet; pixel chrome uses stepped frames and segmented meters.
-- Weapon classes: Wand, Scattergun, Bow, Blaster, Boltcaster, Orb, Shuriken, Dagger, Axe, Spear; 3 tiers, 6 elements, 6 rarities.
+- Weapon classes: Wand, Scattergun, Bow, Blaster, Boltcaster, Orb, Shuriken, Dagger, Axe, Spear; 3 tiers, 6 elements, 6 rarities. Perks (`perks32.ts`): picker (`perkPickLayout`, tested), jersey kits `hero.<stance>.<kit>`, gear overlays `ov.<perk>` (some under the body), relics, Domestique drones, Tailwind/Lube/Sealant particles, Headlamp light; art in `tools/purgatour-art/perks.py`.
 
 ## Checks
 - Review: `/dev/dungeon.html` (Live game; `floor=N` jumps to a floor, `manual=1` for captures).

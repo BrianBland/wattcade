@@ -7,7 +7,8 @@ import { DEFAULT_TARGETS, type Seg } from '../sim/director';
 describe('#89 interval pacing', () => {
   it('ERG holds the segment target for every segment it visits', () => {
     const profile = testProfile(), ftp = profile.ftp;
-    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'target-follow' }, seed: 13, simOpts: { autopilot: true, erg: true, skipCamp: true } });
+    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'target-follow' }, seed: 12, simOpts: { autopilot: true, erg: true, skipCamp: true } });
+    // seed 12 reaches a spinup segment early; whether a 25 min run sees one at all depends on the rng path (13 stopped after the perk rebalance)
     const seen = new Map<Seg, Set<number>>();
     for (let sec = 0; sec < 25 * 60; sec++) {
       s.step(30);

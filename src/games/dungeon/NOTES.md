@@ -147,3 +147,9 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
 ## Pixel combat / weapon variety
 - Dedicated boss art, native pixel rendering, ten weapon families and modifier palettes: see `render/NOTES.md`.
 - `dev/dungeon.html` previews the real armory, boss poses and live game; `scripts/dungeon-render-smoke.mjs` captures/checks them.
+
+## Perks (after each boss)
+- `sim/perks.ts` (pure): 12 perks dealt as [stance card, ride card, wildcard]. Stance lines (Disc Brakes/Vanguard, Aero Helmet/Ranger, Tailwind/Skirmisher, Headlamp/Arcanist) work only in their stance; rank 3 evolves. The ride card is weighted by how the floor was ridden (`styleWeights`: zone 2 time, ≥95 rpm, sprints, boss surges). Wildcard by rarity; legendaries (Yellow Jersey, Rainbow Bands) gain pity per dry offer. Perks reset on death.
+- Offer opens `perkOfferDelayS` after a boss kill and pauses the sim; D-pad moves, A/Z or tap takes; after `perkAutoPickS` (20 s) the suggested card (`suggestPerk`) is taken. `perkStrength` scales every effect. Snapshot `perks?` (optional, no format bump); `perks: 'none'|'first'|'suggest'` sim opt for headless runs.
+- Rebalance: enemyDamageGrowth 1.52, enemyHpGrowth 1.36, bossHpGrowth 1.56 so a perked rider ends near the old curve and a rider who skips perks does worse. 12 seeds x 40 min, deaths / deepest floor:
+  z2 none 3.25/3.17, suggest 2.83/3.67 (old 2.83/3.00); sprints none 2.67/4.75, suggest 2.00/5.83 (old 2.33/5.25); hook-responsive none 1.83/6.00, suggest 1.42/6.50 (old 1.08/6.08).

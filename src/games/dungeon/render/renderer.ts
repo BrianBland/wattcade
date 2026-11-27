@@ -16,6 +16,7 @@ import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut, charFrame,
 import { drawStanceSwap, drawPoolLights, drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
 import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
 import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawFlail32, weaponArt, FLAIL_HAND, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
+import { heroPerkLook, drawPerkPicker, drawPerkBadges, drawPerkParticles, drawDrone } from './perks32';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
 
@@ -142,6 +143,11 @@ export function buildBackground(w: World): FloorBg {
   };
 }
 
+/** The weapon a stance holds (from the stance chips), for previews of another stance's perk. */
+function stanceWeapon(s: DungeonSnapshot, id: string): WeaponLook {
+  const o = s.stance.list.find((x) => x.id === id);
+  return o?.base ? { base: o.base as Weapon['base'], element: o.element, rarity: o.rarity as Weapon['rarity'], variant: o.variant, unique: o.unique, plus: o.plus } : s.weapon;
+}
 export function createRenderer(): GameRenderer {
   let canvas: HTMLCanvasElement | null = null;
   let g: CanvasRenderingContext2D | null = null;
@@ -204,6 +210,7 @@ export function createRenderer(): GameRenderer {
     zoom.steps = pinchZoom(canvas.width, canvas.height, pinch.scale, touchSpan() / pinch.span);
   };
   let campHits: Array<{ x: number; y: number; w: number; h: number; row: number }> = [];
+  let perkHits: Array<{ x: number; y: number; w: number; h: number }> = [];
   const onPointer = (e: PointerEvent) => {
     if (!canvas) return;
     if (e.pointerType === 'touch' && pinchEnabled) {
@@ -216,6 +223,8 @@ export function createRenderer(): GameRenderer {
       return;
     }
     const r = canvas.getBoundingClientRect(), px = (e.clientX - r.left) * (canvas.width / r.width), py = (e.clientY - r.top) * (canvas.height / r.height);
+    const ph = perkHits.findIndex((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
+    if (ph >= 0) { e.preventDefault(); send?.({ type: 'perk', i: ph }); return; }
     const ah = actionHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
     if (ah) { e.preventDefault(); send?.({ type: 'action', id: ah.id }); return; }
     if (!campHits.length) return;
@@ -389,7 +398,7 @@ export function createRenderer(): GameRenderer {
     render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>) {
       const s = snapshot as DungeonSnapshot;
       if (!canvas || !g || !s.world) return;
-      pinchEnabled = s.phase === 'run';
+      pinchEnabled = s.phase === 'run' && !s.perks?.offer;
       // sound cues (skip any backlog from before mount)
       if (lastCue < 0) lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
       for (const c of s.cues) if (c.id > lastCue) { lastCue = c.id; play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] }); }
@@ -454,7 +463,7 @@ export function createRenderer(): GameRenderer {
         const vis = info.swamp.filter((q) => inView(q, 1));
         const near = (x: number, y: number) => vis.some((q) => Math.abs(q.x + 0.5 - x) < 2.2 && q.y + 0.5 - y > -0.5 && q.y + 0.5 - y < 3.5);
         const who: Array<{ fy: number; d: () => void }> = [];
-        if (near(p.x, p.y)) { const fy = Math.round(p.y * TS + p.r * TS * 1.1); who.push({ fy, d: () => drawHero32(gg, p.x * TS, fy, { angle: s.aim.angle, moving: p.moving, t, stance: s.stance.id, hurt: false, weapon: s.weapon, kick: 0 }) }); }
+        if (near(p.x, p.y)) { const fy = Math.round(p.y * TS + p.r * TS * 1.1); who.push({ fy, d: () => drawHero32(gg, p.x * TS, fy, { angle: s.aim.angle, moving: p.moving, t, stance: s.stance.id, hurt: false, weapon: s.weapon, kick: 0, ...heroPerkLook(s.perks, s.stance.id) }) }); }
         if (artReady()) for (const e of s.enemies) if (e.kind !== 'bat' && near(e.x, e.y)) { const fy = Math.round(e.y * TS + e.r * TS * 0.9); who.push({ fy, d: () => drawEnemy32(gg, e.x * TS, fy, { kind: e.kind, variant: e.variant, moving: false, tell: 0, flash: false, face: e.face, t, id: e.id }) }); }
         if (who.length) {
           gg.save(); gg.beginPath();
@@ -604,8 +613,8 @@ export function createRenderer(): GameRenderer {
         if (artReady()) {
           shadow(px, py, TS * 0.3);
           const kick = shot ? 2 : 0;
-          if (p.rolling) drawHero32(gg, px - Math.cos(s.aim.angle) * TS * 0.3, py, { angle: s.aim.angle, moving: true, t, stance: s.stance.id, hurt: false, weapon: s.weapon, kick: 0, alpha: 0.3 });
-          drawHero32(gg, px, py + bob, { angle: s.aim.angle, moving: p.moving, t, stance: s.stance.id, hurt: p.hurt < 0.08, weapon: s.weapon, kick, alpha: p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1 });
+          if (p.rolling) drawHero32(gg, px - Math.cos(s.aim.angle) * TS * 0.3, py, { angle: s.aim.angle, moving: true, t, stance: s.stance.id, hurt: false, weapon: s.weapon, kick: 0, alpha: 0.3, ...heroPerkLook(s.perks, s.stance.id) });
+          drawHero32(gg, px, py + bob, { angle: s.aim.angle, moving: p.moving, t, stance: s.stance.id, hurt: p.hurt < 0.08, weapon: s.weapon, kick, alpha: p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1, ...heroPerkLook(s.perks, s.stance.id) });
           if(p.warded)pixelRing(gg,p.x*TS,p.y*TS-10,TS*0.7,'#7fe7ff',true);
           return;
         }
@@ -621,6 +630,7 @@ export function createRenderer(): GameRenderer {
         // weapon gripped at its handle by the facing hand, pointing along the aim
         if(!held.behind)drawHeld();
       } });
+      if (artReady()) (s.perks?.drones ?? []).forEach((d, k) => actors.push({ y: d.y + 0.6, d: () => drawDrone(gg, d.x * TS, d.y * TS, t, d.shot, k) }));
       if (bg32 && info) {
         const lr = zonePropSize(Zn, 'light');
         for (const q of info.pillars) if (inView(q, 2) && lr) actors.push({ y: q.y + 0.5, d: () => { const fx2 = q.x * TS + 16, fy2 = q.y * TS + 28; shadow(fx2, fy2, 9); drawZoneProp(gg, Zn, 'light', fx2 - (lr.w >> 1), fy2 - lr.h); } });
@@ -647,6 +657,7 @@ export function createRenderer(): GameRenderer {
           for (let r = 0; r < 5; r++) { gg.fillStyle = r < 2 ? '#fff4c0' : '#ffd84a'; gg.fillRect(ax - 5 + r, ay + r, (5 - r) * 2 + 1, 1); }
           gg.fillStyle = '#0a0810'; gg.fillRect(ax - 3, ay - 7, 7, 8); gg.fillStyle = '#ffd84a'; gg.fillRect(ax - 2, ay - 6, 5, 6); gg.fillStyle = '#fff4c0'; gg.fillRect(ax - 2, ay - 6, 1, 6);
         }
+        if (s.perks?.ranks.length) drawPerkParticles(gg, s.perks, p.x * TS, p.y * TS + p.r * TS * 1.1, p.moving, t, p.hp >= p.maxHp, s.stance.id);
         if (swapFx) { const k = (t - swapFx.t0) / 0.5; if (k < 0 || k > 1) swapFx = null; else drawStanceSwap(gg, p.x * TS, p.y * TS + p.r * TS * 1.1, k, swapFx.c, swapFx.from, t); }
         for (const b of s.bullets) if (!(artReady() && drawShot32(gg, b, TS))) drawBullet(b, TS, t);
         for (const f of s.fx) {
@@ -676,7 +687,10 @@ export function createRenderer(): GameRenderer {
           const e = { x, y, r, c, i, los }; L.push(e); if (key) statics.add(e);
         };
         const fl = (k: number) => 1 + Math.sin(t * 9 + k * 2) * 0.04 + Math.sin(t * 23 + k) * 0.03;
-        add(null, p.x * TS, p.y * TS - 12, TS * (dark ? 2.2 : 3.2), [255, 236, 210], 0.55);
+        const lamp = s.perks?.light ?? 0;
+        add(null, p.x * TS, p.y * TS - 12, TS * (dark ? 2.2 : 3.2) * (1 + lamp), [255, 236, 210], 0.55);
+        if (lamp > 0) add(null, p.x * TS + Math.cos(s.aim.angle) * TS * 2.2, p.y * TS - 12 + Math.sin(s.aim.angle) * TS * 2.2, TS * 2.6 * (1 + lamp * 0.5), [255, 240, 190], 0.5 + lamp * 0.4); // the Headlamp beam
+        for (const d of s.perks?.drones ?? []) add(null, d.x * TS, d.y * TS - 6, TS * 1.3, [140, 190, 255], 0.5);
         if (!dark) {
           for (const q of info.torches) add(`t${q.x},${q.y}`, q.x * TS + 16, (q.y + 1) * TS + 2, TS * 3.4 * fl(q.x), zl.torch, 0.95);
           for (const q of info.lit) add(q.key, q.x, q.y, q.r * fl(q.cx), q.c, q.i);
@@ -767,6 +781,8 @@ export function createRenderer(): GameRenderer {
       }
       output.restore();
       drawHud(s,OW,OH,bike);
+      perkHits = s.perks?.offer && artReady() ? drawPerkPicker(output, s.perks, OW, OH, insetCss * dpr, uiU, dpr, s.perks.offer.age, heroPerkLook(s.perks, s.stance.id),
+        (hg, x, foot, look) => drawHero32(hg, x, foot, { moving: false, t, hurt: false, weapon: look.stance && look.stance !== s.stance.id ? stanceWeapon(s, look.stance) : s.weapon, kick: 0, ...look, stance: look.stance ?? s.stance.id, angle: look.angle ?? Math.PI * 0.5 })) : [];
     },
     unmount() {
       clearPinch(); pinchEnabled = false;
@@ -959,7 +975,9 @@ export function createRenderer(): GameRenderer {
     const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, PW = 172 * hu;
     {
       const x = L, y = L, hpLow = p.hp < p.maxHp * 0.4;
-      pixelPanel(gg,x-3*hu,y-3*hu,PW+6*hu,38*hu,'#746481','#15111fee',dpr); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu);
+      const perkRow = s.perks?.ranks.length ? 17 * hu : 0;
+      pixelPanel(gg,x-3*hu,y-3*hu,PW+6*hu,38*hu+perkRow,'#746481','#15111fee',dpr); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu + perkRow);
+      if (perkRow && s.perks) drawPerkBadges(gg, s.perks, x, y + 34 * hu, PW, hu, s.t);
       pixelMeter(gg,x,y,PW,11*hu,p.hp/p.maxHp,hpLow?'#e96d75':'#68ba78',dpr);
       gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(9 * hu));
       fillTextShadow(gg, `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
@@ -1098,7 +1116,7 @@ export function createRenderer(): GameRenderer {
     gg.font = pixelFont(Math.round(11 * hu));
     s.toasts.forEach((tt, i) => {
       const age = s.t - tt.t0; gg.globalAlpha = Math.max(0, Math.min(1, (6 - age) / 1.5));
-      gg.lineWidth = 3; gg.strokeStyle = '#000'; strokeText(gg, tt.text, L, L + (52 + i * 15) * hu, W - 2 * L); gg.fillStyle = tt.color; fillText(gg, tt.text, L, L + (52 + i * 15) * hu, W - 2 * L);
+      gg.lineWidth = 3; gg.strokeStyle = '#000'; const ty0 = L + (52 + (s.perks?.ranks.length ? 17 : 0) + i * 15) * hu; strokeText(gg, tt.text, L, ty0, W - 2 * L); gg.fillStyle = tt.color; fillText(gg, tt.text, L, ty0, W - 2 * L);
     });
     gg.globalAlpha = 1;
 

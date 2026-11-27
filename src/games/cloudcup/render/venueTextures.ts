@@ -6,16 +6,19 @@ export type ArtName =
   | 'mill-siding'
   | 'bowl-sign'
   | 'pass-sign'
-  | 'spruce'
-  | 'split-spruce'
-  | 'bleachers'
+  | 'spruce-bough'
   | 'pit-garage'
   | 'schist'
   | 'ticket-office'
   | 'grit'
   | 'magnet-enamel'
   | 'kiln-mural'
-  | 'heron-glass';
+  | 'heron-glass'
+  | 'magnet-horizon'
+  | 'kiln-horizon'
+  | 'storm-horizon'
+  | 'bowl-horizon'
+  | 'pass-horizon';
 export type VenueArt = (name: ArtName) => T.Texture;
 // Each venue requests its materials on first use. Three uploads the decoded
 // image on the next rendered frame and the cached yard retains its textures.

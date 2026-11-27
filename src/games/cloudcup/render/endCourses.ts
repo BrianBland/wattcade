@@ -1,5 +1,7 @@
 import * as T from 'three';
 import { courses, LAP, WIDTH, winchCut, type Course } from '../sim/track';
+import { barrierTire, spectator, spruce } from './sceneryModels';
+import { valleyWorks } from './valleyWorks';
 import { bowlField } from './bowlField';
 import { addPassCrags } from './passCrags';
 import { valley, saddle } from '../sim/pass';
@@ -18,7 +20,13 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
   const lamp = new T.MeshBasicMaterial({ color: '#ffdfa7' });
   const cube = new T.BoxGeometry(),
     rod = new T.CylinderGeometry(0.5, 0.5, 1, 8);
-  const batches = new Map<T.Material, Map<T.BufferGeometry, T.Matrix4[]>>();
+  const batches = new Map<T.Material, Map<T.BufferGeometry, Map<string, T.Matrix4[]>>>();
+  const detail = new Set<T.BufferGeometry>();
+  const distant = new Map<T.BufferGeometry, T.BufferGeometry>();
+  const figurePaint = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.86 });
+  const raceClock = { value: 0 };
+  let runRiver: (t: number) => void = () => {};
+
   const dummy = new T.Object3D();
   function piece(
     m: T.Material,
@@ -41,8 +49,13 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
   function instance(m: T.Material, g: T.BufferGeometry, matrix: T.Matrix4) {
     if (!batches.has(m)) batches.set(m, new Map());
     const byGeo = batches.get(m)!;
-    if (!byGeo.has(g)) byGeo.set(g, []);
-    byGeo.get(g)!.push(matrix.clone());
+    if (!byGeo.has(g)) byGeo.set(g, new Map());
+    const cells = byGeo.get(g)!;
+    const cell = detail.has(g)
+      ? Math.floor(matrix.elements[12] / 52) + ',' + Math.floor(matrix.elements[14] / 52)
+      : 'all';
+    if (!cells.has(cell)) cells.set(cell, []);
+    cells.get(cell)!.push(matrix.clone());
   }
   function at(m: T.Material, d: number, x: number, y: number, w: number, h: number, l: number, roll = 0) {
     const p = course.world(d, x, y);
@@ -217,7 +230,7 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
       ),
     );
     flag.computeVertexNormals();
-    bowlField(root, course, width, art('grit'));
+    const field = bowlField(root, course, width, art('grit'));
     // The old gas holder is hollow. The three rings and missing bays read from
     // the opposite stands while the open frame gives glimpses of the sky.
     const columns = 14;
@@ -240,14 +253,27 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
     const shoulder = new T.MeshStandardMaterial({ map: roadTexture, color: '#cfc1a2', roughness: 1 });
     ribbon(course, 0, LAP, -width, -1.65, 0.012, shoulder);
     ribbon(course, 0, LAP, 1.65, width, 0.012, shoulder);
-    const bleachers = frontage('bleachers'),
-      garage = frontage('pit-garage');
-    const tiers = [0, 1, 2].map((row) => {
-      const g = new T.PlaneGeometry(),
-        uv = g.attributes.uv;
-      for (let i = 0; i < uv.count; i++) uv.setY(i, (row + uv.getY(i)) / 3);
-      return g;
+    const garage = frontage('pit-garage');
+    const fans = Array.from({ length: 6 }, (_, i) => spectator(i));
+    fans.forEach((g, i) => {
+      detail.add(g);
+      distant.set(g, spectator(i, true));
     });
+    figurePaint.onBeforeCompile = (shader) => {
+      shader.uniforms.crowdTime = raceClock;
+      shader.vertexShader =
+        'uniform float crowdTime;\n' +
+        shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          `
+        #include <begin_vertex>
+        float posture=smoothstep(.60,1.85,position.y);
+        float phase=dot(instanceMatrix[3].xz,vec2(.38,.57));
+        transformed.x+=posture*.062*sin(crowdTime*2.8+phase);
+        transformed.y+=posture*.052*sin(crowdTime*3.6+phase*.71);
+      `,
+        );
+    };
     // Open pit bays on the quiet side of the oval give the back straight its
     // own landmark. A deep roof, threshold and bollards frame the painted interiors.
     for (const d of [287, 747, 777]) {
@@ -272,14 +298,105 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
         );
       }
     }
-    const rubber = mat('#3a3937'),
-      tyre = new T.TorusGeometry(0.54, 0.21, 6, 12);
-    tyre.rotateX(Math.PI / 2);
-    for (let d = 6; d < LAP; d += 6) {
-      if ((d > 190 && d < 377) || (d > 665 && d < 829)) continue;
-      const p = course.world(d, 2.65, 0);
-      for (let i = 0; i < (d % 30 ? 2 : 3); i++)
-        piece(i === 2 ? cream : rubber, p.x, p.y + 0.17 + i * 0.33, p.z, 1.4, 1, 1.4, 0, 0, tyre);
+    const tires = [barrierTire(false), barrierTire(true)];
+    tires.forEach((g, i) => {
+      detail.add(g);
+      distant.set(g, barrierTire(i === 1, true));
+    });
+    // Recovery crews wait on the inside of the two straights. Sample the
+    // finished infield: extrapolating the road bank would float the wheels.
+    const ray = new T.Raycaster(),
+      down = new T.Vector3(0, -1, 0);
+    const glass = mat('#314b50'),
+      tyre = mat('#393735'),
+      ochre = mat('#c18843');
+    const wheel = new T.CylinderGeometry(0.74, 0.74, 0.46, 16);
+    wheel.rotateZ(Math.PI / 2);
+    for (const [station, side, isWrecker] of [
+      [80, 5.85, 1],
+      [399, 5.5, 0],
+      [712, 4.95, 1],
+    ]) {
+      const p = point(station, side, 0);
+      ray.set(new T.Vector3(p.x, 30, p.z), down);
+      const hit = ray.intersectObject(field)[0];
+      if (!hit) continue;
+      p.y = hit.point.y;
+      const yaw = -course.track(station).yaw + 0.32,
+        ca = Math.cos(yaw),
+        sa = Math.sin(yaw);
+      const local = (x: number, y: number, z: number) =>
+        new T.Vector3(p.x + x * ca + z * sa, p.y + y, p.z - x * sa + z * ca);
+      const fit = (
+        m: T.Material,
+        x: number,
+        y: number,
+        z: number,
+        w: number,
+        h: number,
+        l: number,
+        g?: T.BufferGeometry,
+      ) => {
+        const q = local(x, y, z);
+        piece(m, q.x, q.y, q.z, w, h, l, yaw, 0, g);
+      };
+      const paint = isWrecker ? ochre : green;
+      fit(iron, 0, 0.86, 0, 2.62, 0.48, 8.5);
+      for (const x of [-1.35, 1.35])
+        for (const z of [-2.85, -1.12, 2.73]) {
+          fit(tyre, x, 0.74, z, 1, 1, 1, wheel);
+          fit(rim, x * 1.17, 0.74, z, 0.28, 0.52, 0.52, wheel);
+        }
+      fit(paint, 0, 1.54, 2.48, 2.93, 1.07, 2.99);
+      fit(glass, 0, 2.46, 2.21, 2.68, 1.02, 2.22);
+      fit(paint, 0, 3.04, 2.21, 2.95, 0.21, 2.53);
+      for (const x of [-1.29, 1.29]) for (const z of [1.14, 3.25]) fit(paint, x, 2.48, z, 0.17, 1.1, 0.17);
+      fit(cream, 0, 1.06, 4.06, 3.08, 0.24, 0.24);
+      for (const x of [-1.02, 1.02]) fit(lamp, x, 1.6, 4.0, 0.49, 0.29, 0.09);
+      fit(iron, 0, 1.26, -1.72, 3.06, 0.25, 5.5);
+      if (isWrecker) {
+        for (const x of [-0.86, 0.86]) {
+          beam(paint, local(x, 1.42, -0.45), local(0, 5.7, -4.64), 0.28);
+          beam(iron, local(x, 1.45, -3.6), local(0, 4.74, -3.78), 0.17);
+        }
+        beam(iron, local(0, 5.7, -4.64), local(0, 2.33, -4.64), 0.075);
+        fit(red, 0, 2.2, -4.64, 0.4, 0.4, 0.32);
+      } else {
+        const tank = rod.clone();
+        tank.rotateX(Math.PI / 2);
+        fit(cream, 0, 2.48, -1.65, 2.53, 2.53, 5.25, tank);
+        for (const z of [-3.58, 0.28]) fit(green, 0, 2.48, z, 2.6, 2.6, 0.24, tank);
+      }
+      for (let j = 0; j < 3; j++) {
+        fit(j % 2 ? red : iron, 2.9 + j * 0.86, 0.59, -1.48, 0.82, 1.17, 0.82, rod);
+        fit(rim, 2.9 + j * 0.86, 0.87, -1.48, 0.845, 0.09, 0.845, rod);
+        const q = local(2.55 + j * 0.94, 0, 1 + 0.57 * j);
+        piece(figurePaint, q.x, q.y, q.z, 1.04, 1.04, 1.04, yaw + j, 0, fans[(j + 2) % 6]);
+      }
+    }
+    const rubber = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.94 });
+    const webbing = mat('#655642');
+    // Bundles sit shoulder to shoulder around the two ends. The staggered
+    // second course overlaps the joints and webbing passes over both sidewalls.
+    for (const [start, count] of [
+      [19, 18],
+      [141, 13],
+      [457, 20],
+      [822, 15],
+      [997, 12],
+    ]) {
+      for (let i = 0; i < count; i++) {
+        for (let level = 0; level < 2; level++) {
+          const d = start + (i + 0.46 * level) * 3.05,
+            p = course.world(d, 2.54, level * 0.435 - 0.075);
+          const g = tires[Number((i + level) % 7 === 0)];
+          piece(rubber, p.x, p.y, p.z, 0.97, 0.97, 0.92, i * 0.86, 0.023 * Math.sin(i * 5), g);
+          if (level === 1 && i % 3 === 1) {
+            at(webbing, d, 2.54, 0.823, 1.51, 0.045, 0.107);
+            for (const side of [-1, 1]) at(webbing, d, 2.54 + side * 0.166, 0.41, 0.054, 0.82, 0.109);
+          }
+        }
+      }
     }
     // A reused finishing gantry carries a hand-painted derby fascia.
     const finish = 6;
@@ -340,10 +457,29 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
       const home = d < 184 || d > 850,
         back = d >= 402 && d < 658;
       if ((home || back) && d % 144 < 132) {
-        for (const [row, geometry] of tiers.entries()) {
-          const p = point(d, -3.34 - row * 0.32, 1.4 + row * 1.44);
-          piece(bleachers, p.x, p.y, p.z, 6.8, 1.57, 1, -course.track(d).yaw + Math.PI / 2, 0, geometry);
-          at(green, d, -3.51 - row * 0.32, 0.61 + 1.44 * row, 1.9, 0.14, 6.8);
+        for (let row = 0; row < 3; row++) {
+          const x = -3.24 - row * 0.36,
+            h = 0.54 + row * 0.97;
+          at(green, d, x, h - 0.12, 1.82, 0.23, 6.55);
+          for (let j = 0; j < 6; j++) {
+            const seed = d * 17 + j * 29 + row * 53;
+            if (seed % 11 === 0) continue;
+            const station = d + (j - 2.5) * 1.93 + 0.2 * Math.sin(seed);
+            const p = point(station, x + 0.045 * Math.sin(seed * 3), h);
+            const size = 1.01 + 0.13 * Math.sin(seed * 1.4);
+            piece(
+              figurePaint,
+              p.x,
+              p.y,
+              p.z,
+              size,
+              size,
+              size,
+              -course.track(station).yaw + Math.PI / 2 + 0.23 * Math.sin(seed),
+              0,
+              fans[(Math.floor(d / 12) + j * 5 + row * 3) % fans.length],
+            );
+          }
         }
         at(green, d, -3.38, 0.54, 1.9, 0.64, 6.5);
         for (const y of [0.85, 1.65]) at(iron, d, -3.17, y, 0.09, 0.09, 6.48);
@@ -439,18 +575,33 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
     part(car, new T.BoxGeometry(2.64, 0.14, 4.52), rim, 0, -2.44, 0);
     part(car, new T.BoxGeometry(2.55, 0.18, 4.4), iron, 0, -3.58, 0);
     car.position.copy(cableHigh);
-    const rock = mat('#545e65');
-    const trees = [art('spruce'), art('split-spruce')].map(
-      (map) =>
-        new T.MeshBasicMaterial({
-          map,
-          alphaTest: 0.43,
-          side: T.DoubleSide,
-          color: '#e0e3d8',
-        }),
-    );
-    const crown = new T.PlaneGeometry(1, 1);
-    crown.translate(0, 0.5, 0);
+    const rock = new T.MeshStandardMaterial({
+      color: 0xb3b5a4,
+      map: art('schist'),
+      bumpMap: art('schist'),
+      bumpScale: 0.45,
+      roughness: 0.96,
+    });
+    const needles = new T.MeshStandardMaterial({
+      map: art('spruce-bough'),
+      vertexColors: true,
+      roughness: 1,
+      side: T.DoubleSide,
+      alphaTest: 0.24,
+      alphaToCoverage: true,
+    });
+    // Diffuse transmission through a spray of needles softens the backs of
+    // the folded boughs. Opaque timber and rock keep their harder shading.
+    needles.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <normal_fragment_maps>',
+        '#include <normal_fragment_maps>\nnormal=normalize(normal*.54+mat3(viewMatrix)*vec3(0.,.72,0.));',
+      );
+    };
+    const groves = [spruce(0, false), spruce(1, false), spruce(2, true)];
+    groves.forEach((g) => detail.add(g));
+    distant.set(groves[0], groves[2]);
+    distant.set(groves[1], groves[2]);
     for (const c of [course, winchCut]) {
       const start = c === course ? 0 : valley,
         end = c === course ? LAP : saddle;
@@ -472,14 +623,15 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
     }
     // A glacial stream cuts a dark seam under the trestles. The valley rises
     // with the road, with fractured ledges on either bank and bare high ground.
+    const creekX = (z: number) => 79 + 28 * Math.sin(z * 0.019 + 0.85);
     const riverX = (z: number) => -28 + 23 * Math.sin(z * 0.016);
     function bed(x: number, z: number) {
-      const bank = Math.min(1, Math.abs(x - riverX(z)) / 30);
+      const bank = Math.min(1, Math.min(Math.abs(x - riverX(z)), Math.abs(x - creekX(z)) * 1.15) / 30);
       const ridge =
         Math.cos(x * 0.072 + z * 0.03) * Math.sin(z * 0.082) + 0.7 * Math.sin(x * 0.14 - z * 0.066);
       return Math.max(0, Math.min(15, (190 - z) * 0.04)) - 15 + 6 * bank + 2.6 * ridge * bank;
     }
-    const ground = new T.PlaneGeometry(600, 760, 90, 114);
+    const ground = new T.PlaneGeometry(600, 760, 158, 195);
     ground.rotateX(-Math.PI / 2);
     const pos = ground.attributes.position,
       colors: number[] = [];
@@ -492,6 +644,7 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
         z = pos.getZ(i),
         h = bed(x, z);
       pos.setY(i, h);
+      ground.attributes.uv.setXY(i, x / 14, z / 14);
       shade
         .copy(shale)
         .lerp(grass, 0.5 + 0.45 * Math.sin(x * 0.088 + z * 0.057))
@@ -501,13 +654,27 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
     }
     ground.setAttribute('color', new T.Float32BufferAttribute(colors, 3));
     ground.computeVertexNormals();
-    root.add(new T.Mesh(ground, new T.MeshStandardMaterial({ vertexColors: true, flatShading: true })));
-    const slab = new T.IcosahedronGeometry(1, 0);
+    const floorMap = art('grit');
+    floorMap.wrapS = floorMap.wrapT = T.RepeatWrapping;
+    const valleyFloor = new T.Mesh(
+      ground,
+      new T.MeshStandardMaterial({
+        vertexColors: true,
+        map: floorMap,
+        bumpMap: floorMap,
+        bumpScale: 0.65,
+        roughness: 0.96,
+      }),
+    );
+    valleyFloor.receiveShadow = true;
+    root.add(valleyFloor);
+    const slab = new T.IcosahedronGeometry(1, 1);
     for (let i = 0; i < 1190; i++) {
       const x = 225 * Math.sin(i * 17.21) * Math.cos(i * 0.37),
         z = 310 * Math.sin(i * 4.18);
       const y = bed(x, z),
         h = 5 + 7 * Math.sin(i * 39.1) ** 2;
+      if (Math.min(Math.abs(x - creekX(z)), Math.abs(x - riverX(z))) < 10) continue;
       if (i % 4 === 0) {
         piece(rock, x, y, z, h * 0.52, 2.9, h * 0.84, i * 0.26, 0.17, slab);
         continue;
@@ -520,10 +687,7 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
         Math.abs(x - course.track(routeDistance).x) < 14 ||
         Math.abs(z) > 188;
       const size = nearby ? h * 0.42 : h;
-      const yaw = i * 1.76,
-        tree = trees[i % 2];
-      for (const angle of [yaw, yaw + Math.PI / 2])
-        piece(tree, x, y - 0.14, z, size, size, 1, angle, 0, crown);
+      piece(needles, x, y - 0.12, z, size, size, size, i * 1.76, 0, groves[2]);
     }
     // Mature groves frame the valley approach and the lee side of the return.
     // Check the full canopy against every road, including the other fork.
@@ -537,11 +701,12 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
       const size = 12 + 12 * Math.sin(i * 6.71) ** 2,
         clearance = width * WIDTH + size * 0.42 + 1;
       if (lanes.some((q) => (q.x - p.x) ** 2 + (q.z - p.z) ** 2 < clearance ** 2)) continue;
+      if (Math.min(Math.abs(p.x - creekX(p.z)), Math.abs(p.x - riverX(p.z))) < 9) continue;
       const y = bed(p.x, p.z) - 0.35,
         yaw = i * 2.23;
-      for (const angle of [yaw, yaw + Math.PI / 2])
-        piece(trees[i % 2], p.x, y, p.z, size, size, 1, angle, 0, crown);
+      piece(needles, p.x, y, p.z, size, size, size, yaw, 0, groves[i % 2]);
     }
+    runRiver = valleyWorks(root, bed, riverX, creekX, piece, beam, art);
     addPassCrags(root, art('schist'), bed);
     // Summit drive hall. The open lattice faces down the climb so riders
     // see through the powered sheave from either approach.
@@ -582,15 +747,35 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
     for (const x of [-3.3, 3.3]) beam(iron, hall(x, 12.5, 2), hall(x, 18, 2), 0.24);
   }
   for (const [m, byGeo] of batches)
-    for (const [g, list] of byGeo) {
-      const mesh = new T.InstancedMesh(g, m, list.length);
-      list.forEach((v, i) => mesh.setMatrixAt(i, v));
-      mesh.receiveShadow = true;
-      mesh.castShadow = m === iron || m === siding || m === timber;
-      root.add(mesh);
-    }
+    for (const [g, cells] of byGeo)
+      for (const list of cells.values()) {
+        const mesh = new T.InstancedMesh(g, m, list.length);
+        list.forEach((v, i) => mesh.setMatrixAt(i, v));
+        mesh.receiveShadow = true;
+        mesh.castShadow = m === iron || m === siding || m === timber || m === figurePaint;
+        const simple = distant.get(g);
+        if (!simple) {
+          root.add(mesh);
+          continue;
+        }
+        mesh.computeBoundingSphere();
+        const bounds = mesh.boundingSphere!;
+        const far = new T.InstancedMesh(simple, m, list.length);
+        far.instanceMatrix = mesh.instanceMatrix;
+        far.receiveShadow = true;
+        const lod = new T.LOD();
+        lod.position.copy(bounds.center);
+        mesh.position.copy(bounds.center).negate();
+        far.position.copy(mesh.position);
+        // Switch the whole seating block or grove only once its nearest
+        // member is beyond the range where faces and tire grooves resolve.
+        lod.addLevel(mesh, 0);
+        lod.addLevel(far, 44 + bounds.radius, 0.12);
+        root.add(lod);
+      }
   return (time: number, at: number, state: { laps: number }) => {
     if (bowl) {
+      raceClock.value = time;
       pennants.forEach((flag, i) => {
         flag.rotation.y = 0.28 * Math.sin(time * 3.6 + i);
         flag.rotation.z = 0.055 * Math.sin(time * 5.8 + i);
@@ -598,6 +783,7 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
       moving.rotation.y = 0.55 + time * 0.21;
       moving.rotation.z = 0.08;
     } else {
+      runRiver(time);
       moving.rotation.z = time * 0.65;
       const journey = Math.max(0, Math.min(1, (at - (state.laps - 1) * LAP - saddle) / (LAP - saddle)));
       car.position.copy(cableHigh).lerp(cableLow, journey);

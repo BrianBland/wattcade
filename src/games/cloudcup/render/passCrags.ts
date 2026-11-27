@@ -22,21 +22,41 @@ export function addPassCrags(root: T.Group, map: T.Texture, bed: (x: number, z: 
     [690, 840, 1, 21],
   ]) {
     const offset = xyz.length / 3;
-    const count = Math.ceil((b - a) / 3);
+    const count = Math.ceil((b - a) / 1.15);
+    // Recessed joints undercut each shelf. Broad changes in strike interrupt
+    // the bedding, while short fissures catch the sun as the road bends.
+    const section = [
+      [2.16, 0, 0.65],
+      [2.39, 0.13, 0.76],
+      [2.53, 0.24, 0.87],
+      [2.68, 0.29, 0.52],
+      [2.57, 0.33, 0.72],
+      [2.61, 0.43, 1.03],
+      [2.87, 0.47, 0.55],
+      [2.78, 0.52, 0.72],
+      [2.91, 0.64, 1.04],
+      [3.15, 0.69, 0.54],
+      [3.02, 0.73, 0.82],
+      [3.17, 0.83, 1.04],
+      [3.43, 0.86, 0.62],
+      [3.36, 0.91, 0.83],
+      [3.79, 1, 1.05],
+      [4.55, 0.98, 1],
+      [5.27, 0.8, 0.84],
+      [6.3, 0, 0.64],
+    ];
     for (let i = 0; i <= count; i++) {
       const t = i / count,
         d = a + (b - a) * t;
-      const taper = Math.sin(Math.PI * t) ** 0.55,
-        edge = Math.sin(i * 0.47) * 0.5;
-      const rise = (height + 3 * Math.sin(i * 0.54) + 2.3 * Math.cos(i * 0.87)) * taper;
-      for (const [j, [across, fraction]] of [
-        [2.35, 0],
-        [2.7, 0.39],
-        [3.06, 0.8],
-        [3.92, 1],
-        [5.1, 0.86],
-        [6.3, 0],
-      ].entries()) {
+      const taper = Math.sin(Math.PI * t) ** 0.6;
+      const fault = Math.sin(d * 0.078) + 0.53 * Math.sin(d * 0.219 + 1.07);
+      const joint = Math.max(0, 1 - Math.abs(Math.sin(d * 0.181 + Math.sin(d * 0.085))) * 4);
+      const edge = 0.32 * fault + 0.14 * joint;
+      const rise = (height + 3.1 * fault + 1.36 * Math.sin(d * 0.51) - 1.4 * joint) * taper;
+      for (const [j, [nominal, level, light]] of section.entries()) {
+        const grain = 0.085 * Math.sin(d * 0.84 + j * 0.43) + 0.044 * Math.sin(d * 1.27 + j * 0.91);
+        const across = nominal + grain + joint * 0.26;
+        const fraction = level + Math.sin(Math.PI * level) * 0.057 * Math.sin(d * 0.126 + j * 0.24);
         const p = road.world(d, side * (across + edge), 0);
         let y = bed(p.x, p.z) - 1.5 + fraction * (rise + 6 * taper);
         for (const lane of lines) {
@@ -47,12 +67,14 @@ export function addPassCrags(root: T.Group, map: T.Texture, bed: (x: number, z: 
         uv.push(d / 12, (y + across * 0.9) / 9);
         shade
           .copy(strata)
-          .lerp(frost, j === 3 ? 0.88 : j === 4 ? 0.5 : 0.1)
-          .multiplyScalar(0.82 + 0.16 * Math.sin(i * 1.42 + j * 0.7));
+          .lerp(frost, j >= 14 ? 0.58 : 0.11)
+          .multiplyScalar(light * (0.94 + 0.09 * Math.sin(d * 0.42 + j * 0.3)));
         color.push(shade.r, shade.g, shade.b);
-        if (i < count && j < 5) {
-          const k = offset + i * 6 + j;
-          indices.push(k, k + 1, k + 7, k, k + 7, k + 6);
+        if (i < count && j < section.length - 1) {
+          const k = offset + i * section.length + j;
+          if (side > 0)
+            indices.push(k, k + section.length, k + 1, k + 1, k + section.length, k + section.length + 1);
+          else indices.push(k, k + 1, k + section.length, k + 1, k + section.length + 1, k + section.length);
         }
       }
     }
@@ -64,16 +86,18 @@ export function addPassCrags(root: T.Group, map: T.Texture, bed: (x: number, z: 
   g.setAttribute('color', new T.Float32BufferAttribute(color, 3));
   g.setIndex(indices);
   g.computeVertexNormals();
-  root.add(
-    new T.Mesh(
-      g,
-      new T.MeshStandardMaterial({
-        map,
-        vertexColors: true,
-        flatShading: true,
-        side: T.DoubleSide,
-        roughness: 0.92,
-      }),
-    ),
+  const wall = new T.Mesh(
+    g,
+    new T.MeshStandardMaterial({
+      map,
+      bumpMap: map,
+      bumpScale: 0.83,
+      vertexColors: true,
+      side: T.DoubleSide,
+      roughness: 0.86,
+    }),
   );
+  wall.castShadow = true;
+  wall.receiveShadow = true;
+  root.add(wall);
 }

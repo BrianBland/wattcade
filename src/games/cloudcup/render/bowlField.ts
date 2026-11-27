@@ -38,10 +38,11 @@ export function bowlField(root: T.Group, course: Course, width: number, grit: T.
   g.setIndex(indices);
   g.computeVertexNormals();
   grit.wrapS = grit.wrapT = T.RepeatWrapping;
-  root.add(
-    new T.Mesh(
-      g,
-      new T.MeshStandardMaterial({ map: grit, vertexColors: true, side: T.DoubleSide, roughness: 1 }),
-    ),
+  const field = new T.Mesh(
+    g,
+    new T.MeshStandardMaterial({ map: grit, vertexColors: true, side: T.DoubleSide, roughness: 1 }),
   );
+  field.receiveShadow = true;
+  root.add(field);
+  return field;
 }

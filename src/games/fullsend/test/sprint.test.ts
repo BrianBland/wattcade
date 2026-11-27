@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { cardHeadline, cardRows, cardVisible, ghostCall, horizonPreview, pace, sprintIntensity } from '../render/sprint';
+import { cardHeadline, cardRows, cardVisible, ghostCall, horizonPreview, pace, paceCall, sprintIntensity } from '../render/sprint';
 import type { SetResult } from '../sim/sim';
 
 describe('sprint screen helpers', () => {
   const th: [number, number, number] = [1.1, 1.25, 1.5];
-  it('pace is the medal your mean power is on course for', () => {
-    expect([1.0, 1.15, 1.3, 1.6].map((live) => pace({ live, th }))).toEqual([0, 1, 2, 3]);
+  const at = (now: number, hold: [number, number, number] = [0, 0, 0]) => ({ now, th, hold, holdNeed: 0.8 });
+  it('before the hold counts, pace is the zone your power is in now', () => {
+    expect([1.0, 1.15, 1.3, 1.6].map((now) => pace(at(now)))).toEqual([0, 1, 2, 3]);
+  });
+  it('pace is the best zone held for most of the sprint, not where a spike puts you', () => {
+    expect(pace(at(1.6, [0.9, 0.85, 0.82]))).toBe(3);
+    expect(pace(at(2.5, [0.9, 0.85, 0.4]))).toBe(2); // a big kick now doesn't make up for not holding gold
+    expect(pace(at(1.6, [0.5, 0.3, 0.2]))).toBe(0);
+  });
+  it('dropping out of the zone you hold warns you to hold it', () => {
+    expect(paceCall(at(1.6, [1, 1, 1]))).toEqual({ text: 'HOLDING GOLD', medal: 3, slipping: false });
+    expect(paceCall(at(1.3, [1, 1, 0.9]))).toEqual({ text: 'HOLD GOLD!', medal: 3, slipping: true });
   });
   it('the set piece shows on the horizon from far off, grows as you close in, and hands over at the edge of the view', () => {
     const far = horizonPreview(1200, 60, 400, 100, 200)!, near = horizonPreview(90, 60, 400, 100, 200)!;

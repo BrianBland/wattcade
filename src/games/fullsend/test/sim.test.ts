@@ -336,9 +336,13 @@ describe('sprint scoring: the whole interval counts', () => {
     const m = medalsOf(shaped('fs-backload', (s, i) => (s > eff[i] - 5 ? 2.2 : 0.6)));
     expect(m[1]).toBeLessThan(3); expect(m[3]).toBeLessThan(3); expect(m[4]).toBeLessThan(3);
   });
-  it('going all out from GO and fading at the end still medals the leaps', () => {
+  it('going all out from GO and dying at the end does the work (bronze) but is not a sustained gold', () => {
     const m = medalsOf(shaped('fs-frontload', (s, i) => (s < eff[i] - 5 ? 2.2 : 0.9)));
-    expect(m[1]).toBeGreaterThanOrEqual(2); expect(m[4]).toBeGreaterThanOrEqual(2);
+    expect(m[1]).toBe(1); expect(m[4]).toBe(1);
+  });
+  it('holding the gold zone steadily for the whole sprint wins gold, even with the mean only just over the line', () => {
+    const m = medalsOf(shaped('fs-steady', () => 1.75));
+    expect(m.filter((x) => x === 3).length).toBeGreaterThanOrEqual(4);
   });
 });
 
@@ -368,6 +372,20 @@ describe('personal targets', () => {
     const pts = (s: Record<string, number | string>) => Number(s.gold) * 3 + Number(s.silver) * 2 + Number(s.bronze);
     expect(pts(b.sm)).toBeGreaterThan(pts(a.sm));
     expect(Number(b.sm.missed)).toBeLessThan(Number(a.sm.missed));
+  });
+  it('zones come from what you sustained: ride the same way again and it is gold, ease off 10 % and it is not', () => {
+    const fade = (k: number) => (_t: number, e: { hooks?: unknown }) => {
+      const h = (e.hooks ?? {}) as { shielded?: boolean };
+      return h.shielded ? k * 1.8 : 0.6;
+    };
+    SCRIPTS['steady-fs'] = { name: 'steady-fs', description: '1.8 FTP', usesHooks: true, cadence: () => 90, powerFtp: fade(1) };
+    SCRIPTS['steady90-fs'] = { name: 'steady90-fs', description: '1.62 FTP', usesHooks: true, cadence: () => 90, powerFtp: fade(0.9) };
+    const store: { data?: unknown } = {};
+    ride(store, 'steady-fs');
+    expect(Object.keys((store.data as { sus: Record<string, number> }).sus).length).toBeGreaterThanOrEqual(4);
+    expect(Number(ride(store, 'steady-fs').sm.gold)).toBe(5);
+    const easy = ride(store, 'steady90-fs').sm;
+    expect(Number(easy.gold)).toBe(0); expect(Number(easy.silver) + Number(easy.bronze)).toBeGreaterThanOrEqual(4);
   });
 });
 

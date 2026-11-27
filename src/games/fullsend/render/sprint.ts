@@ -5,9 +5,23 @@ import { MEDAL_NAMES, medalFor, type Medal } from '../sim/physics';
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
-/** The medal your sprint is on course for: mean power so far against the targets (the whole sprint counts). */
-export const pace = (p: Pick<PieceView, 'live' | 'th'>): Medal => medalFor(p.live, p.th);
-export const PACE_TEXT = ['PUSH!', 'BRONZE PACE', 'SILVER PACE', 'GOLD PACE'] as const;
+/** The zone your power is in right now (smoothed): which medal's power you are holding this second. */
+export const zoneNow = (p: Pick<PieceView, 'now' | 'th'>): Medal => medalFor(p.now, p.th);
+/**
+ * The medal your sprint is on course for: the best zone you have held for `holdNeed` of it so far (sustained output, not
+ * the mean, so a spike or a late kick doesn't buy gold). Before the hold starts counting, it's the zone you're in now.
+ */
+export function pace(p: Pick<PieceView, 'now' | 'th' | 'hold' | 'holdNeed'>): Medal {
+  if (!(p.hold[0] > 0) && !(p.hold[2] > 0)) return zoneNow(p);
+  return p.hold[2] >= p.holdNeed ? 3 : p.hold[1] >= p.holdNeed ? 2 : p.hold[0] >= p.holdNeed ? 1 : 0;
+}
+export const PACE_TEXT = ['PUSH!', 'HOLDING BRONZE', 'HOLDING SILVER', 'HOLDING GOLD'] as const;
+/** The call-out under the meter: what you're holding, or a warning when your power has dropped out of that zone. */
+export function paceCall(p: Pick<PieceView, 'now' | 'th' | 'hold' | 'holdNeed'>): { text: string; medal: Medal; slipping: boolean } {
+  const m = pace(p), z = zoneNow(p);
+  if (m > 0 && z < m) return { text: `HOLD ${MEDAL_NAMES[m].toUpperCase()}!`, medal: m, slipping: true };
+  return { text: PACE_TEXT[m], medal: m, slipping: false };
+}
 
 /**
  * The set piece you are sprinting for, while it is still beyond the view: it sits on the horizon from GO and grows and

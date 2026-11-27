@@ -43,6 +43,12 @@ export interface PieceView {
   peak: number;
   /** Your best mean for a sprint this long (FTP fraction; 0 = none yet), for the meter's PB flag. */
   pb: number;
+  /** Power now, lightly smoothed (FTP fraction): where you are against the medal zones. */
+  now: number;
+  /** Share of the sprint so far (after the jump) spent at or above each medal's power: bronze, silver, gold. */
+  hold: [number, number, number];
+  /** Share you need to hold a zone for its medal (`holdFrac`). */
+  holdNeed: number;
   medal: Medal | -1;
   th: [number, number, number];
 }
@@ -53,6 +59,8 @@ export interface FullSendSave {
   moonVisits?: number; maxAltM?: number;
   /** Personal bests: best mean power (FTP fraction) for a sprint of each length (seconds), which sets your medal targets. */
   pb?: Record<string, number>;
+  /** Best sustained power per sprint length (FTP fraction held for `holdFrac` of the sprint): the medal zones come from these. */
+  sus?: Record<string, number>;
   /** The ride with the best score on each tour, as metres ridden at each second of the ride (the ghost you race). */
   ghost?: Record<string, number[]>;
 }
@@ -248,9 +256,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     menuAutoS: T.num('menuAutoS', 30, 5, 120, 5, 'Seconds the setup screen waits before starting with the highlighted tour'),
     seaS: T.num('seaS', 40, 5, 300, 5, 'Seconds underwater after a fall before you breach back up to the road'),
     seaGrade: T.num('seaGrade', 1.5, 0, 6, 0.5, 'Extra grade % on the sea floor (water drag)'),
-    pbBronze: T.num('pbBronze', 0.86, 0.5, 1.1, 0.01, 'Once you have a best for a sprint length: bronze = this × your best mean power'),
-    pbSilver: T.num('pbSilver', 0.92, 0.5, 1.1, 0.01, 'Silver = this × your best mean power for that sprint length'),
-    pbGold: T.num('pbGold', 0.98, 0.5, 1.2, 0.01, 'Gold = this × your best mean power for that sprint length'),
+    pbBronze: T.num('pbBronze', 0.86, 0.5, 1.1, 0.01, 'Once you have a best for a sprint length: bronze = this × your best sustained power (held for holdFrac of the sprint)'),
+    pbSilver: T.num('pbSilver', 0.92, 0.5, 1.1, 0.01, 'Silver = this × your best sustained power (held for holdFrac of the sprint) for that sprint length'),
+    pbGold: T.num('pbGold', 0.98, 0.5, 1.2, 0.01, 'Gold = this × your best sustained power (held for holdFrac of the sprint) for that sprint length'),
+    holdFrac: T.num('holdFrac', 0.8, 0.5, 1, 0.05, 'A medal = holding its power zone for this share of the sprint (sustained output, not a spike or a late kick)'),
+    holdGraceS: T.num('holdGraceS', 2, 0, 5, 0.5, 'Seconds at the start of a sprint that do not count against holding the zone (the jump off recovery)'),
+    holdSmoothS: T.num('holdSmoothS', 1, 0.2, 3, 0.1, 'Smoothing on power (s) when checking the zone, so one soft pedal stroke is not a drop'),
     medalFloor: T.num('medalFloor', 0.9, 0.5, 1.5, 0.05, 'No medal below this FTP fraction, however low your bests (silver/gold floors are +0.05 / +0.1)'),
     pbFade: T.num('pbFade', 0.985, 0.9, 1, 0.005, 'A best you rode under (but tried, ≥ 70 % of it) fades by this each ride, so targets follow your form'),
     pbExp: T.num('pbExp', 0.15, 0, 0.4, 0.01, 'Guessing a best for a new sprint length from another: power × (known s / new s)^this'),
@@ -293,6 +304,16 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let seam: Seam | null = null;
   let piece: PieceView | null = null;
   let fracSum = 0, fracN = 0;
+  // sustained output: time (after the grace) spent at or above each medal's power, and the smoothed power we test
+  let holdT = 0, nowS = 0; const holdN = [0, 0, 0];
+  /** The medal for the sprint so far: the best zone you held for `holdFrac` of it (an unsteady sprint whose mean makes bronze gets bronze). Too short to count: the mean. */
+  const sprintMedal = (p: PieceView): Medal => {
+    if (holdT < 0.5) return medalFor(fracN ? fracSum / fracN : 0, p.th);
+    const need = tun.holdFrac() - 1e-9;
+    const held: Medal = holdN[2] / holdT >= need ? 3 : holdN[1] / holdT >= need ? 2 : holdN[0] / holdT >= need ? 1 : 0;
+    // did the work but not steadily (a spike, a fade, a late kick): the mean still earns bronze, never more
+    return held === 0 && fracN && fracSum / fracN >= p.th[0] ? 1 : held;
+  };
   let loopV0 = 0, loopV = 0, loopPhi = 0, loopDir = 1, loopDrive = 0;
   let fallFromX = 0, fallFromY = 0, rescueToX = 0;
   let trick: { name: string; t0: number } | null = null, trickCount = 0, style = 0;
@@ -327,13 +348,17 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   /** Personal bests at the start of this ride (targets), and this ride's best mean per sprint length. */
   const pbs: Record<string, number> = { ...(save.pb ?? {}) };
   const rideBest: Record<string, number> = {};
+  // zones come from what you have sustained; a save from before sustained scoring guesses it from the best mean
+  const sus: Record<string, number> = { ...(save.sus ?? Object.fromEntries(Object.entries(pbs).map(([k, v]) => [k, +(v * 0.9).toFixed(3)]))) };
+  const rideSus: Record<string, number> = {};
+  const holdSamples: number[] = [];
   const difficulty = () => clamp(Number(ctx.profile.settings?.difficulty) || 1, 0.5, 1.5);
   /** Your best mean (FTP fraction) for a sprint this long: the saved one, else a guess from the nearest length you have. */
   function bestFor(effortS: number): number {
-    const own = pbs[String(effortS)];
+    const own = sus[String(effortS)];
     if (own > 0) return own;
     let best = 0, near = Infinity;
-    for (const [k, b] of Object.entries(pbs)) {
+    for (const [k, b] of Object.entries(sus)) {
       const d = Number(k);
       if (!(b > 0) || !(d > 0)) continue;
       const dist = Math.abs(Math.log(d / effortS));
@@ -341,7 +366,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     }
     return best;
   }
-  /** Medal targets [bronze, silver, gold] as FTP fractions: from your bests once you have one, else the defaults; both × difficulty. */
+  /** Medal zones [bronze, silver, gold] as FTP fractions: from your best sustained power once you have one, else the defaults; both × difficulty. */
   function targetsFor(kind: PieceKind, effortS: number): [number, number, number] {
     const k = difficulty(), best = bestFor(effortS);
     if (!(best > 0)) { const d = th[kind](); return [d[0] * k, d[1] * k, d[2] * k]; }
@@ -428,6 +453,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       pb[k] = +(m >= old ? m : m >= old * 0.7 ? Math.max(m, old * tun.pbFade()) : old).toFixed(3);
     }
     save.pb = pb;
+    const su = { ...sus };
+    for (const [k, m] of Object.entries(rideSus)) {
+      const old = su[k] ?? 0;
+      su[k] = +(m >= old ? m : m >= old * 0.7 ? Math.max(m, old * tun.pbFade()) : old).toFixed(3);
+    }
+    save.sus = su;
     save.rides = (save.rides ?? 0) + 1;
     save.moonVisits = (save.moonVisits ?? 0) + moonVisits;
     save.maxAltM = Math.max(save.maxAltM ?? 0, Math.round(peakAlt));
@@ -510,9 +541,9 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       kind: s.kind, biome, title: pieceTitle(s.kind, biome), finale: !!s.finale,
       x0: x + 1e4, len, n: s.kind === 'smash' ? Math.round(tun.smashN()) : 0, spacing: 2.4, count: 0, hitAt: [], toppledAt: -1,
       chaser: chaserFor(biome), gap: tun.chaseGap(), caught: 0, caughtAt: -99, crashAt: -99, air: 1, surfaced: false,
-      live: 0, peak: 0, pb: pbs[String(s.effortS)] ?? 0, medal: -1, th: t,
+      live: 0, peak: 0, pb: pbs[String(s.effortS)] ?? 0, now: 0, hold: [0, 0, 0], holdNeed: tun.holdFrac(), medal: -1, th: t,
     };
-    fracSum = 0; fracN = 0; peak = 0; fillBoost = 1;
+    fracSum = 0; fracN = 0; peak = 0; fillBoost = 1; holdT = 0; holdN[0] = holdN[1] = holdN[2] = 0; holdSamples.length = 0;
     go('approach');
   }
 
@@ -521,6 +552,9 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     piece.medal = medal;
     const s = set(), effortS = s?.effortS ?? 0, mean = fracN ? fracSum / fracN : 0, key = String(effortS), prev = pbs[key] ?? 0;
     rideBest[key] = Math.max(rideBest[key] ?? 0, mean);
+    // the power you held for `holdFrac` of it (after the jump): the next zones are built on this
+    const held = holdSamples.length >= 3 ? holdSamples.slice().sort((a, b) => a - b)[Math.floor((1 - tun.holdFrac()) * (holdSamples.length - 1))] : mean;
+    rideSus[key] = Math.max(rideSus[key] ?? 0, held);
     const ftp = ctx.profile.ftp || 0;
     const r: SetResult = { kind: piece.kind, biome: piece.biome, title: piece.title, medal, detail,
       effortS, avgW: Math.round(mean * ftp), peakW: Math.round(peak * ftp), pb: prev > 0 && mean > prev };
@@ -544,7 +578,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     // the whole sprint counts: the rocket fires the charge you built (your mean power) at the lip, not your last few seconds
     const live = fracN ? fracSum / fracN : 0;
     piece.live = live;
-    const medal = medalFor(live, piece.th), vNow = v;
+    const medal = sprintMedal(piece), vNow = v;
     v = targetSpeed(live, speedPerFtp());
     chargeGain = vNow > 0.1 ? v / vNow - 1 : 0; chargeAt = ctx.clock.now();
     go('payoff');
@@ -782,7 +816,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           if (s.kind === 'outrun') { piece.gap = tun.chaseGap(); piece.x0 = x; chaseRun = v; chaseLead = piece.gap; } // it starts from your speed and spools up as you do
         }
       } else if (phase === 'effort' && s && piece) {
-        fracSum += nowF; fracN++; peak = Math.max(peak, nowF); piece.peak = peak;
+        nowS = fracN ? nowS + (nowF - nowS) * (1 - Math.exp(-dt / tun.holdSmoothS())) : nowF;
+        fracSum += nowF; fracN++; peak = Math.max(peak, nowF); piece.peak = peak; piece.now = nowS;
+        if (phaseT >= tun.holdGraceS()) {
+          holdT += dt; holdSamples.push(nowS); for (let k = 0; k < 3; k++) if (nowS >= piece.th[k]) holdN[k] += dt;
+          for (let k = 0; k < 3; k++) piece.hold[k] = holdN[k] / holdT;
+        }
         if (atEnd(s.kind)) {
           piece.live = fracSum / fracN;
           piece.x0 = x + v * Math.max(0, phaseS() - phaseT);
@@ -793,7 +832,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           piece.air = Math.max(0, 1 - phaseT / airS);
           if (x >= piece.x0 + piece.len) {
             piece.surfaced = true;
-            finishPiece(medalFor(piece.live, piece.th), `${Math.round(piece.air * 100)}% air left`);
+            finishPiece(sprintMedal(piece), `${Math.round(piece.air * 100)}% air left`);
             go('payoff'); setMode('road');
           } else if (piece.air <= 0) {
             setMode('tow'); go('payoff');
@@ -807,7 +846,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           piece.x0 = x + v * Math.max(0, phaseS() - phaseT); // the cave you're racing for
           if (piece.gap <= 0) { piece.caught++; piece.caughtAt = now; chaseLead = piece.gap = tun.chaseGap(); v *= tun.chaseSlow(); chaseRun = Math.min(chaseRun, v * tun.chaseSlow()); }
           if (phaseT >= phaseS()) {
-            const m = medalFor(piece.live, piece.th);
+            const m = sprintMedal(piece);
             finishPiece(piece.caught ? (Math.min(m, 1) as Medal) : m, piece.caught ? `caught ${piece.caught}×` : `${Math.round(piece.gap)} m clear`);
             piece.surfaced = true; go('payoff'); setMode('road');
             piece.x0 = x; chaseX = x - piece.gap;

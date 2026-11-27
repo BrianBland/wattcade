@@ -20,7 +20,7 @@ import { FullSendSound } from './sound';
 import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
 import { drawCloudDeck, drawFireball, drawTrail, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { cardBox, layout, type FullSendLayout } from './layout';
-import { cardHeadline, cardRows, cardVisible, ghostCall, horizonPreview, pace, PACE_TEXT, sprintIntensity } from './sprint';
+import { cardHeadline, cardRows, cardVisible, ghostCall, horizonPreview, paceCall, sprintIntensity, zoneNow } from './sprint';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
 import { drawMegaRamp } from './mega';
@@ -663,12 +663,13 @@ export class FullSendRenderer implements GameRenderer {
       if (c.s < 0.6 && p.kind !== 'dive' && p.kind !== 'outrun' && !s.reducedFlash) txt('GO GO GO', this.cssW / 2, L.UH * 0.38, 60, '#ffd23b', 'center', 900, true, 6);
       this.meter(s, p);
       // pace: the medal your mean power is on course for; it pops when you move up a step
-      const pc = pace(p), key = `${s.setIndex}`;
+      const call = paceCall(p), pc = call.medal, key = `${s.setIndex}`;
       if (this.paceSeen.key !== key) this.paceSeen = { key, medal: pc, at: -99 };
       else if (pc !== this.paceSeen.medal) this.paceSeen = { key, medal: pc, at: pc > this.paceSeen.medal ? this.lastNow : -99 };
       const pop = s.reducedFlash ? 0 : Math.max(0, 0.35 - (this.lastNow - this.paceSeen.at)) * 1.6;
       const M2 = L.meter;
-      txt(PACE_TEXT[pc], M2.x + M2.w / 2, M2.y + M2.h + 16, 18 * (1 + pop), pc ? MEDAL_COLORS[pc] : '#ff4d6d', 'center', 900, true, 4);
+      const blink = call.slipping && !s.reducedFlash && Math.sin(s.t * 12) > 0;
+      txt(call.text, M2.x + M2.w / 2, M2.y + M2.h + 16, 18 * (1 + pop), call.slipping ? (blink ? '#ffffff' : '#ff4d6d') : pc ? MEDAL_COLORS[pc] : '#ff4d6d', 'center', 900, true, 4);
     } else if (s.phase === 'payoff' && p?.kind === 'loop' && s.mode === 'loop') {
       txt('KEEP PEDALLING!', cxm, B.y + 26, 34, s.reducedFlash ? '#ffd23b' : (Math.sin(s.t * 10) > 0 ? '#ffd23b' : '#ffffff'));
       this.meter(s, p);
@@ -794,9 +795,21 @@ export class FullSendRenderer implements GameRenderer {
       for (let i = 0; i < segs; i++) seg(i, i / segs < p.air ? (p.air > 0.25 ? '#4dc3ff' : '#ff4d6d') : 'rgba(255,255,255,0.12)');
       return;
     }
-    const maxF = p.th[2] * 1.15, live = p.live;
-    const medal = live >= p.th[2] * 0.97 ? 3 : live >= p.th[1] * 0.97 ? 2 : live >= p.th[0] * 0.97 ? 1 : 0;
+    // the bar is your power now (lightly smoothed) against the medal zones: keep it in the zone for the whole sprint
+    const maxF = p.th[2] * 1.15, live = s.phase === 'effort' ? p.now : p.live;
+    const medal = s.phase === 'effort' ? zoneNow(p) : live >= p.th[2] ? 3 : live >= p.th[1] ? 2 : live >= p.th[0] ? 1 : 0;
+    const gx = M.x + (M.w - sk) * Math.min(1, p.th[2] / maxF); // the gold zone, shaded so the target range reads at a glance
+    m.fillStyle = 'rgba(255,210,59,0.16)'; m.fillRect(gx * d, (M.y - 2) * d, (M.x + M.w - gx) * d, (M.h * 0.7 + 4) * d);
     for (let i = 0; i < segs; i++) seg(i, (i + 0.5) / segs * maxF <= live ? (medal ? MEDAL_COLORS[medal] : '#ff4d6d') : 'rgba(255,255,255,0.12)');
+    if (s.phase === 'effort' && p.hold[0] + p.hold[2] > 0) { // how much of the sprint you've held each zone, with the line you need
+      const hy = M.y + M.h * 0.7 + 3, hh = 3;
+      for (let k = 2; k >= 0; k--) {
+        m.fillStyle = MEDAL_COLORS[k + 1]; m.globalAlpha = 0.9;
+        m.fillRect(M.x * d, (hy + (2 - k) * (hh + 1)) * d, (M.w * Math.min(1, p.hold[k])) * d, hh * d);
+      }
+      m.globalAlpha = 1; m.fillStyle = '#ffffff';
+      m.fillRect((M.x + M.w * p.holdNeed - 1) * d, (hy - 1) * d, 2 * d, (3 * (hh + 1) + 1) * d);
+    }
     for (let i = 0; i < 3; i++) { // medal flags
       const fx = M.x + (M.w - sk) * Math.min(1, p.th[i] / maxF) + sk / 2;
       m.fillStyle = MEDAL_COLORS[i + 1]; m.fillRect((fx - 1) * d, (M.y - 4) * d, 2 * d, (M.h * 0.7 + 8) * d);

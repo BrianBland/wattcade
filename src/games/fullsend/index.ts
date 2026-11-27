@@ -8,7 +8,7 @@ import { drawCard } from './card';
 export const module: GameModule = {
   id: 'fullsend',
   accent: '#ff6a1a', entry: 'gate',
-  snapshotFormat: 2, // 2: whole-sprint scoring fields, jet by cadence (jetRpm), score / ghost / end card // same art style as the overworld: ride under a start gate, no portal
+  snapshotFormat: 3, // 3: sustained-zone medals (piece.now / hold / holdNeed); 2: whole-sprint scoring, jet by cadence, score / ghost / end card // same art style as the overworld: ride under a start gate, no portal
   title: 'Full Send',
   blurb: 'Someone bolted a rocket to your bike. Sprint to clear canyons, smash walls, ride loops and outrun a T. rex.',
   tags: ['sprint', 'intervals'],

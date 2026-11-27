@@ -1,40 +1,20 @@
 # penrose (Penrose Pedals)
-CONTRACT-REQUEST: none. Under-construction game (`wipGames`, caution tape in the picker), ported from the design prototype (36 levels in 9 chapters).
+CONTRACT-REQUEST: none. Under-construction game (`wipGames`), upgraded to a pure strict-TS simulation + leak-free Three.js diorama renderer (42 levels in 9 chapters).
 
 ## What it is
-An isometric perception-puzzle ride. The wheel never stops; loops hold it, and it leaves a loop only where a piece
-completes the road. Roads that meet on screen count as joined. Machines (turntables, hubs, crossovers, see-saws, lifts,
-shutters, the wind sock, the camera) sit on face buttons Y/A/B/Z: press to engage, and your pedalling drives them.
-Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws tip only under a hard push.
+An isometric Monument Valley-style cycling puzzle ride. Holding loops keep the wheel circling safely while you study the diorama; machines on Zwift Ride face buttons Y/A/B/Z (or direct 3D cap taps) engage with auto-latching detents so your pedalling turns turntables, swings bridges, rotates the camera, and opens optical perspective joins. Cadence drives lifts and conveyors, real FTP effort (with ERG cadence-surge parity) drives see-saws, hard-push beams, and the tide, and paddles/D-pad offer a gentle ±10° visual peek and directional nudge.
 
 ## Layout
-- `sim/sim.ts`: the bridge. Face-button presses (only for machines in the current level) and pause-menu picks
-  (restart, watch a solve, skip, back) become numbered `cmds` in the snapshot; the renderer applies each id once.
-  Snapshot carries cadence3s, gear and `effort` = ftpFraction × `effortAtFtp` (tide: rises above 100, full at 140).
-  Trainer: sim grade `gradeBase + gradePerLoad × load`, with `load` reported by the renderer. Virtual gears on.
-  Save `{ done: levelIds[], at, clean? }`; autopilot solves never count as clears.
-  Achievements (`achievements.ts`, 10, 850 XP; off while in `wipGames`): per level visit the sim counts falls (kept over the reload) and aid (hint/solve), and reports `levelsRidden`, `cleanLevels` (saved, ch 3+), `bestStreak` (ch 4+, a skip breaks it), `unaidedChapters` (5–8), `chaptersDone` (bitmask from the renderer's `catalog`) and `tideFullS` (engine `tide()`); thresholds in `MASTERY`.
-- `engine/`: the prototype's level player and generators, untyped (`// @ts-nocheck`), as modules sharing one scope
-  (`install($scope)`, order in `engine/index.ts`): `core` (materials, view, wheel, themes, roads, makeLevel and the
-  level flow, wheel-over-roads overlay pass; art rules: `DECKS` keep the road the lightest surface, ground is `groundPal`-quieted,
-  `setHaze` fades faces below the lowest road into the lower sky, `skyCss` backlights the island), `machines`, `levels` (hand-built), `studies`, `gen9` (main generator:
-  TIERS, planLevel3, checkPlan3, solve3, genDef3, candidates3), `persp`, `machines2`, `combos` (+ sceneryPass),
-  `gravity`, `gravity2`, `curtain` (curtain generator), `audit` (screen audit), `decor` (seeded wall-art decals that
-  shade like the wall), `cube` (wall machines and The Cube: box turns per edge, camera per storey, per-wall checkpoints,
-  one button per storey via `machine.live`), `studies2` (conveyor, reflection pools, portal doors, clutch bridge, seam
-  studies), `surfaces` (tiling ground textures), `terrain` (plateaus on a base; `autoTerrain` lays them under a level via `def.terrain`; `strip` swaps hand floors for plateaus, `anchors`/`L.anchors` extend the base under piers), `levels3` (levels using them, spread through the chapters), `ambient` (per-theme life: grass, banners, laundry, crystals, lit windows, cogs, steam, birds and stars; spots found by rays on a triangle BVH, every piece kept clear of the track in screen space from every camera stop; sky sprites and `drift` fade near the track; `def.ambient: false` opts out), `compose` (beat composer: stations joined by gate, mirror, clutch, see-saw, camera-join, curtain and door beats, turning so a level winds on itself under a ground and on-screen layout check, with knots (a 270 degree turn that changes level and bridges over itself); `'bc:<seed>'`, plans tested in `test/compose.test.ts`). Colour management is off (`LinearSRGBColorSpace`) to keep the look. `render/engineTypes.ts` is the typed surface, including `tools`.
-- `campaign.ts`: the chapters, as data: hand-built ids, `'<tier>:<seed>'` (gen9), `'cg:<seed>'` (curtain) or `'bc:<seed>'` (composer).
-- `render/renderer.ts`: builds the sky / stage / status / fade DOM, feeds the engine rider from the snapshot (not while
-  the autopilot drives), reports level, wins, falls and load back through `send`.
-- `render/layout.ts`: stage above the HUD inset (tested). No text over play: machine letters sit on caps; hint in pause menu.
-- `dev/penrose.html?level=N&inset=120`: fake-bike harness; `window.__pp` exposes the session and renderer.
-- Level design (with `npm run dev` up): `scripts/penrose-gen-sweep.mjs` (tiers | gen <tier> <from> <to> |
-  curtain <from> <to>: plan, solve and idle-ride seeds), `scripts/penrose-audit.mjs [n|item...]` (overlaps, hidden
-  road, joins per view), `scripts/penrose-solve-check.mjs` (every level solves, idle safe). gen1–8 not ported.
-
-## Known gaps (next PRs)
-- The level logic lives in the renderer, so it is not deterministic and the headless runner can't play levels
-  (no `scenarios.ts` yet). Plan: move `Road`, the wheel stepper and machine state into `sim/` as pure math
-  (the screen joins only need the iso projection per camera yaw), leaving three.js meshes in `render/`. The engine is untyped and uses its own frame-dt. Hints are prose; no sound yet.
-Checked: all levels solve on the engine autopilot (same times as the prototype); vitest and `tsc` pass.
-- Loading: the renderer builds the campaign's level list between frames (`createPenroseEngine(..., { sliced: true })`, `ready()` = `whenReady`), and `campaign.ts` `PLAN_SUB` gives each generated level the sub-seed that plans, so it isn't searched for (same levels; was ~5 s of CPU). Re-take `PLAN_SUB` (the sweep prints `sub`) when gen9 changes.
+- `campaign.ts`: 9 curated chapters (42 levels) with pacing vibe tags (`Cruise`, `Cadence`, `Effort`, `Mixed`, `Finale`), teaching every mechanic cleanly before combining.
+- `sim/`: deterministic, strict-TS simulation (zero Three.js or DOM imports; runs identically in browser and Node headless scenarios):
+  - `math.ts` & `road.ts`: pure 3D vector/matrix math, exact orthographic iso camera basis, OBB ray occlusion, `SimRoad` with dirty-flagged projection cache, turtles, and wall frames.
+  - `machines.ts`: all mechanisms with auto-latching (`makeDetentStepper`), real FTP + ERG cadence-surge parity (`seesaw`, `wallArm`), signed headwind/tailwind load (`windSock`), momentary doors, clutch bridge with catch-zone warning & recoil, reflection pools, conveyors, and companion occluders.
+  - `world.ts`: fixed-dt substepped wheel stepper, cadence-coupled pacing (pauses smoothly below 12 rpm), road slope grade, station checkpoints, optical perspective joins, and semantic `SimEvent` stream.
+  - `levelsCh1to4.ts`, `levelsCh5to8.ts`, `levelKit.ts`, `compose.ts` (beat composer), `cube.ts` (6-wall 2-storey rotating Cube tower), `catalog.ts` (lazy per-level builder, instant startup).
+  - `sim.ts`: `GameSim` bridge with `ctx.tuning` tunables, normalized gear scaling, honest `hud()` (`touchControls: []`, frame-0 controls, `ControlHint.active` + `indicator`, live `targetCadence`/`targetZone`), D-pad Up 2-tier hints, `checkpoint()`, `menuActions()` (with Chapters & Levels picker), and mastery/achievement tracking.
+- `render/`: purely reactive Three.js diorama renderer (disposes every geometry, material, texture, and render target on level change and `unmount()`):
+  - `themes.ts`: 7 theme palettes, three-tone camera-yaw-compensated shader + atmospheric `HAZE`, `LevelDisposer`, shared canvas textures.
+  - `blooms.ts`: 7 procedural 3D blooms, themed wheel incorporating `profile.color`, standing pennant+shaft goal beacon, `makeRibbon`.
+  - `sceneBuilder.ts`: declarative `VisualProp` builder, one-time `wheelOnTop` layer tagging, throttled half-res portal `WebGLRenderTarget`s, reflection pools, diegetic cues (hidden-gap ghost bridges, conveyor live lane highlight, lift floor beacons, clutch catch glow & recoil, hint focus halos, spark bursts), and `prefers-reduced-motion`-aware sky life.
+  - `renderer.ts`: mounts WebGL view inside `layout(W, H, insets)`, renders auto-fading micro-toasts, 2-tier hints, direct 3D cap tap targets, and the Chapters & Levels picker modal.
+- `scenarios.ts`: Node headless scenarios (`autopilot-tour`, `idle-safe-z2`, `intervals-effort-level`), verified alongside all 42 levels in `test/campaign.test.ts`.

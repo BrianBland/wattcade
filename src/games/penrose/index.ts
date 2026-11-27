@@ -9,6 +9,8 @@ export const module: GameModule = {
   title: 'Penrose Pedals',
   blurb: 'Impossible roads and machines you drive with your legs. Turn the world until two roads meet, and the wheel rides across.',
   tags: ['zone2'],
+  snapshotFormat: 2,
+  liveCheckpoint: 'on a holding loop',
   achievements,
   drawCard,
   progressLine(save) {
@@ -16,8 +18,8 @@ export const module: GameModule = {
     const n = Array.isArray(s?.done) ? s.done.length : 0;
     return n ? `${n} level${n === 1 ? '' : 's'} solved` : null;
   },
-  createSim(ctx) {
-    return createPenroseSim(ctx);
+  createSim(ctx, opts) {
+    return createPenroseSim(ctx, opts as Record<string, unknown> | undefined);
   },
   async loadRenderer() {
     const { PenroseRenderer } = await import('./render/renderer');

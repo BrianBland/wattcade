@@ -22,6 +22,3 @@ export const CAMPAIGN: Chapter[] = [
   { name: '8 · Everything at once', vibe: 'Mixed', levels: ['w-lanes', 'd-lanes', 'bc:22', 'bc:3', 'bc:13', 'bc:29'] },
   { name: '9 · The Cube', vibe: 'Finale', levels: ['x-cube'] },
 ];
-
-/** Retained temporarily until legacy `engine/` is retired in the cutover PR. */
-export const PLAN_SUB: Record<string, number> = {};

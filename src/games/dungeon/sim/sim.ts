@@ -207,7 +207,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     targets: Object.fromEntries((Object.keys(DEFAULT_TARGETS) as Seg[]).map((k) => [k, { ...DEFAULT_TARGETS[k], erg: segTn[k].erg(), grade: segTn[k].grade() }])) as DirectorCfg['targets'],
   });
   const ambushN = tn.num('ambushEnemies', 4, 1, 12, 1, 'extra enemies in an ambush (+1 per 3 floors)');
-  const ergSurge = tn.num('ergBossSurge', 1.15, 0.8, 2, 0.05, 'ERG target (FTP fraction) while the boss shield is up: the called surge');
+  const ergSurge = tn.num('ergBossSurge', 1.15, 0.8, 2, 0.05, 'ERG target (FTP fraction) during boss wind-up and Exposed windows');
   const spinGoodFrac = tn.num('spinupGoodFrac', 0.5, 0, 1, 0.05, 'share of a called spin-up above the rpm that counts as answered');
   const campGrade = tn.num('gradeCamp', 0, -5, 10, 0.5, 'camp is cool-down: flat road');
   const terrainGrade = tn.num('gradeTerrain', 1, 0, 10, 0.5);
@@ -231,7 +231,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const saved = migrateSave(ctx.load<DungeonSave>());
   const totals: DungeonTotals = { runs: 0, deaths: 0, floors: 0, bosses: 0, coins: 0, ...(saved.totals ?? {}) };
   const levels: Levels = { ...(saved.upgrades ?? {}) };
-  let bankStart = saved.bank ?? 0, bestFloor = Math.min(FLOORS, saved.bestFloor ?? 1), runs = saved.runs ?? 0, autoInvestOn = saved.autoInvest ?? true;
+  let bankStart = saved.bank ?? 0, bestFloor = Math.min(FLOORS, saved.bestFloor ?? 1), runs = saved.runs ?? 0, sessionRuns = 0, autoInvestOn = saved.autoInvest ?? true;
   let tierUnlocked = clamp(saved.tierUnlocked ?? 0, 0, TIERS.length - 1), tier = clamp(saved.tier ?? tierUnlocked, 0, tierUnlocked), runTier = tier;
   const wins: number[] = TIERS.map((_, i) => saved.wins?.[i] ?? 0);
   let bestWinS = saved.bestWinS ?? 0, runT0 = 0, runKills0 = 0, runBosses0 = 0, descentsWon = 0, lastRun: RunResult | undefined;
@@ -240,8 +240,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   // a descent starts at the Keep; shortcut starts are a camp choice (they skip the loot, levels and perks of the floors before)
   let startFloor = clamp(opts?.floor ?? 1, 1, FLOORS);
   let sprintingNow = false, firedUpUntil = -1;
-  let phase: 'camp' | 'run' = 'camp', campSel = 0, campT = 0;
-  let erg = opts?.erg ?? !!saved.erg, dir: DirectorState = newFloor(true), firstFloorOfRun = true, spinGood = 0;
+  let phase: 'camp' | 'run' = 'camp', campSel = 0, campT = 0, campLockT = 0;
+  let erg = opts?.erg ?? !!saved.erg, dir: DirectorState = newFloor(true), firstFloorOfRun = true, spinGood = 0, ergCurseSpinT = 0;
   let swCd: Cooldown = { left: 0, total: 0 }; let swUsedT = -99, secondWinds = 0, deepest = 1, topLevel = 1, earnedPrev = 0, lastDeath: CampView['lastDeath'];
   const pending: Array<{ type: 'campRow'; row: number }> = []; // taps from the renderer
   // ---------- perks (per descent) ----------
@@ -563,7 +563,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function secondWind() {
     P.hp = Math.max(1, P.maxHp * Math.max(swHeal(), pm.swHeal)); P.invuln = swInvuln(); swUsedT = t; secondWinds++;
     ctx.emit({ type: 'secondWind', data: { floor, boss: bossStarted && boss.alive && current === boss.room } });
-    addFx({ kind: 'banner', x: P.x, y: P.y, life: 2, color: '#7dff9a', text: 'SECOND WIND' });
     swCd = startCooldown(swCdT());
     for (const e of liveInRoom(current)) {
       const dx = e.x - P.x, dy = e.y - P.y, d = Math.hypot(dx, dy) || 1;
@@ -579,7 +578,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     let dmg = raw;
     if (e.kind === 'boss') {
       dmg *= bossDamageMult(bs, bossCfg());
-      if (bs.cycle === 'exposed' && (bike.sprinting || erg)) dmg *= sprintMult(); // in ERG the trainer holds the called surge
+      if (bs.cycle === 'exposed' && (bike.sprinting || (erg && bike.ftpFraction >= ergSurge() * 0.85))) dmg *= sprintMult();
       dmg *= 1 + pm.bossDmg;
     }
     if (cursed('bulwark')) dmg *= 0.65;
@@ -965,6 +964,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     return rows;
   }
   function campUpdate(dt: number, input: Readonly<InputState>, bike: Readonly<BikeState>) {
+    if (campLockT > 0) { campLockT = Math.max(0, campLockT - dt); pending.length = 0; return; }
     const rows = campRows();
     const p = (b: Button) => input.pressed.has(b);
     let tapped = false;
@@ -1010,7 +1010,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (!opts?.floor) startFloor = snapStart(startFloor);
     floor = startFloor; runTier = tier; runT0 = t; runKills0 = kills; runBosses0 = bossDefeated;
     bestFloor = Math.max(bestFloor, floor);
-    runs++;
+    runs++; sessionRuns++;
     totals.runs++; P.coins = 0; P.coinsEarned = 0; lastDeath = undefined;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
     weapon = starterWeapon(floor, rng); fillSlots(P.level); arsenal.reset(); bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
@@ -1073,6 +1073,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
 
   // ---------- perks (one of three after every boss) ----------
+  function clearCombatGrades() {
+    for (const id of ['swamp', 'wounded', 'boss-surge', 'curse-mire']) resSync(id, null);
+  }
   function openOffer() {
     const r = rollOffer(rng, perkRanks, perkPityN, { stance, stances: stancesFor(mods.arcanist), style: styleWeights(ride) }, { weights: [DEFAULT_OFFER.weights[0], DEFAULT_OFFER.weights[1], perkLegW()], pityStep: perkPity() });
     perkPityN = r.pity;
@@ -1080,6 +1083,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const sug = opts?.perks === 'first' ? 0 : suggestPerk(r.ids, perkRanks, { hpFrac: P.hp / P.maxHp, bossFightS: bs.fightT, deaths: 0, stance });
     offer = { ids: r.ids, sel: sug, suggest: sug, age: 0, boss: BOSS_NAMES[boss.variant], floor };
     perkTap = -1; cue('shrine');
+    if (erg) ergSync(dirCfg().targets.cooldown.erg); else { clearCombatGrades(); resSync('terrain', campGrade()); }
     ctx.emit({ type: 'perkOffer', data: { floor, ids: r.ids.join(',') } });
   }
   function perkUpdate(dt: number, input: Readonly<InputState>, bike: Readonly<BikeState>) {
@@ -1091,7 +1095,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     // the rider confirms with A or Z; the highlighted card is taken after perkAutoPickS (the autopilot takes it at once)
     if (o.age >= 0.6 && (p('a') || p('z'))) { takePerk(o.sel, bike); return; }
     if (o.age >= (autopilot ? Math.min(2, perkAutoS()) : perkAutoS())) takePerk(o.sel, bike);
-    if (erg) ergSync(dirCfg().targets.cooldown.erg);
+    if (erg) ergSync(dirCfg().targets.cooldown.erg); else { clearCombatGrades(); resSync('terrain', campGrade()); }
   }
   function takePerk(i: number, bike: Readonly<BikeState>) {
     const id = offer!.ids[i], d = PERKS[id];
@@ -1138,18 +1142,20 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function startCurse(bike: Readonly<BikeState>) {
     const kind = CURSE_KINDS[Math.floor(rng() * CURSE_KINDS.length)], d = CURSES[kind];
     curse = { kind, left: d.dur, total: d.dur, s0: bike.sprintCount };
+    ergCurseSpinT = 0;
     cue('curse');
     addFx({ kind: 'banner', x: P.x, y: P.y, life: 3, color: d.color, text: `${d.name}: ${d.desc}` });
-    toast(`${d.name}! +50% coins & XP while it lasts. Sprint to break it.`, d.color);
+    toast(`${d.name}! +50% coins & XP while it lasts. ${erg ? 'Spin 100+ rpm for 5s' : 'Sprint'} to break it.`, d.color);
     ctx.emit({ type: 'curse', data: { kind, floor } });
   }
   function curseUpdate(dt: number, bike: Readonly<BikeState>) {
     if (!curse) return;
     curse.left -= dt;
-    const broken = bike.sprintCount > curse.s0;
+    if (erg && bike.cadence3s >= dirCfg().spinRpm) ergCurseSpinT += dt; else ergCurseSpinT = Math.max(0, ergCurseSpinT - dt);
+    const broken = bike.sprintCount > curse.s0 || (erg && ergCurseSpinT >= 5);
     if (curse.left > 0 && !broken) return;
     const d = CURSES[curse.kind];
-    curse = null; cursesSurvived++;
+    curse = null; ergCurseSpinT = 0; cursesSurvived++;
     freeze(0.15); cue('reward');
     addFx({ kind: 'levelup', x: P.x, y: P.y, life: 1.2, color: d.color, r: 2.2 });
     toast(broken ? `You shattered the ${d.name}! Bounty dropped.` : `${d.name} lifted. Bounty dropped.`, '#ffd84a');
@@ -1374,7 +1380,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     // --- resistance
     const bsh = bossShield();
     const segT = dirCfg().targets[dir.seg];
-    if (erg) ergSync(bsh.shielded ? ergSurge() : segT.erg);
+    const actShrine = shrines.find((s) => s.state === 'active');
+    const shrineErg = actShrine ? ({ fury: 0.85, sprint: 1.22, whirl: 0.6, endurance: 0.65 } as const)[actShrine.kind] : null;
+    if (erg) ergSync(bsh.shielded ? ergSurge() : shrineErg ?? segT.erg);
     else resSync('terrain', terrainGrade() + segT.grade);
     if (!erg) resSync('swamp', P.onSwamp ? swampGrade() : null);
     if (!erg) resSync('wounded', P.hp < P.maxHp * woundedFrac() ? woundedGrade() : null);
@@ -1643,13 +1651,14 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     P.hp = 0; bullets.length = 0; hazards.length = 0; navPath = []; curse = null; offer = null; perkDueT = -1;
     toast(`You fell on floor ${floor}. ${banked} coins banked. Back to camp.`, '#ff5a5a');
     cue('hurt');
-    enterCamp();
+    enterCamp(true);
     persist();
   }
-  function enterCamp() {
-    phase = 'camp'; campT = 0; campSel = 0;
-    for (const id of ['swamp', 'wounded', 'boss-surge', 'curse-mire']) resSync(id, null);
+  function enterCamp(fromDeath = false) {
+    phase = 'camp'; campT = 0; campSel = 0; campLockT = fromDeath && !autopilot ? 2.1 : 0;
+    clearCombatGrades();
   }
+  const strikeInReach = () => liveInRoom(current).some((e) => Math.hypot(e.x - P.x, e.y - P.y) < strikeRadius() + e.r);
 
   function campView(): CampView {
     return { bank: Math.round(bankStart), sel: campSel, autoStartS: campAutoS(), autoStartLeft: campAutoS() - campT, startFloor, maxStartFloor: mods.maxStartFloor, autoInvest: autoInvestOn, rows: campRows(), bestFloor, runs, lastDeath,
@@ -1669,6 +1678,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       x: b.x, y: b.y, r: b.r, friendly: b.friendly, style: b.w ? b.w.base : 'enemy', color: b.w ? ELEMENT_COLORS[b.w.element] : '#ff5a5a',
       angle: Math.atan2(b.vy, b.vx), age: b.age, variant: b.w?.variant, ...(b.drone ? { drone: true } : {}),
     }));
+    const inReach = strikeInReach();
     return {
       t, phase, camp: phase === 'camp' ? campView() : null, world, floor,
       run: { floors: FLOORS, zone: planFor(floor).name, final: planFor(floor).final, tier: T().name, tierIndex: runTier },
@@ -1689,7 +1699,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       ai: { path: phase === 'run' ? navPath.slice(0, 40) : [], targetId: P.targetId },
       actions: (['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id) => ({
         id, button: ACTION_BUTTON[id], label: ACTION_LABEL[id], ready: readyFrac(cds[id]),
-        usable: cds[id].left <= 0 && (id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true),
+        usable: cds[id].left <= 0 && (id === 'strike' ? inReach : id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true),
       })),
       enemies: ev, bullets: bv, drops: drops.map(({ item: _i, value: _v, ...d }) => d),
       hazards: hazards.map(({ dmg: _d, ...h }) => h),
@@ -1707,16 +1717,18 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     };
   }
 
-  const inMenu = () => phase === 'camp';
+  // Only the pre-descent Camp (before any run has started this session) is a pre-game menu.
+  const inMenu = () => phase === 'camp' && sessionRuns === 0;
 
   function paceZone(): NonNullable<GameHud['targetZone']> {
     const T = DEFAULT_TARGETS[dir.seg];
     return { min: T.zone[0], max: T.zone[1], label: `${curse && dir.seg === 'explore' ? 'Cursed: ride it out' : T.label}${erg ? ` · ERG ${Math.round(dirCfg().targets[dir.seg].erg * 100)}%` : ''}`, ...(T.source ? { source: T.source } : {}) };
   }
   function runControls(): ControlHint[] {
+    const inReach = strikeInReach();
     return [
       ...(['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id): ControlHint => {
-        const usable = id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true, ready = cds[id].left <= 0;
+        const usable = id === 'strike' ? inReach : id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true, ready = cds[id].left <= 0;
         return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
           cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
       }),
@@ -1730,10 +1742,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (phase === 'camp') return {
       controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / select', shortLabel: 'Select' }, { button: 'b', label: 'Begin descent', shortLabel: 'Start' }],
       playControls: runControls(),
+      touchControls: [],
       gears: !erg, targetZone: { min: 1, max: 2, label: deaths ? 'Cool down' : 'Warm up' },
     };
     if (offer) return {
       controls: [{ button: 'dpad', label: 'Choose a perk', shortLabel: 'Choose' }, { button: 'a', label: 'Take perk', shortLabel: 'Take' }],
+      touchControls: [],
       gears: !erg, targetZone: { min: 1, max: 2, label: 'Pick a perk' },
     };
     const sh = bossShield();
@@ -1746,6 +1760,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       : paceZone();
     return {
       controls: runControls(),
+      touchControls: ['left', 'right', 'a', 'b', 'y', 'z'],
       gears: !erg, targetZone: target,
       targetCadence: dir.seg === 'spinup' ? { min: dirCfg().spinRpm, label: 'Spin up!' } : act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' }
         : phase === 'run' ? { min: STANCES[stance].band[0], max: STANCES[stance].band[1], label: `${STANCES[stance].name} style` } : undefined, // called targets win

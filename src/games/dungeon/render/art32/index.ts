@@ -26,31 +26,58 @@ export const zoneOf = (theme: number): ZoneId => ZONES[((theme % 4) + 4) % 4];
 
 const URLS: Record<string, string> = { chars: charsUrl, arsenal: arsenalUrl, keep: keepUrl, crypt: cryptUrl, catacombs: catacombsUrl, deep: deepUrl };
 const imgs: Record<string, HTMLImageElement> = {};
-let loaded = 0, started = false;
-/** Start loading every sheet (browser only). Safe to call repeatedly. */
-export function loadArt(): void {
-  if (started || typeof Image === 'undefined') return;
+let loaded = 0, settled = 0, started = false;
+let readyPromise: Promise<void> | null = null;
+/** Start loading every sheet (browser only) and return a promise that settles when all sheets finish. Safe to call repeatedly. */
+export function loadArt(): Promise<void> {
+  if (readyPromise) return readyPromise;
+  if (typeof Image === 'undefined') return (readyPromise = Promise.resolve());
   started = true;
-  for (const [k, u] of Object.entries(URLS)) {
-    const im = new Image();
-    im.onload = () => { loaded++; };
-    im.src = u; imgs[k] = im;
-  }
+  const entries = Object.entries(URLS);
+  readyPromise = new Promise<void>((resolve) => {
+    const done = () => { if (++settled >= entries.length) resolve(); };
+    for (const [k, u] of entries) {
+      const im = new Image();
+      im.onload = () => { loaded++; done(); };
+      im.onerror = () => { done(); };
+      im.src = u; imgs[k] = im;
+    }
+  });
+  return readyPromise;
 }
 /** True once every sheet has decoded; until then the renderer keeps its previous frame contents. */
-export const artReady = () => loaded === Object.keys(URLS).length;
+export const artReady = () => started && loaded === Object.keys(URLS).length;
 
-const cache = new Map<string, HTMLCanvasElement>();
+const baseCache = new Map<string, HTMLCanvasElement>();
+const derivedCache = new Map<string, HTMLCanvasElement>();
+/** Cap derived canvases (rotations, hit flashes, mirrors) so long iPad/Bluefy rides never leak unbounded VRAM/RAM. */
+const MAX_DERIVED_CACHE = 512;
+function getDerived(key: string): HTMLCanvasElement | undefined {
+  const hit = derivedCache.get(key);
+  if (hit) { derivedCache.delete(key); derivedCache.set(key, hit); } // refresh LRU order
+  return hit;
+}
+function setDerived(key: string, c: HTMLCanvasElement): HTMLCanvasElement {
+  if (derivedCache.size >= MAX_DERIVED_CACHE) {
+    const oldest = derivedCache.keys().next().value;
+    if (oldest !== undefined) derivedCache.delete(oldest);
+  }
+  derivedCache.set(key, c);
+  return c;
+}
+/** Drop derived canvases (called on renderer unmount). */
+export function clearDerivedArtCache(): void { derivedCache.clear(); }
+
 function canvas(w: number, h: number) { const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; }
 /** A frame from a sheet as its own canvas (cached). */
 export function cut(sheet: string, name: string): HTMLCanvasElement | null {
-  const key = sheet + '|' + name, hit = cache.get(key);
+  const key = sheet + '|' + name, hit = baseCache.get(key);
   if (hit) return hit;
   const rects = sheet === 'chars' ? ATLAS.chars.rects : sheet === 'arsenal' ? ATLAS.arsenal.rects : ATLAS.zones[sheet]?.rects;
   const r = rects?.[name], im = imgs[sheet];
   if (!r || !im || !artReady()) return null;
   const c = canvas(r[2], r[3]); c.getContext('2d')!.drawImage(im, r[0], r[1], r[2], r[3], 0, 0, r[2], r[3]);
-  cache.set(key, c); return c;
+  baseCache.set(key, c); return c;
 }
 export const sheetImage = (sheet: string) => (artReady() ? imgs[sheet] : undefined);
 export const zoneRect = (z: ZoneId, name: string) => ATLAS.zones[z].rects[name];
@@ -64,7 +91,7 @@ export const anim = (name: string): AnimMeta | undefined => ATLAS.chars.anims[na
 
 /** Hit flash: the body washes most of the way to warm white (shading still reads) and the outline turns dark red. */
 export function flashOf(src: HTMLCanvasElement): HTMLCanvasElement {
-  const key = 'flash|' + cacheId(src), hit = cache.get(key);
+  const key = 'flash|' + cacheId(src), hit = getDerived(key);
   if (hit) return hit;
   const c = canvas(src.width, src.height), g = c.getContext('2d')!;
   g.drawImage(src, 0, 0);
@@ -74,7 +101,7 @@ export function flashOf(src: HTMLCanvasElement): HTMLCanvasElement {
     if (dark) { p[i] = 90; p[i + 1] = 20; p[i + 2] = 40; continue; }       // outline goes blood-dark, so the silhouette holds
     p[i] += (255 - p[i]) * 0.7; p[i + 1] += (244 - p[i + 1]) * 0.7; p[i + 2] += (236 - p[i + 2]) * 0.7;   // body washes 70% to warm white, shading kept
   }
-  g.putImageData(d, 0, 0); cache.set(key, c); return c;
+  g.putImageData(d, 0, 0); return setDerived(key, c);
 }
 const ids = new WeakMap<HTMLCanvasElement, number>(); let nextId = 1;
 function cacheId(c: HTMLCanvasElement) { let i = ids.get(c); if (!i) { i = nextId++; ids.set(c, i); } return i; }
@@ -85,7 +112,7 @@ export function rotated(src: HTMLCanvasElement, angle: number, px: number, py: n
   const step = ((Math.round(angle / (2 * Math.PI) * ROT_STEPS) % ROT_STEPS) + ROT_STEPS) % ROT_STEPS;
   const key = `rot|${cacheId(src)}|${step}|${px}|${py}`;
   const R = Math.ceil(Math.hypot(Math.max(px, src.width - px), Math.max(py, src.height - py))) + 1, size = R * 2 + 1;
-  let c = cache.get(key);
+  let c = getDerived(key);
   if (!c) {
     const a = step / ROT_STEPS * 2 * Math.PI, ca = Math.cos(a), sa = Math.sin(a);
     const sd = src.getContext('2d')!.getImageData(0, 0, src.width, src.height).data;
@@ -96,15 +123,15 @@ export function rotated(src: HTMLCanvasElement, angle: number, px: number, py: n
       const si = (sy * src.width + sx) * 4, di = (y * size + x) * 4;
       o[di] = sd[si]; o[di + 1] = sd[si + 1]; o[di + 2] = sd[si + 2]; o[di + 3] = sd[si + 3];
     }
-    g.putImageData(out, 0, 0); cache.set(key, c);
+    g.putImageData(out, 0, 0); setDerived(key, c);
   }
   return { c, ox: R, oy: R };
 }
 /** Horizontal mirror (cached). */
 export function mirrored(src: HTMLCanvasElement): HTMLCanvasElement {
-  const key = 'mir|' + cacheId(src), hit = cache.get(key);
+  const key = 'mir|' + cacheId(src), hit = getDerived(key);
   if (hit) return hit;
   const c = canvas(src.width, src.height), g = c.getContext('2d')!;
-  g.translate(src.width, 0); g.scale(-1, 1); g.drawImage(src, 0, 0); cache.set(key, c); return c;
+  g.translate(src.width, 0); g.scale(-1, 1); g.drawImage(src, 0, 0); return setDerived(key, c);
 }
 export function hexRgb(h: string): [number, number, number] { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }

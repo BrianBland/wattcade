@@ -315,7 +315,8 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         <PauseMenu tuning={session?.tuning} fake={isFake()} onVersions={liveHost ? () => { setPauseFocus(8); setVersions(true); } : undefined} onHistory={() => { setPauseFocus(6); setHistory(true); }} layout={layout} onLayout={(v) => { setLayout(v); saveHudLayout(v); }}
           onResume={() => setPause(false)} onHelp={() => { setPauseFocus(5); setHelp(true); }} initial={pauseFocus} onRestart={onRestart}
           extensions={session?.sim.menuActions?.() ?? []} onExtension={(action) => { session?.sim.receive?.(action); setPause(false); }}
-          {...(phase === 'menu' || session?.sim.inMenu?.() ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) }
+          {...(phase === 'menu' || (session?.sim.inMenu?.() && (session.ctx.bike().activeSeconds ?? 0) <= 0)
+            ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) }
             : { onQuit: () => toEnding(false) })} />
       )}
     </div>

@@ -32,15 +32,22 @@ export function drawHeld(g: CanvasRenderingContext2D, w: WeaponLook, hx: number,
   const r = rotated(src, left ? angle - Math.PI : angle, gx, a.gy);
   g.drawImage(r.c, Math.round(hx - Math.cos(angle) * kick - r.ox), Math.round(hy - Math.sin(angle) * kick - r.oy));
 }
-export interface HeroLook { angle: number; moving: boolean; t: number; stance: string; hurt: boolean; weapon: WeaponLook; kick: number; alpha?: number }
+export interface HeroLook { angle: number; moving: boolean; t: number; stance: string; hurt: boolean; weapon: WeaponLook; kick: number; alpha?: number;
+  /** perk race kit (jersey recolour) and kit overlays (`ov.<perk>.<facing>`; some sit behind the body) */
+  kit?: string | null; ovs?: readonly string[] }
+const UNDER = new Set(['discs.d', 'discs.r', 'musette.r']);
 export function drawHero32(g: CanvasRenderingContext2D, x: number, foot: number, h: HeroLook) {
   const { f, flip } = facingFor(h.angle), outfit = OUTFITS.has(h.stance) ? h.stance : 'scout';
-  const name = `hero.${outfit}.${f}`, fr = h.moving ? Math.floor(h.t * 9) % 4 : 0, c = charFrame(name, fr), m = anim(name);
+  const base = `hero.${outfit}.${f}`, kitName = h.kit ? `hero.${outfit}.${h.kit}.${f}` : '', name = kitName && anim(kitName) ? kitName : base;
+  const fr = h.moving ? Math.floor(h.t * 9) % 4 : 0, c = charFrame(name, fr), m = anim(name);
   if (!c || !m) return;
   const hand = HAND32[f], hx = x + (flip ? -hand.x : hand.x), hy = foot + hand.y;
   const old = g.globalAlpha; g.globalAlpha = old * (h.alpha ?? 1);
+  const ov = (under: boolean) => { for (const k of h.ovs ?? []) if (UNDER.has(`${k}.${f}`) === under) { const o = charFrame(`ov.${k}.${f}`, fr); if (o) blit(g, h.hurt ? flashOf(o) : o, x - m.ax, foot - m.ay, flip); } };
   if (f === 'u') drawHeld(g, h.weapon, hx, hy, h.angle, h.kick);
+  ov(true);
   blit(g, h.hurt ? flashOf(c) : c, x - m.ax, foot - m.ay, flip);
+  ov(false);
   if (f !== 'u') drawHeld(g, h.weapon, hx, hy, h.angle, h.kick);
   g.globalAlpha = old;
 }

@@ -10,6 +10,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from PIL import Image
 import pal, keep, zones, motifs, compose, inlays
+import perks as PK
 import chars as CH, chars2 as CH2, gear as GR, enemies3 as E3, bosses as BO, shrines as SH, arsenal as AR, tiers as TI, loot as LO
 
 OUT = os.path.join(HERE, '..', '..', 'src', 'games', 'dungeon', 'render', 'art32')
@@ -148,6 +149,8 @@ def chars_sheet():
         g = dict(g); g.pop('wpn', None); key = g.get('stance', 'scout')
         for f in 'dru': strip(f'hero.{key}.{f}', [GR.hero_geared(f, fr, **g) for fr in range(4)])
         strip(f'down.{key}', [CH.hero_down(i, lambda f, fr, g=g: GR.hero_geared(f, fr, **g)) for i in range(3)])
+        for k in PK.KITS:   # race kits from the jersey perks
+            for f in 'dru': strip(f'hero.{key}.{k}.{f}', [PK.kit(GR.hero_geared(f, fr, **g), k, 1 if fr in (1, 3) else 0) for fr in range(4)])
     strip('chaser', [CH.coneling(i) for i in range(4)]); strip('chaser.atk', [CH.coneling(2)])
     strip('bat', [CH.saddle_sore(i) for i in range(3)]); strip('bat.atk', [CH.saddle_sore(1)])
     hop = [CH.gel_hop(i) for i in range(10)]
@@ -165,6 +168,12 @@ def chars_sheet():
     strip('puff', [CH.puff(i) for i in range(5)]); strip('down', [CH.hero_down(i) for i in range(3)])
     strip('goo', [CH.goo_trail(0)], ay=4)
     for k in ('fury', 'endurance', 'sprint', 'whirl'): strip(f'shrine.{k}', [SH.shrine(k, f) for f in range(4)], ay=38)
+    for k in PK.OV:   # perk kit overlays on the hero frame (under = behind the body)
+        for f in 'dru':
+            fr4 = [PK.overlay(k, f, fr) for fr in range(4)]
+            strip(f'ov.{k}.{f}', [u if PK.OV[k][f][0] == 'under' else o for u, o in fr4])
+    for k in PK.PERKS: strip(f'perk.{k}', [PK.relic(k, fr) for fr in range(4)], ay=25)
+    strip('drone', [PK.drone(fr) for fr in range(4)], ay=13)
     cols = dict(frenzy='#ff5a5a', hexed='#c05aff', swarm='#ffb02a', darkness='#6a6aff', mire='#7a9a3a', fragile='#ff6b8a', bulwark='#9aa3b5')
     for k, c in cols.items(): strip(f'sigil.{k}', [SH.sigil(k, c)], ay=6)
     # pickups and enemy shots

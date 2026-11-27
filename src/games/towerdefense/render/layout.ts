@@ -101,6 +101,19 @@ export function layout(W: number, H: number, inset: number | Insets, hudControls
   };
 }
 
+/**
+ * Whether a layout made for an earlier HUD still fits a new one on the same surface. The build menu changes the
+ * shell HUD (no touch weapon keys, different hints), and re-laying the field for it would move the whole
+ * battlefield under the menu; the renderer keeps the earlier layout while the new HUD is no taller and stays
+ * clear of every combat sprite.
+ */
+export function layoutStillFits(prev: TdLayout, W: number, H: number, inset: number | Insets, level: TdLevel = LEVEL_0): boolean {
+  const shape = typeof inset === 'number' ? undefined : inset.occlusions;
+  const insetB = shape ? Math.max(0, ...shape.map(b => H - b.y)) : typeof inset === 'number' ? inset : inset.bottom;
+  if (H - Math.max(0, insetB) < prev.UH - 0.5) return false;
+  return !shape?.length || fieldClearsHud(prev.field, shape, level);
+}
+
 /** The field rectangle as a Box (tests and hit areas). */
 export const fieldBox = (L: TdLayout): Box => fieldRect(L.field);
 

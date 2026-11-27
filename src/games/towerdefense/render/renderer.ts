@@ -6,7 +6,7 @@ import { LEVEL_0, levelGeometry, type TdGeometry, type TdLevel } from '../sim/le
 import { BOSS_NAME, BOSS_TRICK } from '../sim/boss';
 import { toScreen, toWorld } from './fieldView';
 import type { EnemyView, Fx, TdSnapshot, TowerView } from '../sim/types';
-import { bossCard, layout, type TdLayout } from './layout';
+import { bossCard, layout, layoutStillFits, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt, TOWER_ICON_COLOR } from './sprites';
 import { TD } from './theme';
 import { NARROW_W, TdHud, type Hit } from './panels';
@@ -62,6 +62,8 @@ export class TdRenderer implements GameRenderer {
   private art: LevelArt | null = null;
   /** The menu's wish list last handed to `art`, the loading episode's levelReady sent, the held menu frame dimmed. */
   private artWish = ''; private readySent = false; private heldDim = false;
+  /** Insets the current layout was made for, and (after the build menu closes) when to stop waiting for the HUD to return. */
+  private laidInsets = ''; private menuHold = false; private holdUntil = 0; private insetsDirty = false;
   private send?: (a: unknown) => void;
   private hits: Hit[] = [];
   private hud!: TdHud;
@@ -158,12 +160,16 @@ export class TdRenderer implements GameRenderer {
   }
   resize(w: number, h: number) {
     for (const id of [...this.heldPointers.keys()]) this.releaseHold(id, true);
+    const same = this.W === Math.max(1, w) && this.H === Math.max(1, h);
     this.W = Math.max(1, w); this.H = Math.max(1, h);
     if (!this.canvas) return;
+    if (same && this.L) return; // a HUD change can arrive as a same-size resize: setInsets handles it
     this.canvas.width = Math.round(this.W * this.dpr); this.canvas.height = Math.round(this.H * this.dpr);
-    this.relayout();
+    this.relayout(true);
   }
-  setInsets(i: Insets) { if (JSON.stringify(i) !== JSON.stringify(this.insets)) { this.insets = i; this.relayout(); } }
+  // The shell may send the build menu's HUD before the frame that shows the menu: re-lay at the next frame, when
+  // the snapshot says whether the menu is open.
+  setInsets(i: Insets) { if (JSON.stringify(i) !== JSON.stringify(this.insets)) { this.insets = i; this.insetsDirty = true; } }
   unmount() {
     this.mounted = false;
     this.art?.stop();
@@ -183,14 +189,38 @@ export class TdRenderer implements GameRenderer {
     this.geo = levelGeometry(level);
     this.battlefield.geo = this.geo; this.machinery.geo = this.geo;
     this.drops.clear();
-    if (this.canvas) this.relayout();
+    if (this.canvas) this.relayout(true);
   }
-  private relayout() {
+  /**
+   * Lay out for the current size and HUD. While the build menu is open (and briefly after it closes, until the
+   * HUD returns) a HUD change keeps the in-play layout when it still fits, so the battlefield never moves.
+   */
+  private relayout(force = false) {
+    const key = JSON.stringify(this.insets);
+    if (!force && this.L && this.menuHold) {
+      if (key === this.laidInsets) return;
+      if (layoutStillFits(this.L, this.W, this.H, this.insets, this.geo.level)) return;
+    }
+    this.laidInsets = key; this.insetsDirty = false;
     this.L = layout(this.W, this.H, this.insets, this.hudControls, this.geo.level); this.hud?.resize(this.L, this.W); this.bg = null;
     this.view.turned = this.L.field.turned; this.view.rot = this.L.field.turned ? Math.PI / 2 : 0;
     this.send?.({ type: 'padOrder', turned: this.view.turned });
   }
 
+  /**
+   * The build menu holds the layout. After it closes the shell HUD changes back a moment later (its new insets
+   * normally restore the held layout exactly); if it has not within half a second, lay out for what is there.
+   */
+  private holdForMenu(open: boolean) {
+    if (open) { this.menuHold = true; this.holdUntil = 0; return; }
+    if (!this.menuHold) return;
+    const now = performance.now();
+    if (!this.holdUntil) this.holdUntil = now + 500;
+    else if (now >= this.holdUntil || JSON.stringify(this.insets) === this.laidInsets) {
+      this.menuHold = false; this.holdUntil = 0;
+      if (JSON.stringify(this.insets) !== this.laidInsets) this.relayout();
+    }
+  }
   /** The canvas keeps its last (menu) frame under the loading card, dimmed once. */
   private holdMenuFrame() {
     if (this.heldDim) return;
@@ -546,6 +576,8 @@ export class TdRenderer implements GameRenderer {
       (pointer.kind === 'boost' && (s.workshop || s.boss?.weapon !== 'rail' || !(s.boss.telegraph || s.boss.exposed)))) this.releaseHold(id, true);
     this.snap = s;
     if (s.level && s.level !== this.geo.level) this.setLevel(s.level);
+    this.holdForMenu(!!s.workshop);
+    if (this.insetsDirty) { this.insetsDirty = false; this.relayout(); }
     if (s.nextMaps) { const k = s.nextMaps.map(specKey).join(','); if (k !== this.prefetched) { this.prefetched = k; for (const m of s.nextMaps) void prefetchLevel(m); } }
     if (!this.L) this.relayout();
     if (s.garage) this.readyMenu(s);

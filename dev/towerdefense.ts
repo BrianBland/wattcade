@@ -87,6 +87,7 @@ window.__td = {
       pads: PADS.map(p => ({ id: p.id, ...toScreen(L.field, p) })),
       menu: ws ? radialLayout(innerWidth, L.UH, toScreen(L.field, p), ws.rows.length) : null };
   },
+  drawnField: () => (r as unknown as { L: ReturnType<typeof layout> }).L.field,
   legend: (on: boolean) => { legendOn = on; renderHud(); },
   power: (p: Partial<TdSnapshot> | null) => { power = p; paint(); },
   events: () => session.finish().events,
@@ -95,6 +96,6 @@ window.__td = {
 declare global { interface Window { __td: {
   snapshot(): TdSnapshot; advance(seconds: number): void; send(a: unknown): void;
   ui(): { layout: ReturnType<typeof layout>; base: { x: number; y: number }; pads: Array<{ id: number; x: number; y: number }>; menu: ReturnType<typeof radialLayout> | null };
-  legend(on: boolean): void; power(p: Partial<TdSnapshot> | null): void;
+  drawnField(): ReturnType<typeof layout>['field']; legend(on: boolean): void; power(p: Partial<TdSnapshot> | null): void;
   events(): ReturnType<typeof session.finish>['events']; dispose(): void;
 } } }

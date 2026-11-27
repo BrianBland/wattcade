@@ -1,0 +1,208 @@
+{
+  "source_sha": "3d4137d0592abc027681df7939e52454eeac4740",
+  "environment": {
+    "os": "Linux x86_64",
+    "cpu_quota": "200000 / 100000 = 2 CPUs",
+    "node_available_parallelism": 2,
+    "cpu_affinity_count": 3,
+    "memory_limit_bytes": 8589934592,
+    "vitest_version": "5.0.3"
+  },
+  "method": "One full run per variant, sequential on same machine. JSON reporter. Cold results cache. No test selection. Node 24 pair measures scheduling and worker changes together; Node 22 is separate compatibility qualification. No hosted after run or dollar savings measured.",
+  "baseline_node24": {
+    "node_version": "v24.19.0",
+    "workers": 1,
+    "measurements": [
+      {
+        "name": "typecheck",
+        "command": [
+          "npm",
+          "run",
+          "typecheck"
+        ],
+        "exit": 0,
+        "wall_s": 3.938,
+        "cpu_s": 7.343,
+        "max_rss_kib": 832340
+      },
+      {
+        "name": "assets",
+        "command": [
+          "python3",
+          "scripts/td-check-assets.py"
+        ],
+        "exit": 0,
+        "wall_s": 0.075,
+        "cpu_s": 0.075,
+        "max_rss_kib": 832340
+      },
+      {
+        "name": "test",
+        "command": [
+          "npm",
+          "test",
+          "--",
+          "--reporter=json",
+          "--outputFile=/workspace/work/baseline/tests.json"
+        ],
+        "exit": 0,
+        "wall_s": 601.322,
+        "cpu_s": 671.416,
+        "max_rss_kib": 832340
+      },
+      {
+        "name": "build",
+        "command": [
+          "npm",
+          "run",
+          "build"
+        ],
+        "exit": 0,
+        "wall_s": 1.955,
+        "cpu_s": 2.956,
+        "max_rss_kib": 832340
+      }
+    ],
+    "inventory": {
+      "files": 219,
+      "passed_tests": 1628,
+      "skipped_tests": 3,
+      "failed_tests": 0,
+      "test_status_sha256": "743cd15acb317d5a345c6a80f97d92c7b3b927652e013c9d1bf6445492012134"
+    },
+    "rss_caveat": "Baseline max_rss_kib is cumulative across previous child commands; do not compare as per-command or aggregate memory."
+  },
+  "candidate_node24": {
+    "environment": {
+      "node": "v24.19.0",
+      "source_sha": "3d4137d0592abc027681df7939e52454eeac4740",
+      "workers": 2,
+      "results_cache": false,
+      "cpu_max": "200000 100000",
+      "memory_max": "8589934592"
+    },
+    "measurements": {
+      "test": {
+        "command": [
+          "npm",
+          "test",
+          "--",
+          "--no-cache",
+          "--reporter=json",
+          "--outputFile=/workspace/work/candidate-node24/tests.json"
+        ],
+        "exit_code": 0,
+        "wall_seconds": 368.198,
+        "cpu_seconds": 728.664,
+        "max_child_rss_kib": 523064,
+        "runner_os": "linux",
+        "runner_arch": "x86_64",
+        "cpu_affinity_count": 3,
+        "revision": null,
+        "run_id": null,
+        "run_attempt": null
+      }
+    },
+    "inventory": {
+      "files": 219,
+      "passed_tests": 1628,
+      "skipped_tests": 3,
+      "failed_tests": 0,
+      "test_status_sha256": "743cd15acb317d5a345c6a80f97d92c7b3b927652e013c9d1bf6445492012134"
+    }
+  },
+  "candidate_node22": {
+    "environment": {
+      "node": "v22.23.5",
+      "source_sha": "3d4137d0592abc027681df7939e52454eeac4740",
+      "workers": 2,
+      "results_cache": false,
+      "cpu_max": "200000 100000",
+      "memory_max": "8589934592"
+    },
+    "measurements": {
+      "typecheck": {
+        "command": [
+          "npm",
+          "run",
+          "typecheck"
+        ],
+        "exit_code": 0,
+        "wall_seconds": 4.41,
+        "cpu_seconds": 8.322,
+        "max_child_rss_kib": 811324,
+        "runner_os": "linux",
+        "runner_arch": "x86_64",
+        "cpu_affinity_count": 3,
+        "revision": null,
+        "run_id": null,
+        "run_attempt": null
+      },
+      "assets": {
+        "command": [
+          "python3",
+          "scripts/td-check-assets.py"
+        ],
+        "exit_code": 0,
+        "wall_seconds": 0.068,
+        "cpu_seconds": 0.067,
+        "max_child_rss_kib": 12412,
+        "runner_os": "linux",
+        "runner_arch": "x86_64",
+        "cpu_affinity_count": 3,
+        "revision": null,
+        "run_id": null,
+        "run_attempt": null
+      },
+      "build": {
+        "command": [
+          "npm",
+          "run",
+          "build"
+        ],
+        "exit_code": 0,
+        "wall_seconds": 1.544,
+        "cpu_seconds": 2.431,
+        "max_child_rss_kib": 589572,
+        "runner_os": "linux",
+        "runner_arch": "x86_64",
+        "cpu_affinity_count": 3,
+        "revision": null,
+        "run_id": null,
+        "run_attempt": null
+      },
+      "test": {
+        "command": [
+          "npm",
+          "test",
+          "--",
+          "--no-cache",
+          "--reporter=json",
+          "--outputFile=/workspace/work/candidate-node22/tests.json"
+        ],
+        "exit_code": 0,
+        "wall_seconds": 393.369,
+        "cpu_seconds": 779.27,
+        "max_child_rss_kib": 434932,
+        "runner_os": "linux",
+        "runner_arch": "x86_64",
+        "cpu_affinity_count": 3,
+        "revision": null,
+        "run_id": null,
+        "run_attempt": null
+      }
+    },
+    "inventory": {
+      "files": 219,
+      "passed_tests": 1628,
+      "skipped_tests": 3,
+      "failed_tests": 0,
+      "test_status_sha256": "743cd15acb317d5a345c6a80f97d92c7b3b927652e013c9d1bf6445492012134"
+    }
+  },
+  "paired_node24_change": {
+    "elapsed_percent": -38.769,
+    "cpu_percent": 8.526,
+    "allocated_runner_seconds_saved": 233.124
+  }
+}

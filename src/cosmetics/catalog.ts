@@ -14,11 +14,16 @@ const RESOURCED: Record<string, string> = {
   'bottoms:w_spotless_overalls': 'td_three_stars', 'trail:embers': 'td_hard', 'pet:turret': 'td_double_shift',
   // Called efforts retired (continuous combat, Nov 2026)
   'feet:w_insulated_boots': 'td_quick_change', 'back:w_dynamo_coil_pack': 'td_top_gear', 'pet:ember': 'td_redline', 'back:w_twin_air_tanks': 'td_long_haul',
+  // Purgatour stances became Hero Archetypes (Nov 2026, #342): stance rewards follow the archetype that replaced them
+  'back:w_weapon_rack': 'dg_capstone', 'hands:w_iron_gauntlets': 'dg_master_rouleur', 'bottoms:w_ranger_riding_chaps': 'dg_master_puncheur',
+  'back:w_ragged_scarf': 'dg_master_grimpeur',
 };
+/** Rewards whose achievement was retired with no successor; they leave the catalogue. */
+const RETIRED = new Set<string>(['eyewear:w_rune_spectacles']); // Arcanist stance: three archetypes replaced four stances
 const resourced = (it: Item): Item => RESOURCED[itemKey(it)] ? { ...it, source: { achievement: RESOURCED[itemKey(it)] } } : it;
 
 /** Only the current shared rewards are available; ships belong to Cadenza. */
-export const ITEMS: Item[] = ORIGINAL_ITEMS.map(it => resourced(ROTATION[itemKey(it)] ?? it)).filter(it => it.slot !== 'ship').concat([
+export const ITEMS: Item[] = ORIGINAL_ITEMS.map(it => resourced(ROTATION[itemKey(it)] ?? it)).filter(it => it.slot !== 'ship' && !RETIRED.has(itemKey(it))).concat([
   { slot: 'jersey', id: 'lh_workshirt', name: 'Island workshirt', source: { achievement: 'lh_foundations' },
     look: { pattern: 'overalls', base: '#526f79', ink: '#d4bf90' } },
   // Dynamo Defense level goals (Nov 2026): recoloured jersey patterns and paints, so they need no new art.

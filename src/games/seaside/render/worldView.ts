@@ -47,6 +47,9 @@ export interface WorldFrame {
   roll?: number;
   /** Bars sinking out of view 0..1 (they unfold into the drill). */
   barsDrop?: number;
+  /** How much of the scene's light reaches the bars and gloves (default 1). They sit unfogged half a metre from the
+   *  eye, so in dark or torch-lit places they'd otherwise glow brighter than anything around them. */
+  barsLight?: number;
   /** Post overrides on top of the look for this frame (waking haze). */
   post?: { bloom?: number; threshold?: number; shimmer?: number };
   /** Monotonic seconds for streaming, eviction and tile dissolves (default: the view's own wall clock in frame(),
@@ -62,7 +65,7 @@ export class WorldView {
   readonly director: LookDirector;
   readonly governor: PerfGovernor;
   private post: PostFX;
-  private bars = new THREE.Group();
+  private bars = new THREE.Group(); private barsMat: THREE.MeshLambertMaterial | null = null;
   private uTime = { value: 0 };
   private uWaveK = { value: 1 };
   private skyU: { zen: { value: THREE.Color }; hor: { value: THREE.Color }; sunC: { value: THREE.Color }; sun: { value: THREE.Vector3 } } | null = null;
@@ -86,6 +89,7 @@ export class WorldView {
     this.director = new LookDirector(world.look);
     this.governor = new PerfGovernor({}, o.pixel === 'on' ? 2 : 0);
     addGrid(this.stage, 'bars', buildBars(), { palette: KIT.linear, jitter: 0.04 }, this.bars, { cast: false, receive: false });
+    this.bars.traverse((o) => { const m = (o as THREE.Mesh).material; if (m && !Array.isArray(m)) this.barsMat = m as THREE.MeshLambertMaterial; });
     this.stage.camera.add(this.bars);
     this.terrain = this.makeTerrain();
     this.setupWorld();
@@ -199,6 +203,7 @@ export class WorldView {
     else cam.position.set(p.x, p.y + w.eye + Math.sin(ph * 2) * 0.008, p.z);
     if (f.aim) cam.lookAt(f.aim.x, f.aim.y, f.aim.z); else cam.lookAt(g.x, g.y + rig.gaze.dy, g.z);
     this.bars.visible = f.bars ?? true;
+    this.barsMat?.color.setScalar(f.barsLight ?? 1);
     cam.rotateZ(Math.sin(ph) * 0.006 + (f.roll ?? 0));
     cam.updateMatrixWorld();
     this.bars.position.set(0, this.baseBarsY + Math.sin(ph * 2) * 0.003 - 0.35 * (f.barsDrop ?? 0), -0.46);

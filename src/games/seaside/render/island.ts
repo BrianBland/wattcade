@@ -131,7 +131,7 @@ export class IslandSet {
       atmos = { fog: col, density: lerp(sky.fogDensity, 0.012, k), sunI: lerp(sky.sunI, 1.3, k), hemiI: lerp(sky.hemiI, 0.6, k) };
     }
     this.view.frame({ t, routeS: shot.s, speed: shot.speed, look: snap.look.name, dream: snap.look.dream, eye: pose.eye, aim: pose.target,
-      bars: shot.bars, cadence: cadence || 80, atmos, roll: fx.paddle !== null ? fx.paddle * 0.25 : 0 });
+      bars: shot.bars, barsLight: lerp(1, 0.5, fx.inside), cadence: cadence || 80, atmos, roll: fx.paddle !== null ? fx.paddle * 0.25 : 0 });
     this.rig.update(shot.rod ? snap.fishing : null, t, shot.place ?? { waterY: SEA_Y });
     return shot;
   }

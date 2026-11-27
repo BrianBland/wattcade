@@ -31,7 +31,7 @@ import { drawFishing } from './fishing2d';
 import { bellyHud, endCredits, END_TITLE, endTitle, inside, layout, type Box } from './layout';
 import { musicCredits } from './musicScore';
 import { SeasideSound } from './sound';
-import { DUSK, FONT_DESC, FONT_H, PAPER, PAPER_DIM, pixelBubble, pixelLabel, pixelPanel, pixelText, SIGN, textCells, unitFor, wrapCells, type PanelStyle } from './pixelHud';
+import { DUSK, FONT_DESC, FONT_H, PAPER, PAPER_DIM, pixelBubble, pixelChevron, pixelLabel, pixelPanel, pixelText, SIGN, textCells, unitFor, wrapCells, type PanelStyle } from './pixelHud';
 import titleFontUrl from './fonts/bodoni-moda-800-italic.woff2?url';
 
 const PARTS_PLAN_S = STORY.find((x) => x.id === 'spareParts')!.planS;
@@ -424,7 +424,8 @@ export class SeasideRenderer implements GameRenderer {
       const hot = `rgb(${Math.round(110 + 145 * k)},${Math.round(120 - 10 * k + 30 * k * k)},${Math.round(100 - 90 * k)})`;
       g.fillStyle = hot; g.fillRect(M.x + M.w * 0.3, M.y + M.h * (1 - k), M.w * 0.4, M.h * k);
       if (fan.heat > 0.005) { g.fillStyle = 'rgba(255,200,120,.9)'; g.fillRect(M.x + M.w * 0.3, M.y + M.h * (1 - k), M.w * 0.4, Math.max(2, M.h * fan.heat)); }
-      g.strokeStyle = 'rgba(255,240,230,.8)'; g.lineWidth = 1.5; g.strokeRect(M.x + M.w * 0.3, M.y, M.w * 0.4, M.h);
+      g.fillStyle = 'rgba(255,240,230,.8)'; { const x0 = Math.round(M.x + M.w * 0.3), x1 = Math.round(M.x + M.w * 0.7), y0 = Math.round(M.y), y1 = Math.round(M.y + M.h); // a 2-px frame
+        g.fillRect(x0 - 2, y0 - 2, x1 - x0 + 4, 2); g.fillRect(x0 - 2, y1, x1 - x0 + 4, 2); g.fillRect(x0 - 2, y0, 2, y1 - y0); g.fillRect(x1, y0, 2, y1 - y0); }
       pixelText(g, fan.eat > 0 ? 'done' : fan.inBand ? 'cooling' : 'heating up', M.x, M.y + M.h + 12, 2, '#fff2e0');
       g.globalAlpha = 1;
     }
@@ -442,9 +443,14 @@ export class SeasideRenderer implements GameRenderer {
     this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
     if (shot.fx.white > 0) { g.fillStyle = `rgba(252,250,246,${shot.fx.white})`; g.fillRect(0, 0, W, H); }
     if (w && !w.inRibbon && w.align < 0.5) {
-      const side = Math.sign(w.ribbon - w.x) || 1, x = side > 0 ? W - 34 : 34, y = L.UH * 0.5, k = Math.min(18, L.UH * 0.04);
-      g.globalAlpha = 0.55 + 0.25 * Math.sin(s.sceneT * 5); g.strokeStyle = '#fff4dc'; g.lineWidth = 4; g.lineCap = 'round';
-      for (const d of [0, 14]) { g.beginPath(); g.moveTo(x - side * (k + d), y - k); g.lineTo(x - side * d, y); g.lineTo(x - side * (k + d), y + k); g.stroke(); }
+      // a pixel double chevron at the screen edge, toward the ribbon (dark under-stroke so it reads on white cloud)
+      const side = (Math.sign(w.ribbon - w.x) || 1) as 1 | -1, u = Math.max(2, Math.round(L.UH / 220)), k = 6;
+      const x = side > 0 ? W - 24 : 24, y = L.UH * 0.5;
+      g.globalAlpha = 0.6 + 0.3 * Math.sin(s.sceneT * 5);
+      for (const d of [0, 4]) {
+        pixelChevron(g, x - side * d * u + u, y + u, k, u, side, 'rgba(60,24,10,.45)');
+        pixelChevron(g, x - side * d * u, y, k, u, side, '#fff4dc');
+      }
       g.globalAlpha = 1;
     }
     const p = L.plate;

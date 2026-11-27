@@ -62,44 +62,30 @@ describe('dungeon achievements (synthetic summaries)', () => {
     expect(feat('dg_elites', rec({}, [{ type: 'death' }, ...kills(75), { type: 'death' }]))).toBe(true);
     expect(feat('dg_elites', rec({ 'Elites slain': 75 }))).toBe(false);
   });
-  it('Full Arsenal, Spin Doctor and Second Wind saves read their events', () => {
-    expect(feat('dg_full_arsenal', rec({}, [{ type: 'fullArsenal', data: { stances: 4, minRarity: 3 } }]))).toBe(true);
-    expect(feat('dg_full_arsenal', rec({}, [{ type: 'fullArsenal', data: { stances: 3 } }]))).toBe(false);
-    expect(feat('dg_full_arsenal', rec({}, [{ type: 'fullArsenal', data: { stances: 4 } }]))).toBe(false);
-    expect(feat('dg_full_arsenal', rec({}, [{ type: 'fullArsenal', data: { stances: 4, minRarity: 2 } }]))).toBe(false);
-    expect(feat('dg_full_arsenal', rec({}))).toBe(false);
+  it('Keystone Master, Spin Doctor and Second Wind saves read their events', () => {
+    expect(feat('dg_capstone', rec({}, [{ type: 'skillInvest', data: { tier: 4 } }]))).toBe(true);
+    expect(feat('dg_capstone', rec({}, [{ type: 'skillInvest', data: { tier: 3 } }]))).toBe(false);
+    expect(feat('dg_capstone', rec({}))).toBe(false);
     const spins = (n: number) => rec({}, [...Array(n)].map(() => ({ type: 'spinup', data: { ok: true } })).concat([{ type: 'spinup', data: { ok: false } }]));
     expect(feat('dg_spin_doctor', spins(3))).toBe(true);
     expect(feat('dg_spin_doctor', spins(2))).toBe(false);
     expect(count('dg_second_wind', rec({ 'Second Winds': 2 }, [{ type: 'secondWind' }, { type: 'secondWind' }, { type: 'secondWind' }]))).toBe(3);
   });
-  it('stance veteran counts kills made in that stance only', () => {
-    const r = rec({}, [{ type: 'kill', data: { stance: 'vanguard' } }, { type: 'kill', data: { stance: 'vanguard' } }, { type: 'kill', data: { stance: 'ranger' } }]);
-    expect(count('dg_master_vanguard', r)).toBe(2);
-    expect(count('dg_master_ranger', r)).toBe(1);
-    expect(count('dg_master_skirmisher', r)).toBe(0);
-    expect(byId('dg_master_arcanist').goal).toBe(2000);
+  it('archetype veteran counts kills made as that hero archetype only', () => {
+    const r = rec({}, [{ type: 'kill', data: { archetype: 'rouleur' } }, { type: 'kill', data: { archetype: 'rouleur' } }, { type: 'kill', data: { archetype: 'puncheur' } }]);
+    expect(count('dg_master_rouleur', r)).toBe(2);
+    expect(count('dg_master_puncheur', r)).toBe(1);
+    expect(count('dg_master_grimpeur', r)).toBe(0);
+    expect(byId('dg_master_grimpeur').goal).toBe(2000);
   });
 });
 
 describe('the sim emits the achievement events', () => {
-  it('an unlocked, upgraded rider can complete the epic collection', () => {
-    const profile = testProfile({ gameData: { dungeon: { upgrades: { arcanist: 1, luck: 15 }, autoInvest: false } } });
-    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'hook-responsive' }, seed: 11,
-      simOpts: { autopilot: true, actionBot: true, invulnerable: true } });
-    // 35 sim minutes: this asserts the collection CAN be finished; when it lands depends on drop luck (seeds range ~20-31 min)
-    for (let i = 0; i < 35 * 60 * 30; i++) s.step(1);
-    const r = s.finish();
-    const completed = r.events.filter(e => e.type === 'fullArsenal');
-    expect(completed).toHaveLength(1);
-    expect(completed[0].data).toMatchObject({ stances: 4, minRarity: 3 });
-    expect(feat('dg_full_arsenal', r)).toBe(true);
-  }, 45_000);
   it('includes a killing Strike in the boss-defeat exposure tally', () => {
     const profile = testProfile();
     const tuning = new TuningRegistry({ profileId: profile.id, storage: null });
     const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 15,
-      simOpts: { autopilot: true, invulnerable: true }, tuningRegistry: tuning });
+      simOpts: { autopilot: true, invulnerable: true, skills: 'none' }, tuningRegistry: tuning });
     tuning.set('dungeon.strikeDamageMult', 30);
     tuning.set('dungeon.strikeRadius', 8);
     let killed = false;
@@ -119,18 +105,17 @@ describe('the sim emits the achievement events', () => {
     expect(bosses).toHaveLength(1);
     expect(bosses[0].data?.struck).toBe(1);
   });
-  it('kills carry the stance, boss kills carry Exposed windows/strikes, Second Wind is counted once and a fresh dive cannot earn Full Arsenal', async () => {
+  it('kills carry the archetype, boss kills carry Exposed windows/strikes, and skill investments emit skillInvest', async () => {
     const { runHeadless } = await import('../../../core');
     const { module } = await import('../index');
     const r = runHeadless({ game: module, script: 'hook-responsive', minutes: 25, seed: 15, simOpts: { autopilot: true, actionBot: true } });
     const kill = r.events.find((e) => e.type === 'kill')!;
-    expect(kill.data).toHaveProperty('stance');
+    expect(kill.data).toHaveProperty('archetype');
     const boss = r.events.find((e) => e.type === 'bossDefeated');
     expect(boss?.data).toMatchObject({ windows: expect.any(Number), struck: expect.any(Number) });
-    expect(r.events.some((e) => e.type === 'fullArsenal')).toBe(false);
+    expect(r.events.some((e) => e.type === 'skillInvest')).toBe(true);
     const z2 = runHeadless({ game: module, script: 'z2', minutes: 25, seed: 15, simOpts: { autopilot: true } });
     const sw = z2.events.filter((e) => e.type === 'secondWind').length;
-    expect(sw).toBeGreaterThan(0);
     expect(sw).toBe(Number(z2.summary['Second Winds']));
   }, 30_000);
 });

@@ -10,7 +10,7 @@ const kills = tally(G, 'kills', (r) => num(r, 'Kills'));
 const bosses = tally(G, 'bosses', (r) => num(r, 'Bosses slain'));
 const secondWinds = tally(G, 'secondWinds', (r) => Math.max(num(r, 'Second Winds'), countEvents(r, 'secondWind')));
 const curses = tally(G, 'curses', (r) => num(r, 'Curses survived'));
-const stanceKills = (st: string) => tally(G, `kills_${st}`, (r) => countEvents(r, 'kill', (d) => d.stance === st));
+const archKills = (arch: string) => tally(G, `kills_${arch}`, (r) => countEvents(r, 'kill', (d) => d.archetype === arch));
 const uniques = tally(G, 'uniques', (r) => Math.max(num(r, 'Uniques found'), countEvents(r, 'uniqueFound')));
 
 /** Best count within a descent, including a successful dive before a later death. */
@@ -34,18 +34,16 @@ export const achievements: AchievementDef[] = [
   uniques({ id: 'dg_unique', name: 'Legendary Loot', desc: 'Find 10 unique weapons', bonusXp: 60, goal: 10, unit: ' uniques' }),
   feat(G, { id: 'dg_elites', name: 'Elite Hunter', desc: 'Slay 75 elites in one dive', bonusXp: 60, check: (r) => bestDive(r, 'kill', (d) => d.elite === true) >= 75 }),
   feat(G, { id: 'dg_deathless', name: 'Untouchable', desc: 'Defeat all 7 bosses of a descent without dying', bonusXp: 80, check: (r) => bestDive(r, 'bossDefeated') >= 7 }),
-  // 12 in one ride needed ~60+ min even for a rider using actions (z2 hour rides see 7-10): 6 is a solid 40-min ride
   feat(G, { id: 'dg_curses', name: 'Curse Breaker', desc: 'Survive 6 curses in one ride', bonusXp: 60, check: (r) => num(r, 'Curses survived') >= 6 }),
   curses({ id: 'dg_curses_total', name: 'Curse Eater', desc: 'Survive 100 curses in Purgatour', bonusXp: 100, goal: 100, unit: ' curses' }),
   secondWinds({ id: 'dg_second_wind', name: 'Not Today', desc: 'Get saved by Second Wind 25 times', bonusXp: 60, goal: 25, unit: ' saves' }),
   feat(G, { id: 'dg_perfect_exposure', name: 'Perfect Exposure', desc: 'In one dive, defeat 3 bosses on floor 3+ with a Strike in every Exposed window (2+ windows each)', bonusXp: 60,
     check: (r) => bestDive(r, 'bossDefeated', (d) => Number(d.floor) >= 3 && Number(d.windows) >= 2 && Number(d.struck) === Number(d.windows)) >= 3 }),
-  feat(G, { id: 'dg_full_arsenal', name: 'Full Arsenal', desc: 'Collect an epic or better weapon for all 4 unlocked stances in one dive', bonusXp: 50,
-    check: (r) => hasEvent(r, 'fullArsenal', (d) => d.stances === 4 && Number(d.minRarity) >= 3) }),
+  feat(G, { id: 'dg_capstone', name: 'Keystone Master', desc: 'Unlock a Tier 4 Capstone Keystone in any Hero skill tree', bonusXp: 60,
+    check: (r) => hasEvent(r, 'skillInvest', (d) => Number(d.tier) === 4) }),
   feat(G, { id: 'dg_spin_doctor', name: 'Spin Doctor', desc: 'Answer 3 called spin-ups in one ride', bonusXp: 50, check: (r) => countEvents(r, 'spinup', (d) => d.ok === true) >= 3 }),
-  stanceKills('vanguard')({ id: 'dg_master_vanguard', name: 'Vanguard Veteran', desc: 'Defeat 2,000 monsters as Vanguard', bonusXp: 80, goal: 2000, unit: ' kills' }),
-  stanceKills('ranger')({ id: 'dg_master_ranger', name: 'Ranger Veteran', desc: 'Defeat 2,000 monsters as Ranger', bonusXp: 80, goal: 2000, unit: ' kills' }),
-  stanceKills('skirmisher')({ id: 'dg_master_skirmisher', name: 'Skirmisher Veteran', desc: 'Defeat 2,000 monsters as Skirmisher', bonusXp: 80, goal: 2000, unit: ' kills' }),
-  stanceKills('arcanist')({ id: 'dg_master_arcanist', name: 'Arcanist Veteran', desc: 'Defeat 2,000 monsters as Arcanist', bonusXp: 80, goal: 2000, unit: ' kills' }),
+  archKills('rouleur')({ id: 'dg_master_rouleur', name: 'Diesel Veteran', desc: 'Defeat 2,000 monsters as The Rouleur', bonusXp: 80, goal: 2000, unit: ' kills' }),
+  archKills('puncheur')({ id: 'dg_master_puncheur', name: 'Crit Veteran', desc: 'Defeat 2,000 monsters as The Puncheur', bonusXp: 80, goal: 2000, unit: ' kills' }),
+  archKills('grimpeur')({ id: 'dg_master_grimpeur', name: 'Mountain Goat', desc: 'Defeat 2,000 monsters as The Grimpeur', bonusXp: 80, goal: 2000, unit: ' kills' }),
   kills({ id: 'dg_kills', name: 'Monster Masher', desc: 'Defeat 25,000 monsters in Purgatour', bonusXp: 150, goal: 25000, unit: ' kills' }),
 ];

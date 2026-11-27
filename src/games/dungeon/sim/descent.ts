@@ -43,5 +43,8 @@ export const unlockAfterWin = (tier: number, unlocked: number): number => Math.m
 /** What the camp shows after a descent ends: a death or a win. */
 export interface RunResult {
   won: boolean; floor: number; startFloor: number; tier: number; timeS: number; kills: number; bosses: number;
+  /** Total skill points invested during the descent. */
   perks: number; banked: number; level: number; weapon: string; unlocked?: string;
+  archetype?: string; buildTitle?: string; forks?: string[]; capstones?: string[];
+  climbs?: number; heroUnlocked?: string;
 }

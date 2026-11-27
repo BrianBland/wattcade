@@ -8,7 +8,6 @@ import { charFrame } from './art32';
 import { mixHex, pixelPanel } from './chrome';
 import { fillText, fillTextShadow, pixelFont, textWidth as textW } from './font';
 import type { PlayerHudLayout, Rect } from './layout';
-import { drawPerkBadges } from './perks32';
 
 const ZONE_SHORT = ['KEEP', 'CRYPT', 'CATACOMBS', 'DEEP'];
 
@@ -65,6 +64,7 @@ export interface PlayerHudResult {
   coinX: number;
   coinY: number;
   boxes: Rect[];
+  skillHit?: Rect;
 }
 
 export function drawPlayerHud(
@@ -176,6 +176,12 @@ export function drawPlayerHud(
     g.fillStyle = `rgba(255,140,150,${0.12 + 0.14 * Math.max(0, Math.sin(s.t * 8))})`;
     g.fillRect(hx, hy, fw, hh);
   }
+  // Over-Shield cyan top ribbon when active (Bottomless Musette / Iron Frame)
+  if (p.shield > 0) {
+    const sw = Math.min(hw, Math.round(hw * (p.shield / Math.max(1, p.maxHp))));
+    g.fillStyle = '#66e0ffdd';
+    g.fillRect(hx, hy, sw, Math.max(2 * q, Math.round(3.5 * hu)));
+  }
   // Subtle vertical segment notches
   g.fillStyle = '#0b091044';
   for (let xx = 16 * q; xx < hw - 2 * q; xx += 16 * q) g.fillRect(hx + xx, hy + q, q, hh - 2 * q);
@@ -191,7 +197,9 @@ export function drawPlayerHud(
   });
   g.font = pixelFont(Math.round(9.5 * hu));
   g.fillStyle = '#fff';
-  const hpTxt = `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`;
+  const hpTxt = p.shield >= 1
+    ? `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} +${Math.round(p.shield)}`
+    : `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`;
   fillTextShadow(g, hpTxt, heartX + 7 * heartUnit + 4 * hu, hy + hh * 0.76);
 
   // 3. Integrated Arcane XP Ribbon flush beneath the HP bar
@@ -210,10 +218,10 @@ export function drawPlayerHud(
   }
   boxes.push({ x: xx - q, y: xy - q, w: xw + 2 * q, h: xh + 2 * q });
 
-  // 4. Ornate Beveled Level Crest (drawn AFTER bars so it cleanly anchors their left edge!)
+  // 4. Ornate Beveled Level Crest tinted by active Hero Archetype (drawn AFTER bars so it anchors their left edge!)
   const cx = Math.round(L.crest.x), cy = Math.round(L.crest.y), cs = Math.round(L.crest.w);
-  const crestRim = mixHex(s.stance.color, '#e6c684', 0.45);
-  drawLevelCrest(g, cx, cy, cs, p.level, crestRim, s.stance.color, hu, q);
+  const crestRim = mixHex(s.archetype.color, '#e6c684', 0.45);
+  drawLevelCrest(g, cx, cy, cs, p.level, crestRim, s.archetype.color, hu, q);
   boxes.push({ x: cx, y: cy, w: cs, h: cs });
 
   // 5. Generous Floating Bidon Potions (2.5x larger, crisp pixel art, NO box!)
@@ -248,7 +256,6 @@ export function drawPlayerHud(
     g.globalAlpha = filled ? 1 : 0.26;
     if (potSprite) {
       g.imageSmoothingEnabled = false;
-      // Scale up to fill generous ~20*hu slot cleanly in half-pixel/whole-pixel steps
       const targetH = L.potionSize;
       const sc = Math.max(1, Math.round((targetH / Math.max(1, potSprite.height)) * 2) / 2);
       const dw = Math.round(potSprite.width * sc), dh = Math.round(potSprite.height * sc);
@@ -275,14 +282,26 @@ export function drawPlayerHud(
   drawSecondWindWing(g, L.wing, p.secondWind, p.secondWindFlash, s.t, hu, q);
   boxes.push({ ...L.wing });
 
-  // 7. Held Perk Badges floating neatly below
-  if (s.perks?.ranks.length) {
-    drawPerkBadges(g, s.perks, L.bounds.x, L.perkY, L.bounds.w, hu, s.t);
-    boxes.push({ x: L.bounds.x, y: L.perkY, w: Math.min(L.bounds.w, s.perks.ranks.length * 20 * hu), h: 17 * hu });
+  // 7. Clickable Skill Points / Build Tree Pill floating cleanly below potions
+  let skillHit: Rect | undefined;
+  if (p.unspentSP > 0 || s.skillTree.spentSP > 0) {
+    const sx = L.bounds.x, sy = L.perkY, sw = L.bounds.w, sh = 15 * hu;
+    const pulse = p.unspentSP > 0 ? 0.72 + 0.28 * Math.sin(s.t * 6) : 1;
+    g.globalAlpha = pulse;
+    pixelPanel(g, sx, sy, sw, sh, p.unspentSP > 0 ? '#ffd84a' : s.archetype.color, p.unspentSP > 0 ? '#423312f0' : '#181326e6', Math.max(1, Math.round(dpr)));
+    g.globalAlpha = 1;
+    g.font = pixelFont(Math.round(8.5 * hu));
+    g.fillStyle = p.unspentSP > 0 ? '#ffd84a' : '#dcd4ec';
+    const skTxt = p.unspentSP > 0
+      ? `★ +${p.unspentSP} SKILL PT${p.unspentSP > 1 ? 'S' : ''} · TAP / UP`
+      : `${s.skillTree.buildTitle} (${s.skillTree.spentSP} SP)`;
+    fillTextShadow(g, skTxt, sx + 5 * hu, sy + 10.5 * hu, sw - 10 * hu);
+    skillHit = { x: sx, y: sy, w: sw, h: sh };
+    boxes.push(skillHit);
   }
 
   g.restore();
-  return { coinX: coinIconX, coinY: coinIconY, boxes };
+  return { coinX: coinIconX, coinY: coinIconY, boxes, skillHit };
 }
 
 function drawLevelCrest(

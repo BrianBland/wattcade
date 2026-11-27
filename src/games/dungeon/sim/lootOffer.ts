@@ -1,6 +1,6 @@
 // Pure loot comparison & stat-delta presentation for Purgatour's timed Loot Choice prompt.
 import { UNIQUES, weaponScore, type Element, type Gear, type Rarity, type Slot, type UniqueFx, type Weapon, type WeaponStyle } from './loot';
-import { STANCES, type StanceId } from './stances';
+import { ARCHETYPES, type ArchetypeId } from './archetypes';
 
 export interface StatDelta {
   text: string;
@@ -13,8 +13,8 @@ export interface LootOfferView {
   name: string;
   rarity: Rarity;
   level: number;
-  stance?: StanceId;
-  stanceName?: string;
+  archetype?: ArchetypeId;
+  archetypeName?: string;
   slot?: Slot;
   base?: WeaponStyle;
   element?: Element;
@@ -41,7 +41,7 @@ export function describeWeaponDelta(next: Weapon, cur: Weapon): StatDelta[] {
   else out.push({ text: 'PWR EVEN', tone: 'neutral' });
 
   if (next.element !== cur.element) {
-    out.push({ text: `${cap(cur.element)}→${cap(next.element)}`, tone: next.element === 'normal' ? 'neutral' : 'good' });
+    out.push({ text: `${cap(cur.element)}->${cap(next.element)}`, tone: next.element === 'normal' ? 'neutral' : 'good' });
   }
   if (next.count !== cur.count) {
     const d = next.count - cur.count;
@@ -93,7 +93,7 @@ export function evaluateLootOffer(
   item: Weapon | Gear,
   current: Weapon | Gear | undefined,
   sellCoins: number,
-  stanceId: StanceId,
+  archetypeId: ArchetypeId,
 ): Omit<LootOfferView, 'id' | 'leftS' | 'totalS'> | null {
   const isWeapon = 'base' in item;
   const curScore = current ? ('base' in current ? weaponScore(current) : current.score) : 0;
@@ -117,7 +117,7 @@ export function evaluateLootOffer(
     rarity: item.rarity,
     level: item.level,
     ...(isWeapon
-      ? { stance: stanceId, stanceName: STANCES[stanceId].name, base: item.base, element: item.element, variant: item.variant, unique: item.unique, plus: item.plus }
+      ? { archetype: archetypeId, archetypeName: ARCHETYPES[archetypeId].shortName, base: item.base, element: item.element, variant: item.variant, unique: item.unique, plus: item.plus }
       : { slot: item.slot }),
     currentName: current ? current.name : `Empty ${!isWeapon ? item.slot : 'slot'}`,
     defaultChoice: better ? 'equip' : 'drop',

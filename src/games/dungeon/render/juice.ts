@@ -45,8 +45,14 @@ export function activeBuffs(s: DungeonSnapshot): BuffPill[] {
   if (s.player.firedUpLeft && s.player.firedUpLeft > 0) {
     out.push({ id: 'fired', label: `FIRED UP ${Math.ceil(s.player.firedUpLeft)}s`, color: '#ff8c2a', fill: Math.min(1, s.player.firedUpLeft / 60) });
   }
-  if (s.stance.styleOn) {
-    out.push({ id: 'rhythm', label: 'IN RHYTHM', color: s.stance.color });
+  if (s.player.bulletTime) {
+    out.push({ id: 'bulletTime', label: 'PHOTO FINISH', color: '#ffd84a' });
+  }
+  if (s.player.mountainKing) {
+    out.push({ id: 'mtnKing', label: 'MTN KING', color: '#ff66a8' });
+  }
+  if (s.paceBias.bias !== 0) {
+    out.push({ id: 'pace', label: s.paceBias.label.toUpperCase(), color: s.paceBias.color });
   }
   if (s.player.warded) {
     out.push({ id: 'ward', label: 'WARD', color: '#7fe7ff' });

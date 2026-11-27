@@ -34,19 +34,23 @@ describe('run layout', () => {
   }
 });
 
-describe('boss & boxless player HUD readability',()=>{
+describe('boss & boxless player HUD readability', () => {
   const overlap = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) =>
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-  for(const [W,H,inset,hu]of [[390,844,100,1],[1280,800,100,1.25],[2048,1536,200,2.5]]){
-    it(`${W}px keeps the whole boss panel above the HUD and clear of the player HUD`,()=>{
-      const r=bossHudLayout(W,H,inset,hu);expect(r.y+r.h).toBeLessThanOrEqual(H-inset);expect(r.x+r.w).toBeLessThanOrEqual(W);expect(r.w).toBeGreaterThan(W<700*hu?W*.8:W*.25);
-      if(W<700*hu)expect(r.y).toBeGreaterThanOrEqual(50*hu);
+  for (const [W, H, inset, hu] of [[390, 844, 100, 1], [1280, 800, 100, 1.25], [2048, 1536, 200, 2.5]]) {
+    it(`${W}px keeps the whole boss panel above the HUD and clear of the player HUD`, () => {
+      const r = bossHudLayout(W, H, inset, hu);
+      expect(r.y + r.h).toBeLessThanOrEqual(H - inset);
+      expect(r.x + r.w).toBeLessThanOrEqual(W);
+      expect(r.w).toBeGreaterThan(W < 700 * hu ? W * 0.8 : W * 0.25);
+      if (W < 700 * hu) expect(r.y).toBeGreaterThanOrEqual(50 * hu);
       const ph = playerHudLayout(W, H, hu, true, true);
       expect(ph.potionSize).toBeGreaterThanOrEqual(18 * hu);
       expect(ph.buffY).toBeGreaterThan(ph.perkY);
       expect(ph.toastY).toBeGreaterThan(ph.buffY);
       expect(overlap(ph.bounds, r)).toBe(false);
+      if (W < 700 * hu) expect(r.y).toBeGreaterThanOrEqual(ph.buffY + 18 * hu);
     });
   }
 });

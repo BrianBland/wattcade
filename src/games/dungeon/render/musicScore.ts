@@ -69,10 +69,10 @@ export function musicFor(s: DungeonSnapshot): MusicWant | null {
     if (s.camp?.lastRun?.won) return { cue: 'victory', gain: 0.34, tempoScale: 1, intensity: 0.9 };
     return { cue: 'camp', gain: 0.28, tempoScale: 1, intensity: 0.55 };
   }
-  if (s.perks?.offer) return { cue: 'camp', gain: 0.24, tempoScale: 1.05, intensity: 0.4 };
+  if (s.skillTree?.offer) return { cue: 'camp', gain: 0.24, tempoScale: 1.05, intensity: 0.4 };
 
   const fired = (s.player.firedUpLeft ?? 0) > 0;
-  const rhythm = !!s.stance?.styleOn;
+  const rhythm = s.paceBias.bias === 1 || !!s.player.bulletTime || !!s.player.mountainKing;
   const enemies = s.enemies?.length ?? 0;
 
   if (s.boss?.active) {

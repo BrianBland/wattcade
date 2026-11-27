@@ -45,10 +45,19 @@ describe('Purgatour AV soundscape (multi-section scores, intensity & Node-safe a
     expect(musicFor(bossP3)!.tempoScale).toBeGreaterThan(musicFor(bossP1)!.tempoScale);
     expect(musicFor(bossP3)!.intensity).toBeGreaterThan(musicFor(bossP1)!.intensity);
 
-    const camp = { ...run, phase: 'camp' as const, camp: { bank: 0, sel: 0, autoStartS: 45, autoStartLeft: 45, startFloor: 1, maxStartFloor: 1, autoInvest: false, rows: [], bestFloor: 1, runs: 1 } };
+    const camp: DungeonSnapshot = {
+      ...run,
+      phase: 'camp',
+      camp: {
+        bank: 0, sel: 0, autoStartS: 45, autoStartLeft: 45, startFloor: 1, maxStartFloor: 1, autoInvest: false,
+        erg: true, selectedArchetype: 'rouleur', archetypes: [],
+        grimpeur: { unlocked: false, climbs: 0, climbGoal: 3, floor: 1, floorGoal: 4, pct: 0 },
+        rows: [], bestFloor: 1, runs: 1,
+      },
+    };
     expect(musicFor(camp)?.cue).toBe('camp');
 
-    const campWin = { ...camp, camp: { ...camp.camp, lastRun: { won: true, floor: 7, startFloor: 1, tier: 0, timeS: 1400, kills: 200, bosses: 7, perks: 6, banked: 3000, level: 12, weapon: 'Bow' } } };
+    const campWin: DungeonSnapshot = { ...camp, camp: { ...camp.camp!, lastRun: { won: true, floor: 7, startFloor: 1, tier: 0, timeS: 1400, kills: 200, bosses: 7, perks: 6, banked: 3000, level: 12, weapon: 'Bow' } } };
     expect(musicFor(campWin)?.cue).toBe('victory');
   });
 
@@ -132,15 +141,15 @@ describe('Purgatour visual juice engine', () => {
     expect(juice.recoilOf(e1.id)).toEqual({ dx: 0, dy: 0 });
   });
 
-  it('extracts active HUD buff pills for Fired Up, In Rhythm, Ward, and Rally', () => {
+  it('extracts active HUD buff pills for Fired Up, Photo Finish, Pace Bias, Ward, and Rally', () => {
     const snap = baseSnap();
     const buffed: DungeonSnapshot = {
       ...snap,
-      player: { ...snap.player, firedUpLeft: 42, warded: true, rallied: true },
-      stance: { ...snap.stance, styleOn: true },
+      player: { ...snap.player, firedUpLeft: 42, warded: true, rallied: true, bulletTime: true },
+      paceBias: { ...snap.paceBias, bias: 1, label: 'Push Hard', color: '#ff7a2a' },
     };
     const pills = activeBuffs(buffed);
-    expect(pills.map((p) => p.id)).toEqual(['fired', 'rhythm', 'ward', 'rally']);
+    expect(pills.map((p) => p.id)).toEqual(['fired', 'bulletTime', 'pace', 'ward', 'rally']);
     expect(pills[0].label).toContain('FIRED UP 42s');
   });
 });

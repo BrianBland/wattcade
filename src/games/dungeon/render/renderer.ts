@@ -1,8 +1,10 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
-import { desaturate } from '../../kit/actionButton';
 import { runLayout, bossHudLayout, playerHudLayout } from './layout';
 import { createPlayerHudState, drawPlayerHud } from './playerHud';
+import { createMinimapCache, drawBoxlessMinimap } from './minimap';
+import { BIOME_BANNER_DUR_S, biomeBannerSpec, drawBiomeBanner, type BiomeBannerState } from './biomeBanner';
+import { drawBossTelegraph, drawHeroEffortFx } from './combatFx';
 import { DungeonSound } from './sound';
 import { JuiceEngine, activeBuffs } from './juice';
 import { TILE, type World } from '../sim/world';
@@ -18,10 +20,12 @@ import { loadArt, artReady, clearDerivedArtCache, ATLAS, hexRgb, sheetImage, zon
 import { drawStanceSwap, drawPoolLights, drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
 import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
 import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawFlail32, weaponArt, FLAIL_HAND, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
-import { heroPerkLook, drawPerkPicker, drawPerkBadges, drawPerkParticles, drawDrone } from './perks32';
+import { drawSkillOverlay, type SkillUiHit } from './skillTreeUi';
+import { clearSkillArtCache } from './skillArt';
+import { drawCampUi, type CampUiHit } from './campUi';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
-import { runResultLine } from './runResult';
+import { PACE_MODES, type PaceBias } from '../sim/archetypes';
 
 const DNF_S = 2.1;
 const ACTION_COLOR: Record<string, string> = { strike: '#ffd84a', ward: '#7fe7ff', rally: '#8fd8ff', potion: '#ff6b8a' };
@@ -144,11 +148,6 @@ export function buildBackground(w: World): FloorBg {
   };
 }
 
-/** The weapon a stance holds (from the stance chips), for previews of another stance's perk. */
-function stanceWeapon(s: DungeonSnapshot, id: string): WeaponLook {
-  const o = s.stance.list.find((x) => x.id === id);
-  return o?.base ? { base: o.base as Weapon['base'], element: o.element, rarity: o.rarity as Weapon['rarity'], variant: o.variant, unique: o.unique, plus: o.plus } : s.weapon;
-}
 export function createRenderer(): GameRenderer {
   let canvas: HTMLCanvasElement | null = null;
   let g: CanvasRenderingContext2D | null = null;
@@ -163,24 +162,24 @@ export function createRenderer(): GameRenderer {
   const ZL: Record<string, { torch: [number, number, number]; prop: [number, number, number]; amb: [number, number, number] }> = {
     keep: { torch: [255, 170, 90], prop: [255, 160, 80], amb: [0.58, 0.55, 0.68] }, crypt: { torch: [90, 230, 210], prop: [90, 230, 210], amb: [0.55, 0.6, 0.74] },
     catacombs: { torch: [255, 190, 110], prop: [255, 190, 110], amb: [0.56, 0.5, 0.48] }, deep: { torch: [170, 110, 255], prop: [170, 110, 255], amb: [0.47, 0.43, 0.56] } };
-  let mini: HTMLCanvasElement | null = null;
+  const miniCache = createMinimapCache();
+  let biomeBanner: BiomeBannerState | null = null;
   let pillars: Array<{ x: number; y: number }> = [];
   let worldCanvas: HTMLCanvasElement | null = null;
   let pixelScale = 1;
-  // the DNF beat: when a run ends, the last frame freezes, the hero crumples (3-frame fall) and the screen fades before camp
   type HeroPin = { x: number; y: number; scale: number; angle: number; stance: string };
   let bossChip = 1, bossChipName = '';
   const flashAt = new Map<number, number>(), hpSeen = new Map<number, number>();
   let lastFlail: DungeonSnapshot['flail'] = null;
   let hideHero = false, lastRun: { s: DungeonSnapshot; bike: Readonly<BikeState>; input: Readonly<InputState> } | null = null;
-  let swapFx: { t0: number; c: string; from: string } | null = null, lastStance = '';
+  let swapFx: { t0: number; c: string; from: string } | null = null, lastPaceBias: PaceBias = 0;
   let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
   let lightC: HTMLCanvasElement | null = null;
   let campSnap: HTMLCanvasElement | null = null;
   const sound = new DungeonSound(), juice = new JuiceEngine(), playerHud = createPlayerHudState();
   let juiceT = 0, bossCycle = '';
   let send: ((a: unknown) => void) | undefined;
-  let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
+  let insetCss = 0;
   let hudOcclusions: Insets['occlusions'];
   let zoom: ZoomState = { steps: 0, held: 0 };
   let pinchEnabled = false;
@@ -211,14 +210,21 @@ export function createRenderer(): GameRenderer {
     if (!pinch) { beginPinch(); return; }
     zoom.steps = pinchZoom(canvas.width, canvas.height, pinch.scale, touchSpan() / pinch.span);
   };
-  let campHits: Array<{ x: number; y: number; w: number; h: number; row: number }> = [];
-  let perkHits: Array<{ x: number; y: number; w: number; h: number }> = [];
-  let lootHits: Array<{ x: number; y: number; w: number; h: number; choice: 'equip' | 'drop' }> = [];
+  let campHits: CampUiHit[] = [];
+  let skillHits: SkillUiHit[] = [];
+  let hudHits: Array<{ x: number; y: number; w: number; h: number; action: unknown }> = [];
+  const inRect = (px: number, py: number, r: { x: number; y: number; w: number; h: number }) =>
+    px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
   const onPointer = (e: PointerEvent) => {
     if (!canvas) return;
     const r = canvas.getBoundingClientRect(), px = (e.clientX - r.left) * (canvas.width / r.width), py = (e.clientY - r.top) * (canvas.height / r.height);
-    const lh = lootHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
-    if (lh) { e.preventDefault(); send?.({ type: 'lootChoice', choice: lh.choice }); return; }
+    // Directly tappable overlays (Skill Tree / Level-Up Picker / Camp / HUD SP & Pace chips) always take priority over pinch
+    const sh = skillHits.find((h) => inRect(px, py, h.rect));
+    if (sh) { e.preventDefault(); send?.(sh.action); return; }
+    const ch = campHits.find((h) => inRect(px, py, h.rect));
+    if (ch) { e.preventDefault(); send?.(ch.action); return; }
+    const hh = hudHits.find((h) => inRect(px, py, h));
+    if (hh) { e.preventDefault(); send?.(hh.action); return; }
     if (e.pointerType === 'touch' && pinchEnabled) {
       e.preventDefault();
       if (touches.size < 2) {
@@ -226,13 +232,7 @@ export function createRenderer(): GameRenderer {
         canvas.setPointerCapture(e.pointerId);
         if (touches.size === 2) beginPinch();
       }
-      return;
     }
-    const ph = perkHits.findIndex((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
-    if (ph >= 0) { e.preventDefault(); send?.({ type: 'perk', i: ph }); return; }
-    if (!campHits.length) return;
-    const hit = campHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
-    if (hit) { e.preventDefault(); send?.({ type: 'campRow', row: hit.row }); }
   };
   let dpr = 1;
   let camX = NaN, camY = NaN, camT = 0, camFor: unknown = null;
@@ -408,30 +408,31 @@ export function createRenderer(): GameRenderer {
     render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>) {
       const s = snapshot as DungeonSnapshot;
       if (!canvas || !g || !s.world) return;
-      pinchEnabled = s.phase === 'run' && !s.perks?.offer;
+      pinchEnabled = s.phase === 'run' && !s.skillTree?.offer;
       bossCycle = s.boss?.active ? s.boss.cycle : '';
       const dtJ = Math.max(0, Math.min(0.1, s.t - juiceT)); juiceT = s.t;
       if (!hideHero) { sound.update(s); juice.update(s, dtJ); }
       if (prevPhase === 'run' && s.phase === 'camp' && s.camp?.lastDeath && lastHero && artReady()) {
-        // re-draw the last run frame without the standing hero, so only the falling one shows
         if (lastRun) { hideHero = true; this.render(lastRun.s, lastRun.bike, lastRun.input); hideHero = false; }
         const img = document.createElement('canvas'); img.width = canvas.width; img.height = canvas.height; img.getContext('2d')!.drawImage(canvas, 0, 0);
         dnf = { t0: s.t, img, hero: lastHero };
       }
       prevPhase = s.phase; if (s.phase === 'run') lastRun = { s, bike, input }; else if (!dnf) lastRun = null;
-      if (s.phase === 'run' && lastStance && s.stance.id !== lastStance) swapFx = { t0: s.t, c: s.stance.color, from: s.stance.list.find((x) => x.id === lastStance)?.color ?? '#ffffff' };
-      lastStance = s.phase === 'run' ? s.stance.id : '';
+      if (s.phase === 'run' && s.paceBias.bias !== lastPaceBias) {
+        swapFx = { t0: s.t, c: s.paceBias.color, from: PACE_MODES[lastPaceBias].color };
+        pulses.push({ label: s.paceBias.label.toUpperCase(), color: s.paceBias.color, t0: s.t });
+      }
+      lastPaceBias = s.phase === 'run' ? s.paceBias.bias : 0;
       if (s.phase !== 'camp') dnf = null;
       if (dnf && s.phase === 'camp' && s.t - dnf.t0 < DNF_S) { drawDnf(s.t - dnf.t0); return; }
       if (s.phase === 'camp' && s.camp) {
-        clearPinch();
-        drawCamp(s.camp, canvas.width, canvas.height, s.t, s.stance.id, s.weapon);
+        clearPinch(); skillHits = []; hudHits = [];
+        drawCamp(s.camp, canvas.width, canvas.height, s.t, s.archetype.chassis, s.archetype.kit, s.weapon);
         drawScreenJuice(g, canvas.width, canvas.height);
         return;
       }
       campHits = [];
       const output=g, OW=canvas.width, OH=canvas.height, w=s.world,t=s.t,p=s.player;
-      // Orientation-balanced framing; room boundaries and boss phases never change the selected zoom.
       const bossE = s.boss?.active ? s.enemies.find((e) => e.kind === 'boss') : undefined;
       const dtR = Math.max(0, Math.min(0.1, t - camT)); camT = t;
       zoom = paddleZoom(zoom, OW, OH, input.paddleL, input.paddleR);
@@ -443,26 +444,23 @@ export function createRenderer(): GameRenderer {
       gg.imageSmoothingEnabled = false;
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
       if (bgFor !== w || (!bg32 && artReady())) {
-        if (bgFor !== w) { bg?.release(); bg = artReady() ? null : buildBackground(w); mini = null; }
+        if (bgFor !== w) { bg?.release(); bg = artReady() ? null : buildBackground(w); miniCache.canvas = null; }
         bgFor = w; pillars = []; goo.length = 0; gooLast.clear(); bg32?.release(); info = floorInfo(w); bg32 = buildBackground32(w, info); losCache.clear();
         if (bg32 && bg) { bg.release(); bg = null; }
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
       const uiU=(Math.max(1,Math.min(OW,OH)/dpr/600)*0.75+0.25)*dpr;
-      const VH=runLayout(OW,OH,insetCss*dpr,uiU,s.stance.list.length-1).playH/pixelScale;
-      // frame the fight: during a boss, the camera centres between the hero and the boss so neither hides under the dock
+      const VH=runLayout(OW,OH,insetCss*dpr,uiU,3).playH/pixelScale;
       const fx0 = bossE ? p.x + (bossE.x - p.x) * 0.45 : p.x, fy0 = bossE ? p.y + (bossE.y - p.y) * 0.45 : p.y;
       if (camFor !== w || !Number.isFinite(camX)) { camX = fx0; camY = fy0; camFor = w; }
       else { const kf = 1 - Math.exp(-dtR * 6); camX += (fx0 - camX) * kf; camY += (fy0 - camY) * kf; }
       const cx = camX * TS - W / 2 + juice.shakeX, cy = camY * TS - VH / 2 + juice.shakeY;
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
-      // background (visible part only)
       const k = TS / BT;
       const sx = Math.max(0, cx / k), sy = Math.max(0, cy / k), sw = Math.min(w.w * BT - sx, W / k + 1), sh = Math.min(w.h * BT - sy, H / k + 1);
       const Zn = info?.zone ?? 'keep', Zr = ATLAS.zones[Zn];
       if (bg32) { bg32.draw(gg, Math.max(0, cx), Math.max(0, cy), W, H); bg32.prefill(3, cx + W / 2, cy + H / 2); }
       else { if (sw > 0 && sh > 0) bg!.draw(gg, sx, sy, sw, sh, k); bg!.prefill(3, sx + sw / 2, sy + sh / 2); }
-      // a path over the visible open (non-wall) tiles: atmosphere stays inside rooms and corridors, never over solid rock
       const openFloorClip = (c: CanvasRenderingContext2D = gg) => { c.beginPath();
         for (let ty = Math.max(0, Math.floor(cy / TS)); ty <= Math.min(w.h - 1, Math.floor((cy + H) / TS)); ty++) {
           let run = -1;
@@ -475,11 +473,11 @@ export function createRenderer(): GameRenderer {
       const isSwamp = (x: number, y: number) => x >= 0 && y >= 0 && x < w.w && y < w.h && w.tiles[y * w.w + x] === TILE.SWAMP;
       const inView = (q: { x: number; y: number }, m = 1) => q.x >= Math.floor(cx / TS) - m && q.x <= Math.ceil((cx + W) / TS) + m && q.y >= Math.floor(cy / TS) - m && q.y <= Math.ceil((cy + H) / TS) + m;
       if (bg32 && info) { const vis = info.swamp.filter((q) => inView(q, 0)); if (Zn === 'deep') drawLava(gg, vis, isSwamp, t); else drawPoolGlints(gg, Zn, vis, t, isSwamp); }
-      if (bg32 && info && (Zn === 'keep' || Zn === 'crypt')) { // still water mirrors whoever stands at its edge (clipped to the pool, rippled)
+      if (bg32 && info && (Zn === 'keep' || Zn === 'crypt')) {
         const vis = info.swamp.filter((q) => inView(q, 1));
         const near = (x: number, y: number) => vis.some((q) => Math.abs(q.x + 0.5 - x) < 2.2 && q.y + 0.5 - y > -0.5 && q.y + 0.5 - y < 3.5);
         const who: Array<{ fy: number; d: () => void }> = [];
-        if (near(p.x, p.y)) { const fy = Math.round(p.y * TS + p.r * TS * 1.1); who.push({ fy, d: () => drawHero32(gg, p.x * TS, fy, { angle: s.aim.angle, moving: p.moving, t, stance: s.stance.id, hurt: false, weapon: s.weapon, kick: 0, ...heroPerkLook(s.perks, s.stance.id) }) }); }
+        if (near(p.x, p.y)) { const fy = Math.round(p.y * TS + p.r * TS * 1.1); who.push({ fy, d: () => drawHero32(gg, p.x * TS, fy, { angle: s.aim.angle, moving: p.moving, t, stance: s.archetype.chassis, hurt: false, weapon: s.weapon, kick: 0, kit: s.archetype.kit, ovs: s.archetype.overlays }) }); }
         if (artReady()) for (const e of s.enemies) if (e.kind !== 'bat' && near(e.x, e.y)) { const fy = Math.round(e.y * TS + e.r * TS * 0.9); who.push({ fy, d: () => drawEnemy32(gg, e.x * TS, fy, { kind: e.kind, variant: e.variant, moving: false, tell: 0, flash: false, face: e.face, t, id: e.id }) }); }
         if (who.length) {
           gg.save(); gg.beginPath();
@@ -605,6 +603,33 @@ export function createRenderer(): GameRenderer {
         gg.globalCompositeOperation = 'source-over';
       }
 
+      // Build-specific ground auras (Caldera, Blazing Halo, Mountain King, Pace Bias edge)
+      if (p.caldera) {
+        const cr = (2.1 + Math.sin(t * 5) * 0.18) * TS;
+        pixelRing(gg, p.x * TS, p.y * TS, cr, Math.floor(t * 8) % 2 ? '#ff6b4a' : '#ffaa3c', true, 0.55);
+      }
+      if (p.blazingHalo) {
+        const hr = (1.95 + Math.sin(t * 7) * 0.12) * TS;
+        pixelRing(gg, p.x * TS, p.y * TS, hr, '#ff9a3c', true, 0.5);
+        gg.globalCompositeOperation = 'lighter';
+        glowAt('#ff7a2a', p.x * TS, p.y * TS, TS * 2.1, 0.28);
+        gg.globalCompositeOperation = 'source-over';
+      }
+      if (p.mountainKing) {
+        pixelRing(gg, p.x * TS, p.y * TS, (1.45 + Math.sin(t * 8) * 0.1) * TS, '#ff66a8', false, 0.75);
+        gg.globalCompositeOperation = 'lighter';
+        glowAt('#ffd84a', p.x * TS, p.y * TS - 6, TS * 1.6, 0.35);
+        for (let i = 0; i < 4; i++) {
+          const a = i * 1.57 + t * 2.4, ph = (t * 1.1 + i * 0.25) % 1;
+          gg.fillStyle = i % 2 ? '#ffd84a' : '#ff66a8';
+          gg.fillRect(Math.round(p.x * TS + Math.cos(a) * TS * 0.55), Math.round(p.y * TS - ph * TS * 1.5), 2, 2);
+        }
+        gg.globalCompositeOperation = 'source-over';
+      }
+      if (p.bulletTime) {
+        pixelRing(gg, p.x * TS, p.y * TS, (1.2 + Math.sin(t * 16) * 0.12) * TS, '#ffd84a', true, 0.85);
+      }
+
       // Gear Masher telegraphs: where the slam (wind-up) or the throw will land
       if (s.flail && (s.flail.mode === 'whirl' || (s.flail.mode === 'out' && s.flail.t < 0.55))) {
         const f = s.flail, big = f.mode === 'whirl', fx_ = f.tx * TS, fy_ = f.ty * TS + 6;
@@ -626,9 +651,19 @@ export function createRenderer(): GameRenderer {
         if (artReady()) {
           shadow(px, py, TS * 0.3);
           const kick = shot ? 2 : 0;
-          if (p.rolling) drawHero32(gg, px - Math.cos(s.aim.angle) * TS * 0.3, py, { angle: s.aim.angle, moving: true, t, stance: s.stance.id, hurt: false, weapon: s.weapon, kick: 0, alpha: 0.3, ...heroPerkLook(s.perks, s.stance.id) });
-          drawHero32(gg, px, py + bob, { angle: s.aim.angle, moving: p.moving, t, stance: s.stance.id, hurt: p.hurt < 0.08, weapon: s.weapon, kick, alpha: p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1, ...heroPerkLook(s.perks, s.stance.id) });
-          if(p.warded)pixelRing(gg,p.x*TS,p.y*TS-10,TS*0.7,'#7fe7ff',true);
+          const hKit = { kit: s.archetype.kit, ovs: s.archetype.overlays };
+          // Spectral / Bullet Time afterimage trails
+          if (p.rolling || p.bulletTime || p.phantom) {
+            const trailDist = p.bulletTime ? 0.42 : 0.3;
+            const trailAlpha = p.bulletTime ? 0.45 : p.phantom ? 0.28 : 0.3;
+            drawHero32(gg, px - Math.cos(s.aim.angle) * TS * trailDist, py, { angle: s.aim.angle, moving: true, t: t - 0.08, stance: s.archetype.chassis, hurt: false, weapon: s.weapon, kick: 0, alpha: trailAlpha, ...hKit });
+          }
+          drawHero32(gg, px, py + bob, { angle: s.aim.angle, moving: p.moving, t, stance: s.archetype.chassis, hurt: p.hurt < 0.08, weapon: s.weapon, kick, alpha: p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1, ...hKit });
+          if (p.shield > 0.5) {
+            const shFrac = Math.min(1, p.shield / Math.max(1, p.maxHp * 0.35));
+            pixelRing(gg, p.x * TS, p.y * TS - 8, TS * (0.58 + Math.sin(t * 6) * 0.03), '#66e0ff', true, 0.72, shFrac);
+          }
+          if (p.warded) pixelRing(gg, p.x * TS, p.y * TS - 10, TS * 0.72, '#7fe7ff', false);
           return;
         }
         shadow(px, py, TS * 0.32);
@@ -637,21 +672,22 @@ export function createRenderer(): GameRenderer {
         if (held.behind) drawHeld();
         const hst: AnimState = p.hurt < 0.12 ? 'hurt' : shot ? 'attack' : p.moving ? 'walk' : 'idle';
         const hf = anim('hero',hst,t,9),hs=1,hpal=heroPalette(color);
-        if (p.rolling) { gg.globalAlpha = 0.3; drawCanvas(sprite2('hero', 'walk', 0, hpal), px - Math.cos(s.aim.angle) * TS * 0.3, py, hs, face); gg.globalAlpha = 1; }
+        if (p.rolling || p.bulletTime || p.phantom) { gg.globalAlpha = 0.32; drawCanvas(sprite2('hero', 'walk', 0, hpal), px - Math.cos(s.aim.angle) * TS * 0.3, py, hs, face); gg.globalAlpha = 1; }
         gg.globalAlpha = p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1;
         drawCanvas(sprite2('hero', hf.state, hf.idx, hpal), px, py, hs, face, bob);
         if (p.hurt < 0.08) { gg.globalAlpha = 0.5; drawCanvas(sprite2('hero', hf.state, hf.idx, undefined, true), px, py, hs, face, bob); }
         gg.globalAlpha = 1;
-        if(p.warded)pixelRing(gg,p.x*TS,p.y*TS,TS*0.8,'#7fe7ff',true);
+        if (p.shield > 0.5) pixelRing(gg, p.x * TS, p.y * TS, TS * 0.65, '#66e0ff', true, 0.7);
+        if (p.warded) pixelRing(gg, p.x * TS, p.y * TS, TS * 0.8, '#7fe7ff', false);
         // weapon gripped at its handle by the facing hand, pointing along the aim
-        if(!held.behind)drawHeld();
+        if (!held.behind) drawHeld();
       } });
-      if (artReady()) (s.perks?.drones ?? []).forEach((d, k) => actors.push({ y: d.y + 0.6, d: () => drawDrone(gg, d.x * TS, d.y * TS, t, d.shot, k) }));
       if (bg32 && info) {
         const lr = zonePropSize(Zn, 'light');
         for (const q of info.pillars) if (inView(q, 2) && lr) actors.push({ y: q.y + 0.5, d: () => { const fx2 = q.x * TS + 16, fy2 = q.y * TS + 28; shadow(fx2, fy2, 9); drawZoneProp(gg, Zn, 'light', fx2 - (lr.w >> 1), fy2 - lr.h); } });
         for (const sh of s.shrines) if (w.rooms[sh.room].seen) actors.push({ y: sh.y, d: () => { shadow(sh.x * TS, sh.y * TS, 11); drawShrine32(gg, sh.kind, sh.x * TS, sh.y * TS, t, sh.state === 'failed'); } });
       }
+      if (bossE && s.boss?.active) drawBossTelegraph(gg, bossE, s.boss, p.x, p.y, TS, t);
       actors.sort((a, b) => a.y - b.y);
       for (const a of actors) a.d();
       if (bg32 && info) { // atmosphere that the lighting should shade: fog banks in the Crypt, falling grit elsewhere
@@ -673,7 +709,7 @@ export function createRenderer(): GameRenderer {
           for (let r = 0; r < 5; r++) { gg.fillStyle = r < 2 ? '#fff4c0' : '#ffd84a'; gg.fillRect(ax - 5 + r, ay + r, (5 - r) * 2 + 1, 1); }
           gg.fillStyle = '#0a0810'; gg.fillRect(ax - 3, ay - 7, 7, 8); gg.fillStyle = '#ffd84a'; gg.fillRect(ax - 2, ay - 6, 5, 6); gg.fillStyle = '#fff4c0'; gg.fillRect(ax - 2, ay - 6, 1, 6);
         }
-        if (s.perks?.ranks.length) drawPerkParticles(gg, s.perks, p.x * TS, p.y * TS + p.r * TS * 1.1, p.moving, t, p.hp >= p.maxHp, s.stance.id);
+        drawHeroEffortFx(gg, s, TS, t);
         if (swapFx) { const k = (t - swapFx.t0) / 0.5; if (k < 0 || k > 1) swapFx = null; else drawStanceSwap(gg, p.x * TS, p.y * TS + p.r * TS * 1.1, k, swapFx.c, swapFx.from, t); }
         for (const b of s.bullets) if (!(artReady() && drawShot32(gg, b, TS))) drawBullet(b, TS, t);
         for (const f of s.fx) {
@@ -684,10 +720,32 @@ export function createRenderer(): GameRenderer {
         }
       };
       if (!bg32) emissive();
-      // Orbit blades and target marker use the same native-pixel masks as ordinary shots.
+      // Orbiting Chainring Sawblades (Drafting Blades / Turbine Ring / Blazing Halo) or unique orbit weapon
       for (const o of s.orbit) {
-        const ob: BulletView = { x: o.x, y: o.y, r: 0.2, friendly: true, style: 'star', color: ELEMENT_COLORS[s.weapon.element], angle: t * 14, age: t, variant: s.weapon.variant };
-        if (!(artReady() && drawShot32(gg, ob, TS))) drawProjectile(gg, ob, TS);
+        const ox = Math.round(o.x * TS), oy = Math.round(o.y * TS);
+        const rimCol = p.blazingHalo ? '#ff9a3c' : p.turbineShock ? '#5ce1ff' : '#ffd84a';
+        const toothCol = p.blazingHalo ? '#fff2b0' : p.turbineShock ? '#c8f8ff' : '#e6ecf5';
+        const rPx = Math.max(4, Math.round(TS * 0.22));
+        // Dark crisp halo
+        gg.fillStyle = '#0e0a16';
+        gg.fillRect(ox - rPx - 1, oy - rPx, rPx * 2 + 2, rPx * 2);
+        gg.fillRect(ox - rPx, oy - rPx - 1, rPx * 2, rPx * 2 + 2);
+        // Spinning 6-tooth pixel chainring sprocket
+        const ang0 = t * (p.turbineShock ? 18 : 11);
+        gg.fillStyle = rimCol;
+        gg.fillRect(ox - rPx + 1, oy - rPx + 1, rPx * 2 - 2, rPx * 2 - 2);
+        gg.fillStyle = '#181326';
+        gg.fillRect(ox - Math.max(1, rPx - 3), oy - Math.max(1, rPx - 3), Math.max(2, (rPx - 3) * 2), Math.max(2, (rPx - 3) * 2));
+        gg.fillStyle = toothCol;
+        for (let k = 0; k < 6; k++) {
+          const a = ang0 + (k * Math.PI) / 3;
+          gg.fillRect(Math.round(ox + Math.cos(a) * (rPx + 1)) - 1, Math.round(oy + Math.sin(a) * (rPx + 1)) - 1, 2, 2);
+        }
+        if (p.blazingHalo || p.turbineShock) {
+          gg.globalCompositeOperation = 'lighter';
+          glowAt(rimCol, ox, oy, TS * 0.55, 0.55);
+          gg.globalCompositeOperation = 'source-over';
+        }
       }
       const tgt=s.ai.targetId?s.enemies.find(e=>e.id===s.ai.targetId):undefined;
       if(tgt)pixelTarget(gg,tgt.x*TS,tgt.y*TS,(tgt.r+0.35)*TS,tgt.kind==='boss'?'#ff6a70':'#ffd84a');
@@ -709,10 +767,9 @@ export function createRenderer(): GameRenderer {
           const e = { x, y, r, c, i, ...(los ? { los } : {}) }; L.push(e); if (key) statics.add(e);
         };
         const fl = (k: number) => 1 + Math.sin(t * 9 + k * 2) * 0.04 + Math.sin(t * 23 + k) * 0.03;
-        const lamp = s.perks?.light ?? 0;
+        const lamp = s.archetype.overlays.includes('headlamp') ? 0.35 : 0;
         add(null, p.x * TS, p.y * TS - 12, TS * (dark ? 2.2 : 3.2) * (1 + lamp), [255, 236, 210], 0.55);
-        if (lamp > 0) add(null, p.x * TS + Math.cos(s.aim.angle) * TS * 2.2, p.y * TS - 12 + Math.sin(s.aim.angle) * TS * 2.2, TS * 2.6 * (1 + lamp * 0.5), [255, 240, 190], 0.5 + lamp * 0.4); // the Headlamp beam
-        for (const d of s.perks?.drones ?? []) add(null, d.x * TS, d.y * TS - 6, TS * 1.3, [140, 190, 255], 0.5, true);
+        if (lamp > 0) add(null, p.x * TS + Math.cos(s.aim.angle) * TS * 2.2, p.y * TS - 12 + Math.sin(s.aim.angle) * TS * 2.2, TS * 2.6 * (1 + lamp * 0.5), [255, 240, 190], 0.5 + lamp * 0.4);
         if (!dark) {
           for (const q of info.torches) add(`t${q.x},${q.y}`, q.x * TS + 16, (q.y + 1) * TS + 2, TS * 3.4 * fl(q.x), zl.torch, 0.95);
           for (const q of info.lit) add(q.key, q.x, q.y, q.r * fl(q.cx), q.c, q.i);
@@ -800,7 +857,7 @@ export function createRenderer(): GameRenderer {
       if(p.hurt<0.3){gg.fillStyle='#f4516133';gg.fillRect(0,0,W,2);gg.fillRect(0,H-2,W,2);gg.fillRect(0,0,2,H);gg.fillRect(W-2,0,2,H);}
       g=output;output.imageSmoothingEnabled=false;
       output.drawImage(worldCanvas,0,0,W*pixelScale,H*pixelScale);
-      lastHero = { x: (p.x * TS - Math.round(cx)) * pixelScale, y: (p.y * TS + p.r * TS * 1.1 - Math.round(cy)) * pixelScale, scale: pixelScale, angle: s.aim.angle, stance: s.stance.id };
+      lastHero = { x: (p.x * TS - Math.round(cx)) * pixelScale, y: (p.y * TS + p.r * TS * 1.1 - Math.round(cy)) * pixelScale, scale: pixelScale, angle: s.aim.angle, stance: s.archetype.chassis };
       output.save();output.translate(-Math.round(cx)*pixelScale,-Math.round(cy)*pixelScale);
       for(const f of s.fx)if(f.kind==='text'&&!(bg32&&isNumberText(f.text)))drawFx(f,t,TS*pixelScale);
       output.font = pixelFont(10 * dpr); output.textAlign = 'center'; output.strokeStyle = '#100d1c';
@@ -810,9 +867,13 @@ export function createRenderer(): GameRenderer {
       }
       output.restore();
       drawScreenJuice(output, OW, OH);
-      drawHud(s,OW,OH,bike);
-      perkHits = s.perks?.offer && artReady() ? drawPerkPicker(output, s.perks, OW, OH, insetCss * dpr, uiU, dpr, s.perks.offer.age, heroPerkLook(s.perks, s.stance.id),
-        (hg, x, foot, look) => drawHero32(hg, x, foot, { moving: false, t, hurt: false, weapon: look.stance && look.stance !== s.stance.id ? stanceWeapon(s, look.stance) : s.weapon, kick: 0, ...look, stance: look.stance ?? s.stance.id, angle: look.angle ?? Math.PI * 0.5 })) : [];
+      if (s.skillTree?.offer) {
+        hudBoxes = []; hudHits = []; (globalThis as { __dgHud?: unknown }).__dgHud = { boxes: hudBoxes, W: OW, H: OH };
+        skillHits = drawSkillOverlay(output, s.skillTree, s.archetype, OW, OH, insetCss * dpr, uiU, dpr, t);
+      } else {
+        skillHits = [];
+        drawHud(s, OW, OH, bike);
+      }
     },
     unmount() {
       sound.dispose(); juice.reset();
@@ -828,7 +889,8 @@ export function createRenderer(): GameRenderer {
       losCache.clear(); flashAt.clear(); hpSeen.clear(); moved.clear();
       coinSeen.clear(); readyPrev.clear(); gooLast.clear(); goo.length = 0; flyers.length = 0; pulses.length = 0;
       clearDerivedArtCache();
-      mini = null; worldCanvas = null; lightC = null; lightImg = null; litC = null; litAt = null; campSnap = null;
+      clearSkillArtCache();
+      miniCache.canvas = null; biomeBanner = null; worldCanvas = null; lightC = null; lightImg = null; litC = null; litAt = null; campSnap = null;
       lastRun = null; dnf = null; zoom.held = 0;
     },
   };
@@ -858,115 +920,51 @@ export function createRenderer(): GameRenderer {
       gg.drawImage(fr, -m.ax * sc, -m.ay * sc, fr.width * sc, fr.height * sc); gg.restore(); }
     if (k > 0.6) { const a = Math.min(1, (k - 0.6) * 3); gg.globalAlpha = a;
       const ty = Math.max(24 * dpr, Math.min(H * 0.34, h.y - 34 * h.scale - 70 * dpr));
-      const S8 = Math.max(4, Math.round(8 * dpr)), S2 = Math.max(1, Math.round(2 * dpr));
+      const S8 = Math.max(4, Math.round(8 * dpr));
       displayText(gg, 'DNF', W / 2, ty, S8, '#ff5a5a', true, '#1a0408');
       gg.globalAlpha = a * 0.85; displayText(gg, 'DID NOT FINISH', W / 2, ty + 70 * dpr, Math.max(2, Math.round(2.5 * dpr)), '#ffb0b0', true, '#1a0408'); gg.globalAlpha = 1; }
     if (k > DNF_S - 0.45) { gg.fillStyle = '#07060b'; gg.globalAlpha = Math.min(1, (k - (DNF_S - 0.45)) / 0.45); gg.fillRect(0, 0, W, H); gg.globalAlpha = 1; }
   }
-  function drawCamp(c: CampView, W: number, H: number, t: number, stanceId: string, campWeapon: WeaponLook) {
-    const gg = g!, u = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, fs = Math.round(15 * u);
-    const compact = W < 700 * dpr;
-    const UH = H - insetCss * dpr; // camp scene sits above the HUD; the backdrop is full-bleed
-    const V=pixelViewport(W,H),scale=V.scale;
-    if(!worldCanvas)worldCanvas=document.createElement('canvas');
-    if(worldCanvas.width!==V.width||worldCanvas.height!==V.height){worldCanvas.width=V.width;worldCanvas.height=V.height;}
-    const cg=worldCanvas.getContext('2d')!;cg.imageSmoothingEnabled=false;cg.fillStyle='#15111f';cg.fillRect(0,0,V.width,V.height);
-    // layout first: the fire scene sits in the free band between the upgrade list and the hint line
-    const rowH0=(compact?48:32)*u, maxRows0=Math.max(4,Math.floor((UH*0.72-90*u)/rowH0)), nRows=Math.min(c.rows.length,maxRows0);
-    const menuBot=(90*u+nRows*rowH0+(c.lastRun||c.lastDeath?34*u:0))/scale, hintTop=(UH-(compact?46:36)*u)/scale;
-    const fy=Math.round(Math.max(menuBot+28,menuBot+(hintTop-menuBot)*0.62)),hx=Math.round(V.width/2-26),hy=fy,fx=Math.round(V.width/2),ground=fy;
-    const kim=sheetImage('keep'),KR=ATLAS.zones.keep.rects;
-    if(kim&&artReady()){
-      // the camp is a Keep guardroom: flagstones, a back wall with banners and torches, a log fire, and stepped firelight
-      const fl=KR.floor;for(let yy=0;yy<V.height;yy+=fl[3])for(let xx=0;xx<V.width;xx+=fl[2])cg.drawImage(kim,fl[0],fl[1],fl[2],fl[3],xx,yy,fl[2],fl[3]);
-      const wallY=Math.max(0,Math.round(Math.min(ground-60,6*u/scale))),fc=KR.face;
-      cg.fillStyle='#07060b';cg.fillRect(0,0,V.width,wallY);
-      for(let xx=0;xx<V.width;xx+=32){cg.drawImage(kim,fc[0]+(xx%512),fc[1],32,48,xx,wallY,32,48);}
-      cg.fillStyle=ATLAS.zones.keep.ramp[8];cg.fillRect(0,wallY-1,V.width,1);
-      const torchX:number[]=[];for(let xx=48;xx<V.width-16;xx+=128)torchX.push(xx);
-      const tb=KR.torch,ban=KR['hang:banner'];
-      torchX.forEach((xx,i)=>{if(i%2&&ban)cg.drawImage(kim,ban[0],ban[1],ban[2],ban[3],xx+40,wallY+4,ban[2],ban[3]);if(tb)cg.drawImage(kim,tb[0],tb[1],tb[2],tb[3],xx-3,wallY+14,tb[2],tb[3]);});
-      cg.fillStyle='#04020866';cg.fillRect(0,wallY+48,V.width,4);
-      const prop=(n:string,x:number,foot:number)=>{const r=KR['decor:'+n];if(r){cg.fillStyle='#04020888';cg.fillRect(x-(r[2]>>1)+2,foot-2,r[2]-4,3);cg.drawImage(kim,r[0],r[1],r[2],r[3],x-(r[2]>>1),foot-r[3],r[2],r[3]);}};
-      const ro=KR['decal:rosette'];
-      if(ro)cg.drawImage(kim,ro[0],ro[1],ro[2],ro[3],fx-(ro[2]>>1),fy-(ro[3]>>1)-2,ro[2],ro[3]);
-      prop('candelabra',fx-140,fy-14);prop('candelabra',fx+136,fy-12);
-      prop('barrel',fx-86,fy-6);prop('crate',fx-108,fy+4);prop('barrel',fx+90,fy+2);prop('borne',fx+62,fy-8);
-      // log fire: two crossed logs, embers, and the Keep flame strip on top
-      const L=['#2a1810','#46281a','#683c24','#8c5530'];
-      for(let i=-8;i<=8;i++){cg.fillStyle=L[i<-6||i>6?0:i<0?2:1];cg.fillRect(fx+i,fy-2+Math.round(i/4),1,3);cg.fillRect(fx+i,fy-2-Math.round(i/4),1,3);}
-      cg.fillStyle=L[3];cg.fillRect(fx-7,fy-3,3,1);cg.fillRect(fx+4,fy-4,3,1);
-      cg.fillStyle='#ff8a2a';cg.fillRect(fx-3,fy-1,6,1);cg.fillStyle='#ffe08a';cg.fillRect(fx-1,fy-1,2,1);
-      const ff=Math.floor(t*10),flr=KR.flame;if(flr){const fw=Math.floor(flr[2]/4);for(const [ox,k] of [[-5,0],[0,1],[4,2]] as const)cg.drawImage(kim,flr[0]+fw*((ff+k)%4),flr[1],fw,flr[3],fx+ox-(fw>>1),fy-flr[3]-1+(k===1?-3:0),fw,flr[3]);}
-      drawHero32(cg,hx-6,hy,{angle:Math.PI*0.5,moving:false,t,stance:stanceId,hurt:false,weapon:campWeapon,kick:0});
-      // stepped light: the fire (flickering) and the wall torches over a dim ambient
-      const Wd=V.width,Hd=V.height,flick=1+Math.sin(t*9)*0.04+Math.sin(t*23)*0.03,grid={w:1,h:1,wall:()=>false};
-            const lights=[{x:fx,y:fy-8,r:200*flick,c:[255,170,90] as const,i:1.1},...torchX.map((xx)=>({x:xx,y:wallY+18,r:110*flick,c:[255,176,80] as const,i:0.8})),...[-140,136].map((dx)=>({x:fx+dx,y:fy-24,r:70*flick,c:[255,200,120] as const,i:0.6}))];
-      const BW=Math.ceil(Wd/2),BH=Math.ceil(Hd/2);
-      if(!lightC)lightC=document.createElement('canvas');if(lightC.width!==BW||lightC.height!==BH){lightC.width=BW;lightC.height=BH;lightImg=null;}
-      const lc=lightC.getContext('2d')!;if(!lightImg)lightImg=lc.createImageData(BW,BH);
-      shade({grid,ts:32,rise:16,ox:0,oy:0,W:Wd,H:Hd,amb:[0.3,0.27,0.36],lights},lightImg.data);lc.putImageData(lightImg,0,0);
-      cg.globalCompositeOperation='multiply';cg.imageSmoothingEnabled=false;cg.drawImage(lightC,0,0,BW*2,BH*2);cg.globalCompositeOperation='lighter';cg.globalAlpha=1;
-      if(!campSnap)campSnap=document.createElement('canvas');if(campSnap.width!==Wd||campSnap.height!==Hd){campSnap.width=Wd;campSnap.height=Hd;}
-      const sg=campSnap.getContext('2d')!;sg.clearRect(0,0,Wd,Hd);sg.drawImage(worldCanvas!,0,0);cg.drawImage(campSnap,0,0);cg.globalCompositeOperation='source-over';
-      // a soft vignette keeps the menu readable over the lit room
-      const vg=cg.createRadialGradient(fx,fy,20,fx,fy,Math.max(Wd,Hd)*0.75);vg.addColorStop(0,'rgba(8,6,12,0)');vg.addColorStop(1,'rgba(8,6,12,0.55)');cg.fillStyle=vg;cg.fillRect(0,0,Wd,Hd);
-      if(flr){for(const [ox,k] of [[-5,0],[0,1],[4,2]] as const){const fw=Math.floor(flr[2]/4);cg.drawImage(kim,flr[0]+fw*((ff+k)%4),flr[1],fw,flr[3],fx+ox-(fw>>1),fy-flr[3]-1+(k===1?-3:0),fw,flr[3]);}
-        torchX.forEach((xx,i)=>cg.drawImage(kim,flr[0]+Math.floor(flr[2]/4)*((ff+i)%4),flr[1],Math.floor(flr[2]/4),flr[3],xx-3,wallY+3,Math.floor(flr[2]/4),flr[3]));}
-      const cd=KR['decor:candelabra'];if(cd)for(const dx of [-140,136])for(const [wx,wy] of wicks('keep','candelabra')){const x0=fx+dx-(cd[2]>>1),y0=fy-(dx<0?14:12)-cd[3],k=Math.floor(t*8+wx*3+dx)&3;
-        cg.fillStyle='#ff9a3a';cg.fillRect(x0+wx,y0+wy-2,1,2);cg.fillStyle=k===0?'#ffd84a':'#fff2c0';cg.fillRect(x0+wx,y0+wy-3-(k===3?1:0),1,1);}
-      for(let i=0;i<10;i++){const ph=(t*0.5+i*0.137)%1;cg.fillStyle=i%3?'#ff8a2a':'#ffe08a';cg.globalAlpha=1-ph;cg.fillRect(Math.round(fx+Math.sin(t*2+i*1.7)*6*ph),Math.round(fy-10-ph*60),1,1);}cg.globalAlpha=1;
+  function drawCamp(c: CampView, W: number, H: number, t: number, chassis: string, kit: string, campWeapon: WeaponLook) {
+    const gg = g!, u = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr;
+    const V = pixelViewport(W, H), scale = V.scale;
+    if (!worldCanvas) worldCanvas = document.createElement('canvas');
+    if (worldCanvas.width !== V.width || worldCanvas.height !== V.height) { worldCanvas.width = V.width; worldCanvas.height = V.height; }
+    const cg = worldCanvas.getContext('2d')!; cg.imageSmoothingEnabled = false; cg.fillStyle = '#15111f'; cg.fillRect(0, 0, V.width, V.height);
+    const fy = Math.round(V.height * 0.8), hx = Math.round(V.width / 2 - 26), hy = fy, fx = Math.round(V.width / 2), ground = fy;
+    const kim = sheetImage('keep'), KR = ATLAS.zones.keep.rects;
+    if (kim && artReady()) {
+      const fl = KR.floor; for (let yy = 0; yy < V.height; yy += fl[3]) for (let xx = 0; xx < V.width; xx += fl[2]) cg.drawImage(kim, fl[0], fl[1], fl[2], fl[3], xx, yy, fl[2], fl[3]);
+      const wallY = Math.max(0, Math.round(Math.min(ground - 60, 6 * u / scale))), fc = KR.face;
+      cg.fillStyle = '#07060b'; cg.fillRect(0, 0, V.width, wallY);
+      for (let xx = 0; xx < V.width; xx += 32) { cg.drawImage(kim, fc[0] + (xx % 512), fc[1], 32, 48, xx, wallY, 32, 48); }
+      cg.fillStyle = ATLAS.zones.keep.ramp[8]; cg.fillRect(0, wallY - 1, V.width, 1);
+      const torchX: number[] = []; for (let xx = 48; xx < V.width - 16; xx += 128) torchX.push(xx);
+      const tb = KR.torch, ban = KR['hang:banner'];
+      torchX.forEach((xx, i) => { if (i % 2 && ban) cg.drawImage(kim, ban[0], ban[1], ban[2], ban[3], xx + 40, wallY + 4, ban[2], ban[3]); if (tb) cg.drawImage(kim, tb[0], tb[1], tb[2], tb[3], xx - 3, wallY + 14, tb[2], tb[3]); });
+      cg.fillStyle = '#04020866'; cg.fillRect(0, wallY + 48, V.width, 4);
+      const L = ['#2a1810', '#46281a', '#683c24', '#8c5530'];
+      for (let i = -8; i <= 8; i++) { cg.fillStyle = L[i < -6 || i > 6 ? 0 : i < 0 ? 2 : 1]; cg.fillRect(fx + i, fy - 2 + Math.round(i / 4), 1, 3); cg.fillRect(fx + i, fy - 2 - Math.round(i / 4), 1, 3); }
+      const ff = Math.floor(t * 10), flr = KR.flame;
+      if (flr) { const fw = Math.floor(flr[2] / 4); for (const [ox, k] of [[-5, 0], [0, 1], [4, 2]] as const) cg.drawImage(kim, flr[0] + fw * ((ff + k) % 4), flr[1], fw, flr[3], fx + ox - (fw >> 1), fy - flr[3] - 1 + (k === 1 ? -3 : 0), fw, flr[3]); }
+      drawHero32(cg, hx - 6, hy, { angle: Math.PI * 0.5, moving: false, t, stance: chassis, kit, hurt: false, weapon: campWeapon, kick: 0 });
+      const Wd = V.width, Hd = V.height, flick = 1 + Math.sin(t * 9) * 0.04 + Math.sin(t * 23) * 0.03, grid = { w: 1, h: 1, wall: () => false };
+      const lights = [{ x: fx, y: fy - 8, r: 200 * flick, c: [255, 170, 90] as const, i: 1.1 }, ...torchX.map((xx) => ({ x: xx, y: wallY + 18, r: 110 * flick, c: [255, 176, 80] as const, i: 0.8 }))];
+      const BW = Math.ceil(Wd / 2), BH = Math.ceil(Hd / 2);
+      if (!lightC) lightC = document.createElement('canvas'); if (lightC.width !== BW || lightC.height !== BH) { lightC.width = BW; lightC.height = BH; lightImg = null; }
+      const lc = lightC.getContext('2d')!; if (!lightImg) lightImg = lc.createImageData(BW, BH);
+      shade({ grid, ts: 32, rise: 16, ox: 0, oy: 0, W: Wd, H: Hd, amb: [0.3, 0.27, 0.36], lights }, lightImg.data); lc.putImageData(lightImg, 0, 0);
+      cg.globalCompositeOperation = 'multiply'; cg.imageSmoothingEnabled = false; cg.drawImage(lightC, 0, 0, BW * 2, BH * 2); cg.globalCompositeOperation = 'lighter'; cg.globalAlpha = 1;
+      if (!campSnap) campSnap = document.createElement('canvas'); if (campSnap.width !== Wd || campSnap.height !== Hd) { campSnap.width = Wd; campSnap.height = Hd; }
+      const sg = campSnap.getContext('2d')!; sg.clearRect(0, 0, Wd, Hd); sg.drawImage(worldCanvas!, 0, 0); cg.drawImage(campSnap, 0, 0); cg.globalCompositeOperation = 'source-over';
+      const vg = cg.createRadialGradient(fx, fy, 20, fx, fy, Math.max(Wd, Hd) * 0.75); vg.addColorStop(0, 'rgba(8,6,12,0.18)'); vg.addColorStop(1, 'rgba(8,6,12,0.72)'); cg.fillStyle = vg; cg.fillRect(0, 0, Wd, Hd);
     } else {
-      for(let yy=ground;yy<V.height;yy+=16)for(let xx=0;xx<V.width;xx+=16){cg.fillStyle=hash(xx,yy)>.5?'#302737':'#2a2332';cg.fillRect(xx,yy,15,15);}
-      const fc=flameSprite(t);const hero=sprite2('hero','idle',0,heroPalette(color));cg.drawImage(hero,hx-9,hy-18);
-      cg.fillStyle='#704830';cg.fillRect(Math.round(V.width/2)-5,hy-2,11,2);cg.drawImage(fc,Math.round(V.width/2)-5,hy-10);
+      for (let yy = ground; yy < V.height; yy += 16) for (let xx = 0; xx < V.width; xx += 16) { cg.fillStyle = hash(xx, yy) > 0.5 ? '#302737' : '#2a2332'; cg.fillRect(xx, yy, 15, 15); }
+      const fc = flameSprite(t); const hero = sprite2('hero', 'idle', 0, heroPalette(color)); cg.drawImage(hero, hx - 9, hy - 18);
+      cg.fillStyle = '#704830'; cg.fillRect(Math.round(V.width / 2) - 5, hy - 2, 11, 2); cg.drawImage(fc, Math.round(V.width / 2) - 5, hy - 10);
     }
-    gg.imageSmoothingEnabled=false;gg.drawImage(worldCanvas,0,0,V.width*scale,V.height*scale);
-    displayText(gg,c.lastRun?.won?'FINISHED':'CAMP',W/2,16*u,Math.max(3,Math.round(4*dpr)),'#ffd84a',true);
-    gg.textAlign='center';
-    gg.fillStyle = '#ccc'; gg.font = pixelFont(fs);
-    fillText(gg, `Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}${c.floors ? `/${c.floors}` : ''}   ·   ${c.wins ? `Wins ${c.wins}   ·   ` : ''}Runs ${c.runs}`, W / 2, 70 * u, W - 24 * u);
-    const resY = 90 * u + nRows * rowH0 + 22 * u;
-    if (c.lastRun) { const L = c.lastRun; gg.fillStyle = L.won ? '#ffd84a' : '#ff8a8a'; gg.font = pixelFont(Math.round(fs * 0.9));
-      fillText(gg, runResultLine(L, compact), W / 2, resY, W - 24 * u); }
-    else if (c.lastDeath) { gg.fillStyle = '#ff8a8a'; gg.font = pixelFont(Math.round(fs * 0.9));
-      fillText(gg, compact ? `Fell on floor ${c.lastDeath.floor}. Coins banked.` : `You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, resY, W - 24 * u); }
-    const rowH = (compact ? 48 : 32) * u, lw = Math.min(W - 24 * u, 620 * u), lx = W / 2 - lw / 2;
-    const maxRows = Math.max(4, Math.floor((UH * 0.72 - 90 * u) / rowH));
-    const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));
-    campHits = [];
-    c.rows.slice(first, first + maxRows).forEach((r, i) => {
-      const idx = first + i, y = 90 * u + i * rowH, sel = idx === c.sel;
-      campHits.push({ x: lx, y, w: lw, h: rowH - 4 * u, row: idx });
-      pixelPanel(gg,lx,y,lw,rowH-4*u,sel?'#ffd84a':'#493c59',sel?'#493925ee':'#181320ee',dpr);
-      if(sel){gg.fillStyle='#ffd84a';gg.fillRect(lx+4*dpr,y+7*dpr,2*dpr,Math.max(2*dpr,rowH-18*dpr));}
-      const baseline = y + 20 * u, costX = lx + lw - 10 * u, levelX = costX - 86 * u;
-      let descRight = lx + lw - 10 * u;
-      gg.textAlign = 'right';
-      if (r.kind === 'upgrade') {
-        gg.font = pixelFont(Math.round(12 * u));
-        const level = `Lv ${r.level}/${r.max}`;
-        descRight = levelX - textW(gg, level) - 12 * u;
-        gg.fillStyle = '#ddd'; fillText(gg, level, levelX, baseline);
-        gg.fillStyle = r.cost === undefined ? '#7dff5a' : r.affordable ? '#ffd84a' : '#775';
-        gg.font = pixelFont(Math.round(13 * u));
-        fillText(gg, r.cost === undefined ? 'MAX' : `● ${r.cost}`, costX, baseline, 76 * u);
-      }
-      gg.textAlign = 'left'; gg.font = pixelFont(fs);
-      gg.fillStyle = r.kind === 'start' ? '#7dff5a' : '#fff';
-      fillText(gg, r.name, lx + 10 * u, baseline, compact ? descRight - lx - 10 * u : 170 * u);
-      gg.font = pixelFont(Math.round(12 * u)); gg.fillStyle = '#aaa';
-      const descX = lx + (compact ? 10 : 190) * u;
-      fillText(gg, r.desc, descX, compact ? y + 37 * u : baseline, (compact ? lx + lw - 10 * u : descRight) - descX);
-    });
-    gg.textAlign = 'center'; gg.font = pixelFont(fs); gg.fillStyle = '#bbb';
-    const left = Math.ceil(c.autoStartLeft);
-    if (compact) {
-      gg.font = pixelFont(12 * u);
-      fillText(gg, 'Tap a row to buy · B to begin', W / 2, UH - 30 * u, W - 24 * u);
-      fillText(gg, `D-pad + A/Z · Auto-start in ${left}s`, W / 2, UH - 14 * u, W - 24 * u);
-    } else fillText(gg, `Tap a row, or D-pad + A/Z to buy/select · B begin  —  auto-start after ${left}s of pedaling`, W / 2, UH - 18 * u, W - 24 * u);
-    gg.textAlign = 'left';
+    gg.imageSmoothingEnabled = false; gg.drawImage(worldCanvas, 0, 0, V.width * scale, V.height * scale);
+    campHits = drawCampUi(gg, c, W, H, insetCss * dpr, u, dpr, t);
   }
 
   /** Boss bar: gold name plate with phase pips, a framed crimson meter with a lagging damage chip and notched phase marks. */
@@ -1020,18 +1018,18 @@ export function createRenderer(): GameRenderer {
 
   /** Dev measurement: boxes the dungeon HUD covers this frame (device px); read by dev-shot to report HUD area. */
   function drawHud(s: DungeonSnapshot, W: number, H: number, _bike: Readonly<BikeState>) {
-    hudBoxes = []; (globalThis as { __dgHud?: unknown }).__dgHud = { boxes: hudBoxes, W, H };
+    hudBoxes = []; hudHits = []; (globalThis as { __dgHud?: unknown }).__dgHud = { boxes: hudBoxes, W, H };
     const gg = g!, p = s.player, u = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr;
     const L = 14 * u, fs = Math.round(13 * u);
     gg.textAlign = 'left';
-    // boxless player HUD (top-left): ornate Level Crest anchoring beveled HP/XP bars, floating stage/gold header,
-    // full-scale Bidon potions, and a sculpted Second Wind wing emblem.
     const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr;
+    const hasSkillBadge = p.unspentSP > 0 || s.skillTree.spentSP > 0;
     const buffs = activeBuffs(s);
-    const PH = playerHudLayout(W, H, hu, !!(s.perks?.ranks.length), buffs.length > 0);
+    const PH = playerHudLayout(W, H, hu, hasSkillBadge, buffs.length > 0);
     {
       const phRes = drawPlayerHud(gg, s, PH, hu, dpr, coinPulseT, playerHud);
       for (const b of phRes.boxes) hudBox(b.x, b.y, b.w, b.h);
+      if (phRes.skillHit) hudHits.push({ ...phRes.skillHit, action: { type: 'openSkillTree' } });
       const tx = phRes.coinX, ty = phRes.coinY;
       for (let i = flyers.length - 1; i >= 0; i--) {
         const f = flyers[i], k = (s.t - f.t0) / 0.45;
@@ -1042,30 +1040,26 @@ export function createRenderer(): GameRenderer {
         else drawSprite('coin', fx2, fy2 + 3 * hu, (1.4 - 0.6 * k) * hu);
       }
     }
-    // inventory row (bottom-left): the active stance card, chips for the other stances, then the gear sockets.
-    // Actions and cooldowns live in the shell HUD; use its occupied shape to share the row.
-    const LY = runLayout(W, H, insetCss * dpr, u, s.stance.list.length - 1,
+
+    // bottom-left row: Archetype + Weapon Card, 3 Mid-Ride Pace Control chips (COOL / CRUISE / PUSH), and 4 Gear sockets
+    const LY = runLayout(W, H, insetCss * dpr, u, 3,
       W > H && W / dpr > 700 && H / dpr > 500
         ? hudOcclusions?.map(r => ({ x: r.x * dpr, y: r.y * dpr, w: r.w * dpr, h: r.h * dpr })) : undefined);
     {
-      const q = Math.max(1, Math.round(dpr * Math.max(1, u / dpr))), st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], R = LY.card;
-      pixelPanel(gg, R.x, R.y, R.w, R.h, mixHex(st.color, '#3a3243', 0.35), '#171320f0', q); hudBox(R.x, R.y, R.w, R.h);
-      // stance crest: its colour with the initial; swapping shows the pick's colour
-      const pick = st.swapping ? s.stance.list.find((x) => x.id === st.swapping) : undefined, pickC = pick?.color ?? st.color;
+      const q = Math.max(1, Math.round(dpr * Math.max(1, u / dpr))), arch = s.archetype, wcol = RARITY_COLORS[s.weapon.rarity], R = LY.card;
+      pixelPanel(gg, R.x, R.y, R.w, R.h, mixHex(arch.color, '#3a3243', 0.35), '#171320f0', q); hudBox(R.x, R.y, R.w, R.h);
       const bs = R.h - 4 * q, bx = R.x + 2 * q, by = R.y + 2 * q;
-      pixelPanel(gg, bx, by, bs, bs, mixHex(pickC, '#000000', 0.25), pickC, q);
-      const ls = Math.max(1, Math.floor((bs - 4 * q) / 10)), letter = (pick?.name ?? st.name)[0];
-      displayText(gg, letter, bx + bs / 2, by + (bs - 10 * ls) / 2 + ls / 2, ls, mixHex(pickC, '#ffffff', 0.25), true);
-      // weapon in a socket, as big as fits in whole pixels
+      pixelPanel(gg, bx, by, bs, bs, mixHex(arch.color, '#000000', 0.25), arch.color, q);
+      const ls = Math.max(1, Math.floor((bs - 4 * q) / 10)), letter = arch.shortName[0];
+      displayText(gg, letter, bx + bs / 2, by + (bs - 10 * ls) / 2 + ls / 2, ls, mixHex(arch.color, '#ffffff', 0.25), true);
       const sw = Math.round(bs * 1.45), sx = bx + bs + q;
       pixelSocket(gg, sx, by, sw, bs, q);
       iconFit(gg, weaponArt(s.weapon)?.c, sx + sw / 2, by + bs / 2, sw - 3 * q, bs - 3 * q);
       pixelGem(gg, sx + sw - 4 * q, by + 4 * q, wcol, q);
-      // name (rarity colour) over Lv · element
       const tx = sx + sw + 3 * q, room = R.x + R.w - 3 * q - tx;
       const f1 = Math.round(11 * u), sc1 = fontScale(f1), twoLines = R.h - 4 * q >= 16 * sc1;
       gg.textAlign = 'left'; gg.font = pixelFont(f1);
-      const name = fitPixelText(s.weapon.name, sc1, room), tail = `Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''} ${s.weapon.element}${st.styleOn ? ' ✓' : ''}`;
+      const name = fitPixelText(s.weapon.name, sc1, room), tail = `Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''} ${s.weapon.element}`;
       if (twoLines) {
         const top = R.y + (R.h - 16 * sc1) / 2 + 7 * sc1;
         gg.fillStyle = wcol; fillTextShadow(gg, name, tx, top);
@@ -1075,21 +1069,24 @@ export function createRenderer(): GameRenderer {
       } else {
         gg.fillStyle = wcol; fillTextShadow(gg, name, tx, R.y + R.h / 2 + 3.5 * sc1);
       }
-      // other stances: a socket with their weapon and level; the D-pad pick lights up, the AI suggestion pulses
-      const others = s.stance.list.filter((x) => x.id !== st.id), C = LY.stance, n = Math.max(1, others.length);
-      const cw = (C.w - (n - 1) * 3 * u) / n;
-      others.forEach((o, k) => {
-        const x = C.x + k * (cw + 3 * u), picked = st.swapping === o.id, sug = st.suggest === o.id;
+
+      // Mid-Ride Pace Control chips: COOL (-1) / CRUISE (0) / PUSH (+1)
+      const C = LY.stance;
+      const biases: PaceBias[] = [-1, 0, 1];
+      const cw = (C.w - 2 * 3 * u) / 3;
+      biases.forEach((b, k) => {
+        const pm = PACE_MODES[b];
+        const x = C.x + k * (cw + 3 * u), active = s.paceBias.bias === b;
         hudBox(x, C.y, cw, C.h);
-        gg.globalAlpha = sug && !picked ? 0.7 + 0.3 * Math.sin(s.t * 5) : 1;
-        pixelPanel(gg, x, C.y, cw, C.h, picked ? o.color : mixHex(o.color, '#3a3243', 0.45), picked ? mixHex(o.color, '#171320', 0.55) : '#171320f0', q);
-        gg.fillStyle = o.color; gg.fillRect(Math.round(x + 2 * q), Math.round(C.y + 2 * q), Math.round(cw - 4 * q), q);   // stance stripe
-        if (o.base) iconFit(gg, weaponArt({ base: o.base as Weapon['base'], element: o.element, rarity: o.rarity as Weapon['rarity'], variant: o.variant, unique: o.unique, plus: o.plus })?.c,
-          x + cw / 2, C.y + C.h / 2 + q / 2, cw - 6 * q, C.h - 7 * q);
-        gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(9 * u)); gg.textAlign = 'right';
-        fillTextShadow(gg, o.level ? String(o.level) : '–', x + cw - 3 * q, C.y + C.h - 3 * q); gg.textAlign = 'left'; gg.globalAlpha = 1;
+        hudHits.push({ x, y: C.y, w: cw, h: C.h, action: { type: 'paceBias', bias: b } });
+        pixelPanel(gg, x, C.y, cw, C.h, active ? pm.color : '#3a3243', active ? mixHex(pm.color, '#171320', 0.62) : '#171320dd', q);
+        if (active) { gg.fillStyle = pm.color; gg.fillRect(Math.round(x + 2 * q), Math.round(C.y + 2 * q), Math.round(cw - 4 * q), q); }
+        gg.fillStyle = active ? '#fff' : '#9a90a6'; gg.font = pixelFont(Math.round(7.5 * u)); gg.textAlign = 'center';
+        fillTextShadow(gg, pm.shortLabel, x + cw / 2, C.y + C.h * 0.62, cw - 4 * q);
+        gg.textAlign = 'left';
       });
-      // equipped gear: the item's own art in a socket, a rarity gem, and its level
+
+      // Equipped gear sockets
       const G = LY.gear; let gx = G.x;
       for (const sl of SLOTS) {
         const it = s.gear[sl], gw = G.h;
@@ -1101,7 +1098,7 @@ export function createRenderer(): GameRenderer {
           pixelGem(gg, gx + 5 * q, G.y + 5 * q, rc, q);
           gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(8.5 * u)); gg.textAlign = 'right';
           fillTextShadow(gg, String(it.level), gx + gw - 3 * q, G.y + G.h - 3 * q); gg.textAlign = 'left';
-        } else {   // empty socket shows a faint silhouette of what goes there
+        } else {
           gg.globalAlpha = 0.18; iconFit(gg, charFrame('item.' + sl, 0), gx + gw / 2, G.y + G.h / 2, gw - 6 * q, G.h - 6 * q, true); gg.globalAlpha = 1;
         }
         gx += gw + 3 * u;
@@ -1127,8 +1124,8 @@ export function createRenderer(): GameRenderer {
       if (artReady()) drawSigil(gg, c.kind, bx - 14 * sig - 4 * u, by - 6 * u - 10 * sig, sig);
       fillText(gg, artReady() ? label : `☠ ${label}`, W / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
     }
-    // big banners (uniques, curses)
-    let bannerRow = 0; // stack banners that overlap in time (e.g. EXPLORE straight into AMBUSH), newest lowest
+    // big banners
+    let bannerRow = 0;
     for (const f of s.fx) if (f.kind === 'banner') {
       const k2 = (s.t - f.t0) / f.life; if (k2 < 0 || k2 > 1) continue;
       const row = bannerRow++;
@@ -1138,7 +1135,7 @@ export function createRenderer(): GameRenderer {
       { const q = Math.max(1, Math.min(Math.round(4 * dpr), Math.floor((W - 40 * hu) / displayWidth(f.text!, 1)))); displayText(gg, f.text!, W / 2, by - 8 * q, q, f.color, true); }
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
-    // action-ready pulses (screen space, around the hero)
+    // action-ready pulses
     for (let i = pulses.length - 1; i >= 0; i--) {
       const q = pulses[i], k = (s.t - q.t0) / 0.7;
       if (k < 0 || k > 1) { pulses.splice(i, 1); continue; }
@@ -1148,7 +1145,7 @@ export function createRenderer(): GameRenderer {
       strokeText(gg, q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u); gg.fillStyle = q.color; fillText(gg, q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u);
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
-    // active workout & combat buff pills (Fired Up, In Rhythm, Ward, Rally)
+    // active workout & combat buff pills
     const buffY = PH.buffY;
     if (buffs.length) {
       let bx = L;
@@ -1173,31 +1170,18 @@ export function createRenderer(): GameRenderer {
     });
     gg.globalAlpha = 1;
 
-    // minimap with fog (top-right)
-    // crisp: one whole number of device pixels per tile, no resampling
-    const w = s.world, mm = Math.max(1, Math.floor((118 * u) / Math.max(1, w.w)));
-    if (!mini || mini.width !== w.w * mm || mini.height !== w.h * mm) { mini = document.createElement('canvas'); mini.width = w.w * mm; mini.height = w.h * mm; }
-    const m = mini.getContext('2d')!;
-    m.clearRect(0, 0, mini.width, mini.height);
-    for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.DOOR && w.rooms[w.doorRoom[i]]?.seen) { m.fillStyle = '#9a8458'; m.fillRect((i % w.w) * mm, Math.floor(i / w.w) * mm, mm, mm); }
-    for (const r of w.rooms) {
-      if (!r.seen) continue;
-      const here = r.id === s.room, fill = here ? '#6e6a84' : r.cleared ? '#3c5844' : r.boss ? '#5a2a46' : '#46445a', edge = here ? '#d8d0f0' : r.cleared ? '#6a9a72' : r.boss ? '#c0507a' : '#7a7890';
-      m.fillStyle = edge; m.fillRect(r.x0 * mm, r.y0 * mm, r.w * mm, r.h * mm);
-      m.fillStyle = fill; m.fillRect(r.x0 * mm + 1, r.y0 * mm + 1, r.w * mm - 2, r.h * mm - 2);
-      if (r.chest && !r.chest.opened) { m.fillStyle = '#2a1d00'; m.fillRect((r.chest.x - 1) * mm - 1, (r.chest.y - 1) * mm - 1, 2 * mm + 2, 2 * mm + 2); m.fillStyle = '#ffd84a'; m.fillRect((r.chest.x - 1) * mm, (r.chest.y - 1) * mm, 2 * mm, 2 * mm); }
+    // boxless translucent minimap with silhouette halo (top-right)
+    const miniBox = drawBoxlessMinimap(gg, s, W, L, u, dpr, color, miniCache);
+    hudBox(miniBox.x, miniBox.y, miniBox.w, miniBox.h);
+
+    // Biome Arrival Title Card whenever entering a new stage
+    if (!biomeBanner || biomeBanner.floor !== s.floor || s.t < biomeBanner.shownAt) {
+      biomeBanner = { floor: s.floor, shownAt: s.t };
     }
-    const br = w.rooms.find((r) => r.boss);
-    if (br?.seen) { const sx = Math.floor(w.stairs.x) * mm, sy = Math.floor(w.stairs.y) * mm; m.fillStyle = '#0a0810'; m.fillRect(sx - mm, sy - mm, 3 * mm, 3 * mm); m.fillStyle = s.stairsOpen ? '#ffd84a' : '#a07a2a'; for (let k = 0; k < 3; k++) m.fillRect(sx - mm + k * mm, sy - mm + k * mm, (3 - k) * mm, mm); }
-    const mw = mini.width, mh = mini.height, mx0 = Math.round(W - mw - L), my0 = Math.round(L), mk = mm;
-    pixelPanel(gg,mx0-4*dpr,my0-4*dpr,mw+8*dpr,mh+8*dpr,'#655572','#120e18dd',dpr); hudBox(mx0 - 4 * dpr, my0 - 4 * dpr, mw + 8 * dpr, mh + 8 * dpr);
-    gg.imageSmoothingEnabled = false; gg.drawImage(mini, mx0, my0);
-    for (const e of s.enemies) if (e.kind === 'boss' || w.rooms[s.room] && e.x >= w.rooms[s.room].x0 && e.x <= w.rooms[s.room].x0 + w.rooms[s.room].w && e.y >= w.rooms[s.room].y0 && e.y <= w.rooms[s.room].y0 + w.rooms[s.room].h) {
-      const sz = Math.max(2, Math.round((e.kind === 'boss' ? 3 : 2) * dpr)); gg.fillStyle = ENEMY_TINT[e.kind] ?? '#e55'; gg.fillRect(Math.round(mx0 + e.x * mk - sz / 2), Math.round(my0 + e.y * mk - sz / 2), sz, sz);
-    }
-    { // the hero: an outlined diamond that pulses
-      const hx0 = Math.round(mx0 + p.x * mk), hy0 = Math.round(my0 + p.y * mk), R = Math.round((2.5 + (Math.sin(s.t * 6) > 0 ? 0.5 : 0)) * dpr);
-      for (const [rr, c] of [[R + dpr, '#0a0810'], [R, '#ffffff'], [Math.max(1, R - dpr), color]] as const) { gg.fillStyle = c; gg.beginPath(); gg.moveTo(hx0, hy0 - rr); gg.lineTo(hx0 + rr, hy0); gg.lineTo(hx0, hy0 + rr); gg.lineTo(hx0 - rr, hy0); gg.fill(); }
+    const bAge = s.t - biomeBanner.shownAt;
+    if (bAge >= 0 && bAge < BIOME_BANNER_DUR_S && !s.boss?.active && s.run) {
+      const spec = biomeBannerSpec(s.floor, s.run.floors, s.run.zone, s.run.tier, s.run.final);
+      drawBiomeBanner(gg, spec, bAge, W, LY.playH, hu, dpr);
     }
 
     if (s.boss && s.boss.active) {
@@ -1211,17 +1195,17 @@ export function createRenderer(): GameRenderer {
       gg.textAlign = 'left';
     } else if (s.stairsOpen) {
       gg.fillStyle = '#ffd84a'; gg.textAlign = 'center'; gg.font = pixelFont(fs);
-      fillText(gg, 'Stairs open — descend!', W / 2, L + 14 * u); gg.textAlign = 'left';
+      fillText(gg, 'Stairs open - descend!', W / 2, L + 14 * u); gg.textAlign = 'left';
     }
 
-    // non-blocking Loot Choice card (anchored cleanly under the top-right minimap, clamped above dock)
-    lootHits = [];
-    if (s.lootOffer && !s.perks?.offer) {
+    // non-blocking Loot Choice card (anchored cleanly under the top-right boxless minimap, hidden while Skill Tree is open)
+    if (s.lootOffer && !s.skillTree?.offer) {
       const lo = s.lootOffer, col = RARITY_COLORS[lo.rarity], q = Math.max(1, Math.round(dpr));
       const cw = Math.min(Math.round(236 * hu), Math.round(W - 2 * L));
       const ch = Math.round(88 * hu);
       const cx0 = Math.round(W - cw - L);
-      const cy0 = Math.round(Math.min(LY.playH - ch - 8 * hu, my0 + mh + 12 * dpr));
+      const topClear = W < 640 * hu ? Math.max(miniBox.y + miniBox.h + 12 * dpr, PH.toastY + 4 * hu) : miniBox.y + miniBox.h + 12 * dpr;
+      const cy0 = Math.round(Math.min(LY.playH - ch - 8 * hu, topClear));
       pixelPanel(gg, cx0, cy0, cw, ch, col, '#14101ef2', q);
       hudBox(cx0, cy0, cw, ch);
       // icon socket
@@ -1240,7 +1224,7 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = col; fillTextShadow(gg, fitPixelText(lo.name, fontScale(Math.round(10 * hu)), tw), tx, iy + 10 * hu);
       gg.font = pixelFont(Math.round(8.5 * hu));
       gg.fillStyle = '#a89eb6';
-      const sub = lo.kind === 'weapon' ? `${lo.stanceName ?? ''} Lv${lo.level} vs ${lo.currentName}` : `${lo.slot ?? ''} Lv${lo.level} vs ${lo.currentName}`;
+      const sub = lo.kind === 'weapon' ? `${lo.archetypeName ?? ''} Lv${lo.level} vs ${lo.currentName}` : `${lo.slot ?? ''} Lv${lo.level} vs ${lo.currentName}`;
       fillTextShadow(gg, fitPixelText(sub, fontScale(Math.round(8.5 * hu)), tw), tx, iy + 21 * hu);
       // stat delta pills
       let dx = cx0 + 6 * hu, dy = iy + isz + 11 * hu;
@@ -1261,17 +1245,17 @@ export function createRenderer(): GameRenderer {
       const btnY = barY + 7 * hu, btnH = 16 * hu, half = Math.floor((barW - 6 * hu) / 2);
       const leftChoice: 'equip' | 'drop' = lo.defaultChoice;
       const rightChoice: 'equip' | 'drop' = defEquip ? 'drop' : 'equip';
-      const leftLabel = defEquip ? `AUTO EQUIP ${Math.ceil(lo.leftS)}s` : `AUTO SELL +${lo.sellCoins}● ${Math.ceil(lo.leftS)}s`;
-      const rightLabel = defEquip ? `[Y] DROP +${lo.sellCoins}●` : `[Y] EQUIP`;
+      const leftLabel = defEquip ? `AUTO EQUIP ${Math.ceil(lo.leftS)}s` : `AUTO SELL +${lo.sellCoins}c ${Math.ceil(lo.leftS)}s`;
+      const rightLabel = defEquip ? `[Y] DROP +${lo.sellCoins}c` : '[Y] EQUIP';
       pixelPanel(gg, cx0 + 6 * hu, btnY, half, btnH, defEquip ? '#7dff9a' : '#ffd84a', '#1f2922ee', q);
       pixelPanel(gg, cx0 + 6 * hu + half + 6 * hu, btnY, half, btnH, '#8fd8ff', '#1e2036ee', q);
       gg.textAlign = 'center'; gg.font = pixelFont(Math.round(8 * hu));
       gg.fillStyle = defEquip ? '#b8ffc8' : '#ffe89a'; fillTextShadow(gg, leftLabel, cx0 + 6 * hu + half / 2, btnY + 11 * hu, half - 4 * hu);
       gg.fillStyle = '#bfe8ff'; fillTextShadow(gg, rightLabel, cx0 + 6 * hu + half + 6 * hu + half / 2, btnY + 11 * hu, half - 4 * hu);
       gg.textAlign = 'left';
-      lootHits.push(
-        { x: cx0 + 6 * hu, y: btnY, w: half, h: btnH, choice: leftChoice },
-        { x: cx0 + 6 * hu + half + 6 * hu, y: btnY, w: half, h: btnH, choice: rightChoice },
+      hudHits.push(
+        { x: cx0 + 6 * hu, y: btnY, w: half, h: btnH, action: { type: 'lootChoice', choice: leftChoice } },
+        { x: cx0 + 6 * hu + half + 6 * hu, y: btnY, w: half, h: btnH, action: { type: 'lootChoice', choice: rightChoice } },
       );
     }
   }

@@ -2,6 +2,7 @@ import type { ControlHint, GameContext, GameHud, GameSim, MediaTimeline, Section
 import { synthTimeline } from '../../../media/synth/queue';
 import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZONE_FLOOR, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
 import { rideIndexAt } from './ride';
+import { profileSprintScale } from './personal';
 import { advanceCoaching, freshCoaching, type Direction } from './coaching';
 import { Announcements } from './announcements';
 import { SHIPS, selectedShip, unlockedShips, type ShipId } from '../ships';
@@ -81,6 +82,22 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     paddleSwitch: t.num('paddleSwitchThreshold', 30, 5, 90, 1, 'Processed pull needed for the first lane in stepped mode (%)'),
     underDrain: t.num('underDrain', 4, 0, 20, 0.5, 'Shield % per second drained while under the power target'),
     underGrace: t.num('underGraceS', 1.5, 0, 6, 0.25, 'Seconds under target before the shield starts draining'),
+    profileSprint: t.bool('profileSprints', true, 'Raise the sprint floor for strong sprinters, from the shared power profile'),
+    profileSprintMaxK: t.num('profileSprintMaxK', 1.5, 1, 2.5, 0.05, 'Power profile: a sprint floor rises at most this many times the zone floor'),
+  };
+  /** Sprint floor scale from the shared power profile, per sprint length (it only changes between rides). */
+  const sprintK = new Map<string, number>();
+  const sprintScale = (sprintS: number) => {
+    if (!tun.profileSprint()) return 1;
+    const maxK = tun.profileSprintMaxK(), key = `${sprintS}|${maxK}`;
+    let k = sprintK.get(key);
+    if (k === undefined) { k = profileSprintScale(ctx.profile, sprintS, maxK); sprintK.set(key, k); }
+    return k;
+  };
+  /** The effort at `p`, with sprints judged against your own sprint (never easier than the zone floor). */
+  const effortNow = (p: number) => {
+    const e = effortAt(track, p, difficulty);
+    return e.phase === 'sprint' ? { ...e, floorFtp: e.floorFtp * sprintScale(DIFF[difficulty].sprintS) } : e;
   };
   const save: CadenzaSave = { ...(ctx.load<CadenzaSave>() ?? {}) };
   let ship = selectedShip(ctx.profile);
@@ -267,7 +284,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       for (let s = songsDone; s < timeline.songs.length; s++) if (p >= timeline.songs[s].t1 - 0.05) { closeSong(s); songsDone = s + 1; cue('songDone', { n: songsDone }); }
 
       // effort: power targets (sections are too short for HR); ERG holds the watts so pedalling is enough
-      const e = effortAt(track, p, difficulty);
+      const e = effortNow(p);
       const ei = rideIndexAt(track.rideBlocks, p);
       if (ei !== effortIdx) { effortIdx = ei; coaching = freshCoaching(); cue('effort', { phase: e.phase }); }
       ftp = bike.ftpFraction; cadence = bike.cadence3s;

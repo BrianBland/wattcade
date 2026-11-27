@@ -12,7 +12,7 @@ import { drawProjectile, drawPixelFx, flameSprite } from './effects';
 import { pixelPanel, pixelMeter, pixelText, pixelSocket, pixelGem, mixHex } from './chrome';
 import { fillText, fillTextShadow, displayText, displayWidth, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
 import { drawFlagstone, drawMarsh } from './terrain';
-import { loadArt, artReady, ATLAS, hexRgb, sheetImage, zoneRect, cut, charFrame, anim as anim32 } from './art32';
+import { loadArt, artReady, clearDerivedArtCache, ATLAS, hexRgb, sheetImage, zoneRect, cut, charFrame, anim as anim32 } from './art32';
 import { drawStanceSwap, drawPoolLights, drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
 import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
 import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawFlail32, weaponArt, FLAIL_HAND, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
@@ -227,15 +227,12 @@ export function createRenderer(): GameRenderer {
     const r = canvas.getBoundingClientRect(), px = (e.clientX - r.left) * (canvas.width / r.width), py = (e.clientY - r.top) * (canvas.height / r.height);
     const ph = perkHits.findIndex((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
     if (ph >= 0) { e.preventDefault(); send?.({ type: 'perk', i: ph }); return; }
-    const ah = actionHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
-    if (ah) { e.preventDefault(); send?.({ type: 'action', id: ah.id }); return; }
     if (!campHits.length) return;
     const hit = campHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
     if (hit) { e.preventDefault(); send?.({ type: 'campRow', row: hit.row }); }
   };
   let dpr = 1;
   let camX = NaN, camY = NaN, camT = 0, camFor: unknown = null;
-  let actionHits: Array<{ x: number; y: number; w: number; h: number; id: string }> = [];
   /** Dev measurement: boxes the dungeon HUD covers this frame (device px); read by dev-shot to report HUD area. */
   let hudBoxes: Array<[number, number, number, number]> = [];
   function hudBox(x: number, y: number, w: number, h: number) { if (w > 0 && h > 0) hudBoxes.push([x, y, w, h]); }
@@ -337,15 +334,10 @@ export function createRenderer(): GameRenderer {
   }
   function drawEnemy(e: EnemyView, TS: number, t: number) {
     const gg = g!, x = e.x * TS, y = e.y * TS + e.r * TS * 0.9;
-    const isBoss = e.kind === 'boss', ba = isBoss ? BOSS_ART[e.variant % BOSS_ART.length] : undefined;
-    const name = ba ? ba.art : e.kind, scale = ba?.scale ?? 1, pal = ba?.pal;
+    const isBoss = e.kind === 'boss';
     // animation state (render-only): hurt flinch, wind-up = attack pose, moving = walk cycle
     const prev = moved.get(e.id), mv = !!prev && Math.hypot(e.x - prev.x, e.y - prev.y) > 0.004;
     if (prev) { prev.x = e.x; prev.y = e.y; } else { if (moved.size > 512) moved.clear(); moved.set(e.id, { x: e.x, y: e.y }); } // reuse entries; bounded
-    const st: AnimState = e.tell > 0.05 ? 'attack' : e.hurt < 0.12 ? 'hurt' : mv ? 'walk' : 'idle';
-    const fr = anim(name, st, t + e.id * 0.13, e.kind === 'bat' ? 10 : 7);
-    const def = sprite2(name, fr.state, fr.idx, pal, false, scale);
-    const ps = 1; // all actor pixels are the same size as one background pixel
     // hit flash: a short pop per hit, rate-limited so damage over time or rapid fire never leaves it washed out
     // (damage-over-time ticks are too small to count as a hit)
     let fl0 = flashAt.get(e.id) ?? -9; const hp0 = hpSeen.get(e.id) ?? e.hp; hpSeen.set(e.id, e.hp);
@@ -357,13 +349,19 @@ export function createRenderer(): GameRenderer {
     if (e.tell > 0) { gg.globalCompositeOperation = 'lighter'; glowAt(e.kind === 'bomber' ? '#ff7a2a' : '#ff3b3b', x, y - e.r * TS, e.r * TS * (1.5 + e.tell), 0.3 + e.tell * 0.6); gg.globalCompositeOperation = 'source-over'; }
     if (e.exposed) pixelRing(gg,x,y-e.r*TS,e.r*TS*1.9,'#ffe08a',true);
     if (e.exposed) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffe08a', x, y - e.r * TS, e.r * TS * 2.6, 0.75 + Math.sin(t * 9) * 0.2); gg.globalCompositeOperation = 'source-over'; }
-    let artH = def.height * ps;
-    if (artReady()) artH = drawEnemy32(gg, x, y + (e.kind === 'bat' ? bob - TS * 0.35 : 0), { kind: e.kind, variant: e.variant, moving: mv, tell: e.tell, flash, face: e.face, t, id: e.id, free: isBoss && !!lastFlail && lastFlail.mode !== 'hand' }) || artH;
-    else {
-    gg.save();
-    drawCanvas(def, x, y, ps, e.face, bob);
-    if (flash) { gg.globalAlpha = 0.4; drawCanvas(sprite2(name, fr.state, fr.idx, pal, true, scale), x, y, ps, e.face, bob); gg.globalAlpha = 1; }
-    gg.restore();
+    let artH = 0;
+    if (artReady()) artH = drawEnemy32(gg, x, y + (e.kind === 'bat' ? bob - TS * 0.35 : 0), { kind: e.kind, variant: e.variant, moving: mv, tell: e.tell, flash, face: e.face, t, id: e.id, free: isBoss && !!lastFlail && lastFlail.mode !== 'hand' });
+    if (!artH) {
+      const ba = isBoss ? BOSS_ART[e.variant % BOSS_ART.length] : undefined;
+      const name = ba ? ba.art : e.kind, scale = ba?.scale ?? 1, pal = ba?.pal;
+      const st: AnimState = e.tell > 0.05 ? 'attack' : e.hurt < 0.12 ? 'hurt' : mv ? 'walk' : 'idle';
+      const fr = anim(name, st, t + e.id * 0.13, e.kind === 'bat' ? 10 : 7);
+      const def = sprite2(name, fr.state, fr.idx, pal, false, scale);
+      artH = def.height;
+      gg.save();
+      drawCanvas(def, x, y, 1, e.face, bob);
+      if (flash) { gg.globalAlpha = 0.4; drawCanvas(sprite2(name, fr.state, fr.idx, pal, true, scale), x, y, 1, e.face, bob); gg.globalAlpha = 1; }
+      gg.restore();
     }
     if(e.shieldFrac>0)pixelRing(gg,x,y-e.r*TS,e.r*TS*1.5,'#7fe7ff',false,1,e.shieldFrac);
     if (e.elite) {
@@ -380,7 +378,7 @@ export function createRenderer(): GameRenderer {
 
   return {
     mount(container: HTMLElement, c: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
-      color = c.profile.color; send = c.send; insetCss = c.insets?.bottom ?? 0; loadArt();
+      color = c.profile.color; send = c.send; insetCss = c.insets?.bottom ?? 0; void loadArt();
       hudOcclusions = c.insets?.occlusions;
       canvas = document.createElement('canvas');
       canvas.style.cssText = 'width:100%;height:100%;display:block;background:#07060b;touch-action:none';
@@ -395,6 +393,7 @@ export function createRenderer(): GameRenderer {
       dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
       this.resize?.(container.clientWidth || 800, container.clientHeight || 600);
     },
+    ready() { return loadArt(); },
     setInsets(i) { insetCss = i.bottom; hudOcclusions = i.occlusions; },
     resize(w, h) { if (canvas) { clearPinch(); canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); } },
     render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>) {
@@ -415,8 +414,8 @@ export function createRenderer(): GameRenderer {
       lastStance = s.phase === 'run' ? s.stance.id : '';
       if (s.phase !== 'camp') dnf = null;
       if (dnf && s.phase === 'camp' && s.t - dnf.t0 < DNF_S) { drawDnf(s.t - dnf.t0); return; }
-      if (s.phase === 'camp' && s.camp) { actionHits = []; clearPinch(); drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
-      campHits = []; if (s.phase !== 'run') actionHits = [];
+      if (s.phase === 'camp' && s.camp) { clearPinch(); drawCamp(s.camp, canvas.width, canvas.height, s.t, s.stance.id, s.weapon); return; }
+      campHits = [];
       const output=g, OW=canvas.width, OH=canvas.height, w=s.world,t=s.t,p=s.player;
       // Orientation-balanced framing; room boundaries and boss phases never change the selected zoom.
       const bossE = s.boss?.active ? s.enemies.find((e) => e.kind === 'boss') : undefined;
@@ -430,8 +429,9 @@ export function createRenderer(): GameRenderer {
       gg.imageSmoothingEnabled = false;
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
       if (bgFor !== w || (!bg32 && artReady())) {
-        if (bgFor !== w) { bg?.release(); bg = buildBackground(w); mini = null; }
+        if (bgFor !== w) { bg?.release(); bg = artReady() ? null : buildBackground(w); mini = null; }
         bgFor = w; pillars = []; goo.length = 0; gooLast.clear(); bg32?.release(); info = floorInfo(w); bg32 = buildBackground32(w, info); losCache.clear();
+        if (bg32 && bg) { bg.release(); bg = null; }
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
       const uiU=(Math.max(1,Math.min(OW,OH)/dpr/600)*0.75+0.25)*dpr;
@@ -616,10 +616,7 @@ export function createRenderer(): GameRenderer {
         }
         const px = p.x * TS, py = p.y * TS + p.r * TS * 1.1, face = Math.cos(s.aim.angle) >= 0 ? 1 : -1;
         const bob = p.moving ? -Math.abs(Math.sin(t * 10)) * TS * 0.07 : 0;
-        shadow(px, py, TS * 0.32);
         const shot = s.bullets.some((b) => b.friendly && b.age < 0.12 && Math.hypot(b.x - p.x, b.y - p.y) < 1.6);
-        const held = holdPose(p.x * TS, p.y * TS, s.aim.angle, weaponGrip(s.weapon), shot ? 1 : 0);
-        const drawHeld = () => { const ws = heldWeapon(s.weapon, s.aim.angle); gg.drawImage(ws, Math.round(held.x) - Math.floor(ws.width / 2), Math.round(held.y + bob) - Math.floor(ws.height / 2)); };
         if (artReady()) {
           shadow(px, py, TS * 0.3);
           const kick = shot ? 2 : 0;
@@ -628,6 +625,9 @@ export function createRenderer(): GameRenderer {
           if(p.warded)pixelRing(gg,p.x*TS,p.y*TS-10,TS*0.7,'#7fe7ff',true);
           return;
         }
+        shadow(px, py, TS * 0.32);
+        const held = holdPose(p.x * TS, p.y * TS, s.aim.angle, weaponGrip(s.weapon), shot ? 1 : 0);
+        const drawHeld = () => { const ws = heldWeapon(s.weapon, s.aim.angle); gg.drawImage(ws, Math.round(held.x) - Math.floor(ws.width / 2), Math.round(held.y + bob) - Math.floor(ws.height / 2)); };
         if (held.behind) drawHeld();
         const hst: AnimState = p.hurt < 0.12 ? 'hurt' : shot ? 'attack' : p.moving ? 'walk' : 'idle';
         const hf = anim('hero',hst,t,9),hs=1,hpal=heroPalette(color);
@@ -679,7 +679,10 @@ export function createRenderer(): GameRenderer {
       };
       if (!bg32) emissive();
       // Orbit blades and target marker use the same native-pixel masks as ordinary shots.
-      for(const o of s.orbit)drawProjectile(gg,{x:o.x,y:o.y,r:0.2,friendly:true,style:'star',color:ELEMENT_COLORS[s.weapon.element],angle:t*14,age:t},TS);
+      for (const o of s.orbit) {
+        const ob: BulletView = { x: o.x, y: o.y, r: 0.2, friendly: true, style: 'star', color: ELEMENT_COLORS[s.weapon.element], angle: t * 14, age: t, variant: s.weapon.variant };
+        if (!(artReady() && drawShot32(gg, ob, TS))) drawProjectile(gg, ob, TS);
+      }
       const tgt=s.ai.targetId?s.enemies.find(e=>e.id===s.ai.targetId):undefined;
       if(tgt)pixelTarget(gg,tgt.x*TS,tgt.y*TS,(tgt.r+0.35)*TS,tgt.kind==='boss'?'#ff6a70':'#ffd84a');
       gg.restore();
@@ -688,19 +691,22 @@ export function createRenderer(): GameRenderer {
         // Stepped per-pixel lighting with wall occlusion (light32.ts), then the emissive layer on top.
         const dark = s.curse?.kind === 'darkness', zl = ZL[Zn], ox = Math.round(cx), oy = Math.round(cy);
         const grid = { w: w.w, h: w.h, wall: (x: number, y: number) => x < 0 || y < 0 || x >= w.w || y >= w.h || w.tiles[y * w.w + x] === TILE.WALL };
-        const L: Array<Light & { los: Los }> = [], statics = new Set<object>();
-        const add = (key: string | null, x: number, y: number, r: number, c: readonly [number, number, number], i: number) => {
+        const L: Array<Light & { los?: Los }> = [], statics = new Set<object>();
+        const add = (key: string | null, x: number, y: number, r: number, c: readonly [number, number, number], i: number, skipLos = false) => {
           if (x + r < ox || x - r > ox + W || y + r < oy || y - r > oy + H) return;
-          const tx = Math.floor(x / TS), ty = Math.floor(y / TS), rt = Math.ceil(r / TS);
-          let los = key ? losCache.get(key) : undefined;
-          if (!los) { los = lineOfSight(grid, tx, ty, rt); if (key) losCache.set(key, los); }
-          const e = { x, y, r, c, i, los }; L.push(e); if (key) statics.add(e);
+          let los: Los | undefined;
+          if (!skipLos) {
+            const tx = Math.floor(x / TS), ty = Math.floor(y / TS), rt = Math.ceil(r / TS);
+            los = key ? losCache.get(key) : undefined;
+            if (!los) { los = lineOfSight(grid, tx, ty, rt); if (key) losCache.set(key, los); }
+          }
+          const e = { x, y, r, c, i, ...(los ? { los } : {}) }; L.push(e); if (key) statics.add(e);
         };
         const fl = (k: number) => 1 + Math.sin(t * 9 + k * 2) * 0.04 + Math.sin(t * 23 + k) * 0.03;
         const lamp = s.perks?.light ?? 0;
         add(null, p.x * TS, p.y * TS - 12, TS * (dark ? 2.2 : 3.2) * (1 + lamp), [255, 236, 210], 0.55);
         if (lamp > 0) add(null, p.x * TS + Math.cos(s.aim.angle) * TS * 2.2, p.y * TS - 12 + Math.sin(s.aim.angle) * TS * 2.2, TS * 2.6 * (1 + lamp * 0.5), [255, 240, 190], 0.5 + lamp * 0.4); // the Headlamp beam
-        for (const d of s.perks?.drones ?? []) add(null, d.x * TS, d.y * TS - 6, TS * 1.3, [140, 190, 255], 0.5);
+        for (const d of s.perks?.drones ?? []) add(null, d.x * TS, d.y * TS - 6, TS * 1.3, [140, 190, 255], 0.5, true);
         if (!dark) {
           for (const q of info.torches) add(`t${q.x},${q.y}`, q.x * TS + 16, (q.y + 1) * TS + 2, TS * 3.4 * fl(q.x), zl.torch, 0.95);
           for (const q of info.lit) add(q.key, q.x, q.y, q.r * fl(q.cx), q.c, q.i);
@@ -709,8 +715,8 @@ export function createRenderer(): GameRenderer {
           for (const sh of s.shrines) if (sh.state !== 'failed') add(`s${sh.room}`, sh.x * TS, sh.y * TS - 16, TS * 2.6, hexRgb(SHRINE_COLORS[sh.kind]), 0.7);
         }
         let nb = 0;
-        for (const b of s.bullets) if (b.friendly && nb++ < 10) add(null, b.x * TS, b.y * TS, TS * 1.6, hexRgb(b.color.length === 7 ? b.color : '#ffd84a'), 0.8);
-        for (const f of s.fx) if ((f.kind === 'boom' || f.kind === 'muzzle') && t - f.t0 < f.life) add(null, f.x * TS, f.y * TS, TS * 2.2 * (1 - (t - f.t0) / f.life), hexRgb(f.color.length === 7 ? f.color : '#ffb04a'), 1.2);
+        for (const b of s.bullets) if (b.friendly && nb++ < 10) add(null, b.x * TS, b.y * TS, TS * 1.6, hexRgb(b.color.length === 7 ? b.color : '#ffd84a'), 0.8, true);
+        for (const f of s.fx) if ((f.kind === 'boom' || f.kind === 'muzzle') && t - f.t0 < f.life) add(null, f.x * TS, f.y * TS, TS * 2.2 * (1 - (t - f.t0) / f.life), hexRgb(f.color.length === 7 ? f.color : '#ffb04a'), 1.2, true);
         // budget: every dynamic light, plus the 24 static lights nearest the middle of the view
         if (statics.size > 24) {
           const mx = ox + W / 2, my = oy + H / 2, d2 = (l: Light) => (l.x - mx) ** 2 + (l.y - my) ** 2;
@@ -802,8 +808,13 @@ export function createRenderer(): GameRenderer {
       canvas?.removeEventListener('pointercancel', endTouch);
       canvas?.removeEventListener('lostpointercapture', endTouch);
       window.removeEventListener('blur', clearPinch);
-      canvas?.remove(); canvas = null; g = null; bg?.release(); bg = null; bgFor = null;
-      mini=null;worldCanvas=null;lightC=null;zoom.held=0;
+      canvas?.remove(); canvas = null; g = null;
+      bg?.release(); bg = null; bg32?.release(); bg32 = null; bgFor = null; info = null;
+      losCache.clear(); flashAt.clear(); hpSeen.clear(); moved.clear();
+      coinSeen.clear(); readyPrev.clear(); gooLast.clear(); goo.length = 0; flyers.length = 0; pulses.length = 0;
+      clearDerivedArtCache();
+      mini = null; worldCanvas = null; lightC = null; lightImg = null; litC = null; litAt = null; campSnap = null;
+      lastRun = null; dnf = null; zoom.held = 0;
     },
   };
 
@@ -822,7 +833,7 @@ export function createRenderer(): GameRenderer {
       gg.globalAlpha = a * 0.85; displayText(gg, 'DID NOT FINISH', W / 2, ty + 70 * dpr, Math.max(2, Math.round(2.5 * dpr)), '#ffb0b0', true, '#1a0408'); gg.globalAlpha = 1; }
     if (k > DNF_S - 0.45) { gg.fillStyle = '#07060b'; gg.globalAlpha = Math.min(1, (k - (DNF_S - 0.45)) / 0.45); gg.fillRect(0, 0, W, H); gg.globalAlpha = 1; }
   }
-  function drawCamp(c: CampView, W: number, H: number, t: number) {
+  function drawCamp(c: CampView, W: number, H: number, t: number, stanceId: string, campWeapon: WeaponLook) {
     const gg = g!, u = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, fs = Math.round(15 * u);
     const compact = W < 700 * dpr;
     const UH = H - insetCss * dpr; // camp scene sits above the HUD; the backdrop is full-bleed
@@ -857,7 +868,7 @@ export function createRenderer(): GameRenderer {
       cg.fillStyle=L[3];cg.fillRect(fx-7,fy-3,3,1);cg.fillRect(fx+4,fy-4,3,1);
       cg.fillStyle='#ff8a2a';cg.fillRect(fx-3,fy-1,6,1);cg.fillStyle='#ffe08a';cg.fillRect(fx-1,fy-1,2,1);
       const ff=Math.floor(t*10),flr=KR.flame;if(flr){const fw=Math.floor(flr[2]/4);for(const [ox,k] of [[-5,0],[0,1],[4,2]] as const)cg.drawImage(kim,flr[0]+fw*((ff+k)%4),flr[1],fw,flr[3],fx+ox-(fw>>1),fy-flr[3]-1+(k===1?-3:0),fw,flr[3]);}
-      drawHero32(cg,hx-6,hy,{angle:Math.PI*0.5,moving:false,t,stance:'scout',hurt:false,weapon:{base:'pellet'} as WeaponLook,kick:0});
+      drawHero32(cg,hx-6,hy,{angle:Math.PI*0.5,moving:false,t,stance:stanceId,hurt:false,weapon:campWeapon,kick:0});
       // stepped light: the fire (flickering) and the wall torches over a dim ambient
       const Wd=V.width,Hd=V.height,flick=1+Math.sin(t*9)*0.04+Math.sin(t*23)*0.03,grid={w:1,h:1,wall:()=>false};
             const lights=[{x:fx,y:fy-8,r:200*flick,c:[255,170,90] as const,i:1.1},...torchX.map((xx)=>({x:xx,y:wallY+18,r:110*flick,c:[255,176,80] as const,i:0.8})),...[-140,136].map((dx)=>({x:fx+dx,y:fy-24,r:70*flick,c:[255,200,120] as const,i:0.6}))];
@@ -923,8 +934,8 @@ export function createRenderer(): GameRenderer {
     if (compact) {
       gg.font = pixelFont(12 * u);
       fillText(gg, 'Tap a row to buy · B to begin', W / 2, UH - 30 * u, W - 24 * u);
-      fillText(gg, `D-pad + Z · Auto-start in ${left}s`, W / 2, UH - 14 * u, W - 24 * u);
-    } else fillText(gg, `Tap a row, or D-pad + Z to buy/select · B begin  —  auto-start after ${left}s of pedaling`, W / 2, UH - 18 * u, W - 24 * u);
+      fillText(gg, `D-pad + A/Z · Auto-start in ${left}s`, W / 2, UH - 14 * u, W - 24 * u);
+    } else fillText(gg, `Tap a row, or D-pad + A/Z to buy/select · B begin  —  auto-start after ${left}s of pedaling`, W / 2, UH - 18 * u, W - 24 * u);
     gg.textAlign = 'left';
   }
 
@@ -1006,7 +1017,9 @@ export function createRenderer(): GameRenderer {
         const f = flyers[i], k = (s.t - f.t0) / 0.45;
         if (k >= 1 || k < 0) { flyers.splice(i, 1); if (k >= 1) coinPulseT = s.t; continue; }
         const e = k * k * (3 - 2 * k), fx2 = f.x + (tx - f.x) * e, fy2 = f.y + (ty - f.y) * e - Math.sin(k * Math.PI) * 40 * hu;
-        drawSprite('coin', fx2, fy2 + 3 * hu, (1.4 - 0.6 * k) * hu);
+        const cf = artReady() ? charFrame('coin', Math.floor(s.t * 8 + i)) : null;
+        if (cf) { const sc = Math.max(1, Math.round((1.4 - 0.6 * k) * hu)); gg.drawImage(cf, Math.round(fx2 - cf.width * sc / 2), Math.round(fy2 - cf.height * sc / 2), cf.width * sc, cf.height * sc); }
+        else drawSprite('coin', fx2, fy2 + 3 * hu, (1.4 - 0.6 * k) * hu);
       }
       const potX = Math.max(x + 86 * hu, coinEnd + 9 * hu), potStep = Math.min(9 * hu, (x + PW - 32 * hu - potX) / Math.max(1, p.potionCap - 1));
       for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; if (!drawItem32(gg, 'potion', potX + k * potStep, ly + 4 * hu, Math.max(1, Math.round(hu * 0.6)))) drawSprite('potion', potX + k * potStep, ly - 3.5 * hu, 1.1 * hu); }
@@ -1023,7 +1036,6 @@ export function createRenderer(): GameRenderer {
     const LY = runLayout(W, H, insetCss * dpr, u, s.stance.list.length - 1,
       W > H && W / dpr > 700 && H / dpr > 500
         ? hudOcclusions?.map(r => ({ x: r.x * dpr, y: r.y * dpr, w: r.w * dpr, h: r.h * dpr })) : undefined);
-    actionHits = [];
     {
       const q = Math.max(1, Math.round(dpr * Math.max(1, u / dpr))), st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], R = LY.card;
       pixelPanel(gg, R.x, R.y, R.w, R.h, mixHex(st.color, '#3a3243', 0.35), '#171320f0', q); hudBox(R.x, R.y, R.w, R.h);

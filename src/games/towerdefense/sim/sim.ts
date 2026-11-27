@@ -24,6 +24,12 @@ import type { Banner, BossView, FlowStage, RadarView, BroodInfo, BroodView, Burn
 export * from './defs';
 export type { TdSnapshot } from './types';
 
+/** What a new version of the sim needs to carry on in the Garage (live updates); the rest is in the save. */
+export interface TdResume {
+  at: 'garage'; garageSel: number; menuPage: 'modes' | 'campaign'; levelSel: number; campaignSel: number; chain: number;
+  lastEndless: boolean; result: { spec: LevelSpec; stars: number; failed: boolean } | null; intensity: Intensity; loadGate: boolean; padsTurned: boolean;
+}
+
 export interface TdOpts {
   autopilot?: boolean;
   /** Headless and tests: mount the incoming brood's weapon by itself at each lull ('auto', default with autopilot). Riders switch by hand. */
@@ -337,6 +343,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let workshop: { pad: number; row: number; idle: number } | null = null;
   /** The renderer reports its orientation (`padOrder` action) so ◀▶ follow the screen; headless stays portrait. */
   let padsTurned = false;
+  // Live updates: a new version of this sim carrying on in the Garage between runs (see checkpoint())
+  const resumed = (opts as { resume?: TdResume } | undefined)?.resume;
+  if (resumed?.at === 'garage') {
+    ({ garageSel, menuPage, levelSel, campaignSel, chain, lastEndless, result, loadGate, padsTurned } = resumed);
+    intensity = resumed.intensity;
+  }
   const PAD_ORDER = () => PAD_ORDERS[padsTurned ? 'landscape' : 'portrait'];
   let leakDmg = 0, stallT = 0;
   const broods: Element[] = [];
@@ -1556,9 +1568,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     tierOutput = effortK();
     if (!started) {
       started = true; lastRevs = ctx.bike().crankRevs;
-      const pl = opts?.play;
+      const pl = resumed ? undefined : opts?.play;
       if (pl) startLevel('campaign' in pl ? CAMPAIGN[clamp(pl.campaign, 0, CAMPAIGN.length - 1)] : quickRide(pl.quick.seed, pl.quick.minutes));
-      else if (opts?.skipGarage || autopilot) startRun();
+      else if (!resumed && (opts?.skipGarage || autopilot)) startRun();
     }
     if (phase === 'run' && loading) { // waiting for the renderer: the level holds still, the trainer stays neutral
       loadingS += dt; pending.length = 0; discardEdges = true; lastRevs = ctx.bike().crankRevs;
@@ -1669,7 +1681,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     update,
     isOver: () => false,
     menuActions: () => phase === 'run' ? [{ id: 'garage', label: play ? 'Quit level · back to the level select' : 'End the run · back to the ride select', action: { type: 'bail' } }] : [],
-    inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot)),
+    inMenu: () => phase === 'garage' && (started || !!resumed || !(opts?.skipGarage || autopilot)),
+    checkpoint: (): TdResume | null => phase === 'garage' && !loading
+      ? { at: 'garage', garageSel, menuPage, levelSel, campaignSel, chain, lastEndless, result, intensity, loadGate, padsTurned } : null,
     receive(action: unknown) {
       const a = action as { type?: unknown } | null;
       if (a?.type === 'padOrder') { padsTurned = (a as { turned?: unknown }).turned === true; return; }

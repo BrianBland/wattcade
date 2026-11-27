@@ -26,7 +26,7 @@ export const STANCES: Record<StanceId, StanceDef> = {
   vanguard: { id: 'vanguard', name: 'Vanguard', role: 'tank grinder', color: '#ff8c5a', styles: ['flame', 'pellet', 'axe'], starter: 'pellet',
     band: [70, 82], bonus: 'armor', cdRefillBonus: 0.2, dmgTaken: 0.58, moveMult: 0.94, strikeRadiusMult: 1.25, rollCdMult: 1, projSpeedMult: 1, critBonus: 0, exposeBonusS: 0, statusDurMult: 1,
     standoff: (b) => Math.min(b, 2.1), strafe: 0.28 },
-  arcanist: { id: 'arcanist', name: 'Arcanist', role: 'tempo expose', color: '#c77dff', styles: ['orb'], starter: 'orb',
+  arcanist: { id: 'arcanist', name: 'Arcanist', role: 'expose-extender', color: '#c77dff', styles: ['orb'], starter: 'orb',
     band: [78, 88], bonus: 'dmg', cdRefillBonus: 0.25, dmgTaken: 1, moveMult: 1, strikeRadiusMult: 1, rollCdMult: 1, projSpeedMult: 1, critBonus: 0, exposeBonusS: 1.5, statusDurMult: 1.25,
     standoff: (b) => Math.max(b, 4.2), strafe: 0.5 },
   skirmisher: { id: 'skirmisher', name: 'Skirmisher', role: 'agile kiter', color: '#8fd8ff', styles: ['star', 'spark', 'knife'], starter: 'star',

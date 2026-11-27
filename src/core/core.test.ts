@@ -365,3 +365,24 @@ describe('mixer rampIn + session idle', () => {
     expect(s.ctx.bike().power3s).toBeGreaterThan(50);
   });
 });
+
+describe('GameSession.swapSim (live updates)', () => {
+  it('replaces the sim, passing resume, and keeps the clock, tuning and recorder', () => {
+    const made: Array<{ resume?: unknown }> = []; let disposed = 0;
+    const game: GameModule = {
+      ...toyGame,
+      createSim: (ctx, opts) => { made.push(opts as { resume?: unknown }); const sim = toyGame.createSim(ctx, opts); return { ...sim, dispose: () => { disposed++; } }; },
+    };
+    const s = createGameSession({ game, profile: prof(), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    s.step(30 * 10);
+    const first = s.sim, t0 = s.clock.now(), tuning = s.tuning;
+    s.swapSim(game, { at: 'x' });
+    expect(disposed).toBe(1);
+    expect(s.sim).not.toBe(first);
+    expect(made[1].resume).toEqual({ at: 'x' });
+    expect(s.clock.now()).toBe(t0); expect(s.tuning).toBe(tuning);
+    s.step(30 * 10);
+    expect(s.clock.now()).toBeGreaterThan(t0);
+    expect(s.finish().samples.length).toBeGreaterThanOrEqual(19);
+  });
+});

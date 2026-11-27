@@ -125,11 +125,11 @@ describe('hands-off input map', () => {
     expect(by.ward).toBeLessThan(0.1);
     expect(by.strike).toBe(1); // nothing in reach at spawn, so no cooldown spent
   });
-  it('Rally only works while a spin-up is called', () => {
+  it('Rally is always usable off cooldown when no loot offer is active', () => {
     const s = run([{ t: 0.1, press: 'y' }, { t: 0.15, release: 'y' }], 10);
     const snap = s.sim.snapshot() as any;
-    expect(snap.player.rallied).toBe(false);
-    expect(snap.actions.find((a: { id: string }) => a.id === 'rally').usable).toBe(false);
+    expect(snap.player.rallied).toBe(true);
+    expect(snap.actions.find((a: { id: string }) => a.id === 'rally').ready).toBeLessThan(1);
   });
 });
 

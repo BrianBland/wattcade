@@ -212,8 +212,12 @@ export function createRenderer(): GameRenderer {
   };
   let campHits: Array<{ x: number; y: number; w: number; h: number; row: number }> = [];
   let perkHits: Array<{ x: number; y: number; w: number; h: number }> = [];
+  let lootHits: Array<{ x: number; y: number; w: number; h: number; choice: 'equip' | 'drop' }> = [];
   const onPointer = (e: PointerEvent) => {
     if (!canvas) return;
+    const r = canvas.getBoundingClientRect(), px = (e.clientX - r.left) * (canvas.width / r.width), py = (e.clientY - r.top) * (canvas.height / r.height);
+    const lh = lootHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
+    if (lh) { e.preventDefault(); send?.({ type: 'lootChoice', choice: lh.choice }); return; }
     if (e.pointerType === 'touch' && pinchEnabled) {
       e.preventDefault();
       if (touches.size < 2) {
@@ -223,7 +227,6 @@ export function createRenderer(): GameRenderer {
       }
       return;
     }
-    const r = canvas.getBoundingClientRect(), px = (e.clientX - r.left) * (canvas.width / r.width), py = (e.clientY - r.top) * (canvas.height / r.height);
     const ph = perkHits.findIndex((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
     if (ph >= 0) { e.preventDefault(); send?.({ type: 'perk', i: ph }); return; }
     const ah = actionHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
@@ -1163,6 +1166,67 @@ export function createRenderer(): GameRenderer {
     } else if (s.stairsOpen) {
       gg.fillStyle = '#ffd84a'; gg.textAlign = 'center'; gg.font = pixelFont(fs);
       fillText(gg, 'Stairs open — descend!', W / 2, L + 14 * u); gg.textAlign = 'left';
+    }
+
+    // non-blocking Loot Choice card (anchored cleanly under the top-right minimap, clamped above dock)
+    lootHits = [];
+    if (s.lootOffer && !s.perks?.offer) {
+      const lo = s.lootOffer, col = RARITY_COLORS[lo.rarity], q = Math.max(1, Math.round(dpr));
+      const cw = Math.min(Math.round(236 * hu), Math.round(W - 2 * L));
+      const ch = Math.round(88 * hu);
+      const cx0 = Math.round(W - cw - L);
+      const cy0 = Math.round(Math.min(LY.playH - ch - 8 * hu, my0 + mh + 12 * dpr));
+      pixelPanel(gg, cx0, cy0, cw, ch, col, '#14101ef2', q);
+      hudBox(cx0, cy0, cw, ch);
+      // icon socket
+      const isz = Math.round(30 * hu), ix = cx0 + 6 * hu, iy = cy0 + 6 * hu;
+      pixelSocket(gg, ix, iy, isz, isz, q);
+      if (lo.kind === 'weapon' && lo.base) {
+        iconFit(gg, weaponArt({ base: lo.base, element: lo.element ?? 'normal', rarity: lo.rarity, variant: lo.variant, unique: lo.unique, plus: lo.plus })?.c, ix + isz / 2, iy + isz / 2, isz - 4 * q, isz - 4 * q);
+      } else if (lo.slot) {
+        iconFit(gg, charFrame('item.' + lo.slot, 0), ix + isz / 2, iy + isz / 2, isz - 4 * q, isz - 4 * q);
+      }
+      pixelGem(gg, ix + isz - 4 * q, iy + 4 * q, col, q);
+      // title + subtitle
+      const tx = ix + isz + 6 * hu, tw = cx0 + cw - tx - 6 * hu;
+      gg.textAlign = 'left';
+      gg.font = pixelFont(Math.round(10 * hu));
+      gg.fillStyle = col; fillTextShadow(gg, fitPixelText(lo.name, fontScale(Math.round(10 * hu)), tw), tx, iy + 10 * hu);
+      gg.font = pixelFont(Math.round(8.5 * hu));
+      gg.fillStyle = '#a89eb6';
+      const sub = lo.kind === 'weapon' ? `${lo.stanceName ?? ''} Lv${lo.level} vs ${lo.currentName}` : `${lo.slot ?? ''} Lv${lo.level} vs ${lo.currentName}`;
+      fillTextShadow(gg, fitPixelText(sub, fontScale(Math.round(8.5 * hu)), tw), tx, iy + 21 * hu);
+      // stat delta pills
+      let dx = cx0 + 6 * hu, dy = iy + isz + 11 * hu;
+      gg.font = pixelFont(Math.round(8.5 * hu));
+      for (const dt of lo.deltas) {
+        const dw = textW(gg, dt.text) + 8 * hu;
+        if (dx + dw > cx0 + cw - 4 * hu) break;
+        const dc = dt.tone === 'good' ? '#7dff9a' : dt.tone === 'bad' ? '#ff7a8a' : '#8fd8ff';
+        gg.fillStyle = '#221c30'; gg.fillRect(Math.round(dx), Math.round(dy - 9 * hu), Math.round(dw), Math.round(12 * hu));
+        gg.fillStyle = dc; fillTextShadow(gg, dt.text, dx + 4 * hu, dy);
+        dx += dw + 4 * hu;
+      }
+      // countdown bar for automatic default
+      const barY = cy0 + ch - 27 * hu, barW = cw - 12 * hu;
+      const defEquip = lo.defaultChoice === 'equip';
+      pixelMeter(gg, cx0 + 6 * hu, barY, barW, 4 * hu, Math.max(0, lo.leftS / Math.max(0.1, lo.totalS)), defEquip ? '#7dff9a' : '#ffd84a', dpr);
+      // two tappable action buttons: Default (auto) and [Y] Alternate
+      const btnY = barY + 7 * hu, btnH = 16 * hu, half = Math.floor((barW - 6 * hu) / 2);
+      const leftChoice: 'equip' | 'drop' = lo.defaultChoice;
+      const rightChoice: 'equip' | 'drop' = defEquip ? 'drop' : 'equip';
+      const leftLabel = defEquip ? `AUTO EQUIP ${Math.ceil(lo.leftS)}s` : `AUTO SELL +${lo.sellCoins}● ${Math.ceil(lo.leftS)}s`;
+      const rightLabel = defEquip ? `[Y] DROP +${lo.sellCoins}●` : `[Y] EQUIP`;
+      pixelPanel(gg, cx0 + 6 * hu, btnY, half, btnH, defEquip ? '#7dff9a' : '#ffd84a', '#1f2922ee', q);
+      pixelPanel(gg, cx0 + 6 * hu + half + 6 * hu, btnY, half, btnH, '#8fd8ff', '#1e2036ee', q);
+      gg.textAlign = 'center'; gg.font = pixelFont(Math.round(8 * hu));
+      gg.fillStyle = defEquip ? '#b8ffc8' : '#ffe89a'; fillTextShadow(gg, leftLabel, cx0 + 6 * hu + half / 2, btnY + 11 * hu, half - 4 * hu);
+      gg.fillStyle = '#bfe8ff'; fillTextShadow(gg, rightLabel, cx0 + 6 * hu + half + 6 * hu + half / 2, btnY + 11 * hu, half - 4 * hu);
+      gg.textAlign = 'left';
+      lootHits.push(
+        { x: cx0 + 6 * hu, y: btnY, w: half, h: btnH, choice: leftChoice },
+        { x: cx0 + 6 * hu + half + 6 * hu, y: btnY, w: half, h: btnH, choice: rightChoice },
+      );
     }
   }
 }

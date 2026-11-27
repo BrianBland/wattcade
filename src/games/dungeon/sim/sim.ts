@@ -13,7 +13,8 @@ import { DEFAULT_OFFER, PERK_FX, PERKS, RARITY_NAMES, SLOT_NAMES, STYLE_NAMES, k
 import { clearLine, cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { DELVE_MAX, RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
 import { BOSS_NAMES, FLOORS, SWEEPER, TIERS, ZONE_STARTS, planFor, tierOf, unlockAfterWin, type RunResult } from './descent';
-import type { BulletView, CampView, PerkView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
+import { evaluateLootOffer } from './lootOffer';
+import type { BulletView, CampView, PerkView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, LootOfferView, ShrineView, Toast } from './types';
 
 interface Enemy {
   id: number; kind: EnemyKind | 'boss'; x: number; y: number; r: number; hp: number; maxHp: number;
@@ -128,9 +129,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const strikeRadius = tn.num('strikeRadius', 3.5, 1, 8, 0.25, 'tiles');
   const wardCd = tn.num('wardCdS', 45, 2, 120, 1, 'Ward (B) cooldown');
   const wardDur = tn.num('wardDurS', 2, 0.5, 10, 0.5, 'Ward blocks all damage for this long');
-  const rallyCd = tn.num('rallyCdS', 35, 2, 120, 1, 'Rally (Y) cooldown; only usable when a spin-up is called');
+  const rallyCd = tn.num('rallyCdS', 35, 2, 120, 1, 'Rally (Y) cooldown; usable anytime, bonus duration during called spin-ups');
   const rallyDur = tn.num('rallyDurS', 10, 1, 30, 1);
   const rallyMult = tn.num('rallyFireMult', 1.5, 1, 3, 0.05, 'fire-rate multiplier while Rally is up');
+  const lootPromptS = tn.num('lootPromptS', 8, 2, 20, 0.5, 'seconds a Loot Choice prompt waits before taking its default choice');
   const rollCd = tn.num('aiRollCdS', 2, 0.5, 10, 0.5, 'the AI rolls out of a crowd when hurt (0.3 s invulnerable); this is its cooldown');
   const potionCd = tn.num('potionCdS', 6, 0, 30, 0.5, 'Potion (Z) cooldown');
   const zoneRates = [1, 0, 0, 0, 0, 0];
@@ -503,22 +505,16 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
   function coinValue() { return Math.max(1, Math.round((1 + rng() * 2) * (1 + 0.3 * (floor - 1)) * mods.coinMult * T().coins)); }
   function addCoins(v: number) { v = Math.round(v * bounty()); P.coins += v; P.coinsEarned += v; }
-  function collect(d: Drop) {
-    if (d.kind === 'coin') { addCoins(d.value); cue('coin'); addFx({ kind: 'text', x: P.x, y: P.y - 0.6, life: 0.8, color: '#ffd84a', text: `+${d.value}` }); return; }
-    if (d.kind === 'potion') {
-      if (P.potions < potionCap()) { P.potions++; toast('+1 Potion', '#ff6b8a'); cue('pickup'); }
-      else { const v = Math.round(10 * floor * mods.coinMult); addCoins(v); toast(`Potion sold +${v}c`, '#ffd84a'); cue('coin'); }
-      return;
-    }
-    const it = d.item!;
+  interface PendingLoot { item: Weapon | Gear; sid: StanceId; view: LootOfferView; leftS: number }
+  let lootOffer: PendingLoot | null = null;
+  let lootOfferId = 0;
+  let lootTap: 'equip' | 'drop' | null = null;
+
+  function applyLootSell(it: Weapon | Gear, v: number) {
+    addCoins(v); toast(`Sold ${it.name} +${v}c`, '#bbb'); cue('coin');
+  }
+  function applyLootEquip(it: Weapon | Gear, sid: StanceId) {
     const col = RARITY_COLORS[it.rarity];
-    const sid = 'base' in it ? stanceOfStyle(it.base, mods.arcanist) : stance;
-    if ('base' in it && arsenal.collect(it.base, it.rarity, mods.arcanist)) {
-      toast('Full Arsenal: epic+ weapons collected for all 4 stances', '#ffd84a');
-      ctx.emit({ type: 'fullArsenal', data: { floor, stances: 4, minRarity: 3 } });
-    }
-    const better = 'base' in it ? it.score > weaponScore(slots[sid]) : !gear[it.slot] || it.score > gear[it.slot]!.score;
-    if (!better) { const v = Math.round(sellValue(it.level, Math.min(4, it.rarity) as Rarity) * mods.coinMult); addCoins(v); toast(`Sold ${it.name} +${v}c`, '#bbb'); cue('coin'); return; }
     if ('base' in it) { slots[sid] = it; if (sid === stance && !swapTo) weapon = it; } else { gear[it.slot] = it; recomputeHp(false); }
     if (it.rarity > bestFind.rarity || (it.rarity === bestFind.rarity && it.level > bestFind.level)) bestFind = it;
     toast('base' in it ? `Equipped ${it.name} (${STANCES[sid].name})` : `Equipped ${it.name}`, col);
@@ -529,6 +525,42 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       addFx({ kind: 'banner', x: P.x, y: P.y, life: 3.5, color: col, text: `UNIQUE — ${it.name}${u ? ': ' + u.blurb : ''}` });
       ctx.emit({ type: 'uniqueFound', data: { name: it.name, floor } });
     } else cue('equip');
+  }
+  function resolveLootOffer(choice: 'equip' | 'drop') {
+    if (!lootOffer) return;
+    const o = lootOffer;
+    lootOffer = null; lootTap = null;
+    if (choice === 'equip') applyLootEquip(o.item, o.sid);
+    else applyLootSell(o.item, o.view.sellCoins);
+  }
+  function flushLootOffer() { if (lootOffer) resolveLootOffer(lootOffer.view.defaultChoice); }
+
+  function collect(d: Drop) {
+    if (d.kind === 'coin') { addCoins(d.value); cue('coin'); addFx({ kind: 'text', x: P.x, y: P.y - 0.6, life: 0.8, color: '#ffd84a', text: `+${d.value}` }); return; }
+    if (d.kind === 'potion') {
+      if (P.potions < potionCap()) { P.potions++; toast('+1 Potion', '#ff6b8a'); cue('pickup'); }
+      else { const v = Math.round(10 * floor * mods.coinMult); addCoins(v); toast(`Potion sold +${v}c`, '#ffd84a'); cue('coin'); }
+      return;
+    }
+    const it = d.item!;
+    const sid = 'base' in it ? stanceOfStyle(it.base, mods.arcanist) : stance;
+    if ('base' in it && arsenal.collect(it.base, it.rarity, mods.arcanist)) {
+      toast('Full Arsenal: epic+ weapons collected for all 4 stances', '#ffd84a');
+      ctx.emit({ type: 'fullArsenal', data: { floor, stances: 4, minRarity: 3 } });
+    }
+    const v = Math.round(sellValue(it.level, Math.min(4, it.rarity) as Rarity) * mods.coinMult);
+    const cur = 'base' in it ? slots[sid] : gear[it.slot];
+    const evalOffer = evaluateLootOffer(it, cur, v, sid);
+    if (!evalOffer) { applyLootSell(it, v); return; }
+    if (autopilot) {
+      if (evalOffer.defaultChoice === 'equip') applyLootEquip(it, sid); else applyLootSell(it, v);
+      return;
+    }
+    // Commit any earlier pending offer to its default before presenting the new drop
+    flushLootOffer();
+    const totalS = lootPromptS();
+    lootOffer = { item: it, sid, leftS: totalS, view: { ...evalOffer, id: ++lootOfferId, leftS: totalS, totalS } };
+    cue(it.rarity === 5 ? 'unique' : 'pickup');
   }
 
   // ---------- combat ----------
@@ -745,9 +777,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       P.ward = wardDur(); startCd('ward', wardCd()); cue('pickup');
       addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.6, color: '#7fe7ff', r: 1.4 });
     } else if (id === 'rally') {
-      if (!spinCalled()) { cue('deny'); toast('Rally answers a called spin-up', '#8fd8ff'); return false; }
-      P.rally = rallyDur(); startCd('rally', rallyCd()); cue('reward');
-      toast('Rally! Faster attacks', '#8fd8ff');
+      const spin = spinCalled();
+      P.rally = rallyDur() * (spin ? 1.35 : 1); startCd('rally', rallyCd()); cue('reward');
+      toast(spin ? 'Rally! Spin-up surge' : 'Rally! Faster attacks', '#8fd8ff');
     } else {
       if (P.potions <= 0 || P.hp >= P.maxHp) { cue('deny'); return false; }
       P.potions--; P.hp = Math.min(P.maxHp, P.hp + P.maxHp * potionHeal() * (1 + pm.potionHeal)); P.lastPotionT = t; startCd('potion', potionCd()); cue('potion');
@@ -758,11 +790,18 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
   function riderActions(input: Readonly<InputState>, bike: Readonly<BikeState>) {
     const p = (b: Button) => input.pressed.has(b);
-    for (const id of tapped.splice(0)) act(id, bike); // on-screen button taps
+    if (lootOffer && lootTap) resolveLootOffer(lootTap);
+    for (const id of tapped.splice(0)) {
+      if (id === 'rally' && lootOffer) resolveLootOffer(lootOffer.view.defaultChoice === 'equip' ? 'drop' : 'equip');
+      else act(id, bike);
+    }
     if (p('left') || p('right')) changeStance(p('right') ? 1 : -1);
     if (p('a')) act('strike', bike);
     if (p('b')) act('ward', bike);
-    if (p('y')) act('rally', bike);
+    if (p('y')) {
+      if (lootOffer) resolveLootOffer(lootOffer.view.defaultChoice === 'equip' ? 'drop' : 'equip');
+      else act('rally', bike);
+    }
     if (p('z')) act('potion', bike);
     if (shouldAutoPotion(P.hp / P.maxHp, P.potions, t - P.lastPotionT, autoPotionFrac()) && cds.potion.left <= 0) act('potion', bike);
     if (opts?.actionBot) botActions(bike);
@@ -1014,7 +1053,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     totals.runs++; P.coins = 0; P.coinsEarned = 0; lastDeath = undefined;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
     weapon = starterWeapon(floor, rng); fillSlots(P.level); arsenal.reset(); bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
-    perkRanks = {}; pm = perkMods({}); perkPityN = 0; perkDueT = -1; offer = null; drones.length = 0;
+    perkRanks = {}; pm = perkMods({}); perkPityN = 0; perkDueT = -1; offer = null; lootOffer = null; lootTap = null; drones.length = 0;
     // a shortcut start skips bosses, so it packs one perk per skipped boss (the suggested card of a normal deal)
     if (opts?.perks !== 'none') for (let k = 1; k < floor; k++) {
       const r = rollOffer(rng, perkRanks, perkPityN, { stance, stances: stancesFor(mods.arcanist), style: styleWeights(ride) }, { weights: [DEFAULT_OFFER.weights[0], DEFAULT_OFFER.weights[1], perkLegW()], pityStep: perkPity() });
@@ -1192,6 +1231,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
     P.ward = Math.max(0, P.ward - dt); P.rally = Math.max(0, P.rally - dt);
     riderActions(input, bike);
+    if (lootOffer) {
+      lootOffer.leftS -= dt;
+      if (lootOffer.leftS <= 0) resolveLootOffer(lootOffer.view.defaultChoice);
+    }
     stanceTick(dt, bike);
     paceTick(dt, bike);
 
@@ -1596,6 +1639,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
 
   function descend() {
+    flushLootOffer();
     floorsCleared++; totals.floors++; cue('stairs');
     ctx.emit({ type: 'floorCleared', data: { floor, timeS: Math.round(t) } });
     if (planFor(floor).final) { winRun(); return; }
@@ -1614,6 +1658,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
   /** Through the finish behind the Grim Sweeper: the descent is won. Bank everything plus the finish bonus, unlock the next Category. */
   function winRun() {
+    flushLootOffer();
     const bonus = Math.round(winBonus() * T().coins);
     P.coinsEarned += bonus;
     const banked = P.coinsEarned, timeS = Math.round(t - runT0), before = tierUnlocked;
@@ -1634,6 +1679,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   /** Death ends the descent: back to camp with every coin banked; hero level and loot reset at the next start. */
   function die() {
+    flushLootOffer();
     deaths++; totals.deaths++; deepest = Math.max(deepest, floor); topLevel = Math.max(topLevel, P.level); // summary is per session, across runs
     ctx.emit({ type: 'death', data: { room: current, floor } });
     const banked = P.coinsEarned; earnedPrev += banked; lastDeath = { floor, banked }; lastRun = runResult(false, banked);
@@ -1688,8 +1734,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       refill: { rate: lastRate, zone: Math.max(1, Math.min(5, ctx.bike().powerZone)) },
       ai: { path: phase === 'run' ? navPath.slice(0, 40) : [], targetId: P.targetId },
       actions: (['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id) => ({
-        id, button: ACTION_BUTTON[id], label: ACTION_LABEL[id], ready: readyFrac(cds[id]),
-        usable: cds[id].left <= 0 && (id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true),
+        id, button: ACTION_BUTTON[id], label: id === 'rally' && lootOffer ? (lootOffer.view.defaultChoice === 'equip' ? 'Drop' : 'Equip') : ACTION_LABEL[id],
+        ready: id === 'rally' && lootOffer ? 1 : readyFrac(cds[id]),
+        usable: (id === 'rally' && !!lootOffer) || (cds[id].left <= 0 && (id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true)),
       })),
       enemies: ev, bullets: bv, drops: drops.map(({ item: _i, value: _v, ...d }) => d),
       hazards: hazards.map(({ dmg: _d, ...h }) => h),
@@ -1701,6 +1748,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       flail: bossStarted && boss.alive && boss.variant === 2 ? { x: fl.x, y: fl.y, mode: fl.mode, t: fl.t, ang: fl.ang, tx: fl.tx, ty: fl.ty } : null,
       boss: bossStarted ? { active: boss.alive, name: BOSS_NAMES[boss.variant], hp: Math.max(0, boss.hp), maxHp: boss.maxHp, phase: bs.phase, cycle: bs.cycle, left: bs.left, fightT: bs.fightT, tide: tideBonus(bs.fightT, bossCfg()), splits: bossCfg().phaseSplits } : null,
       perks: perkView(),
+      lootOffer: lootOffer ? { ...lootOffer.view, leftS: Math.max(0, lootOffer.leftS) } : null,
       stats: { roomsCleared, kills, deaths, damageDealt, output, fireT: fightT, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived },
       hooks: { boss: bossStarted && boss.alive, shielded: sh.shielded, swamp: P.onSwamp, seg: dir.seg, cadence: dir.seg === 'spinup' ? dirCfg().spinRpm + 6 : 90,
         powerFtp: phase === 'camp' ? DEFAULT_TARGETS.cooldown.erg : sh.shielded && erg ? ergSurge() : dirCfg().targets[dir.seg].erg },
@@ -1716,7 +1764,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function runControls(): ControlHint[] {
     return [
       ...(['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id): ControlHint => {
-        const usable = id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true, ready = cds[id].left <= 0;
+        if (id === 'rally' && lootOffer) {
+          const dropAlt = lootOffer.view.defaultChoice === 'equip';
+          return { button: 'y', label: dropAlt ? `Drop +${lootOffer.view.sellCoins}c` : 'Equip loot', shortLabel: dropAlt ? 'Drop' : 'Equip', active: true };
+        }
+        const usable = id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true, ready = cds[id].left <= 0;
         return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
           cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
       }),
@@ -1755,7 +1807,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const api: GameSim & { navStats?: () => Record<string, number> } = {
     update, hud, inMenu, snapshot, isOver: () => false,
     receive(a: unknown) {
-      const act = a as { type?: string; row?: number; id?: string };
+      const act = a as { type?: string; row?: number; id?: string; choice?: string };
+      if (act?.type === 'lootChoice' && lootOffer && (act.choice === 'equip' || act.choice === 'drop')) { lootTap = act.choice; return; }
       if (act?.type === 'action' && phase === 'run' && typeof act.id === 'string' && act.id in ACTION_BUTTON && tapped.length < 4) tapped.push(act.id as ActionId);
       if (act?.type === 'perk' && offer && typeof (act as { i?: number }).i === 'number') perkTap = (act as { i: number }).i;
       if (act?.type === 'campRow' && typeof act.row === 'number' && pending.length < 8) pending.push({ type: 'campRow', row: act.row });

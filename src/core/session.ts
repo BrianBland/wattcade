@@ -30,7 +30,7 @@ export interface SessionMedia {
 }
 
 export interface GameSession {
-  ctx: GameContext; sim: GameSim; mixer: ResistanceMixer; bikeStore: BikeStateStore;
+  ctx: GameContext; readonly sim: GameSim; mixer: ResistanceMixer; bikeStore: BikeStateStore;
   tuning: TuningRegistry; recorder: SessionRecorder; fakeBike?: FakeBike; dataHub: DataHub; clock: SimClock;
   loop: GameLoop; commands: TrainerCommand[];
   frame(realDtS: number): void; step(n: number): void; pause(): void; resume(): void;
@@ -39,6 +39,8 @@ export interface GameSession {
   idle(realDtS: number): ReadonlySet<Button>;
   finish(): SessionRecord; debugValues(): Record<string, number | string | boolean>;
   media?: SessionMedia;
+  /** Live updates: dispose the sim (it persists through ctx.save) and carry on with `game`'s sim, resumed from a checkpoint. */
+  swapSim(game: GameModule, resume: unknown): void;
 }
 
 export function createGameSession(o: SessionOpts): GameSession {
@@ -84,7 +86,8 @@ export function createGameSession(o: SessionOpts): GameSession {
     load: <T,>() => saved as T | undefined,
     ...(o.media ? { media: { timeline: o.media.timeline, positionS: () => mediaPos, started: () => mediaStarted, ...(o.media.announce ? { announce: o.media.announce } : {}) } } : {}),
   };
-  const sim = o.game.createSim(ctx, { seed, ...(o.simOpts ?? {}) } as { seed?: number });
+  let simGame = o.game;
+  let sim = o.game.createSim(ctx, { seed, ...(o.simOpts ?? {}) } as { seed?: number });
   o.input.bindTuning?.(tuning, o.game.id);
 
   const hooksOf = () => (sim.snapshot() as { hooks?: Record<string, unknown> } | undefined)?.hooks;
@@ -125,7 +128,13 @@ export function createGameSession(o: SessionOpts): GameSession {
   const loop = new GameLoop(clock, stepOnce, () => (mediaTrim !== null ? mediaTrim : dataHub.hasRealDevices() ? 1 : clock.timeScale));
 
   return {
-    ctx, sim, mixer, bikeStore, tuning, recorder, fakeBike, dataHub, clock, loop, commands,
+    get sim() { return sim; },
+    swapSim: (game, resume) => {
+      const make = (g: GameModule) => g.createSim(ctx, { seed, ...(o.simOpts ?? {}), resume } as { seed?: number });
+      sim.dispose?.(); // persists the save, which the new sim loads
+      try { sim = make(game); simGame = game; } catch (e) { sim = make(simGame); throw e; } // the old logic carries on
+    },
+    ctx, mixer, bikeStore, tuning, recorder, fakeBike, dataHub, clock, loop, commands,
     frame: (dt) => { loop.frame(dt); },
     step: (n) => loop.step(n),
     idle,

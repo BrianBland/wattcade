@@ -463,3 +463,30 @@ describe('test-ride HUD fixes', () => {
     ]);
   });
 });
+
+describe('live updates: Garage checkpoint', () => {
+  it('only offers a checkpoint in the Garage, and a new sim resumed from it carries on there with the save', () => {
+    let saved: any = null;
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
+    s.step(1);
+    expect(snap(s).phase).toBe('garage');
+    const gv = snap(s).garage!;
+    const startRow = gv.rows.findIndex((r) => r.kind === 'start');
+    s.sim.receive!({ type: 'garageRow', row: startRow });
+    s.step(30);
+    expect(snap(s).phase).toBe('run');
+    expect(s.sim.checkpoint!()).toBeNull(); // mid-run: no handoff
+    s.sim.receive!({ type: 'bail' });
+    s.step(30);
+    expect(snap(s).phase).toBe('garage');
+    const cp = s.sim.checkpoint!() as { at: string; garageSel: number };
+    expect(cp?.at).toBe('garage');
+    const runs = saved?.runs;
+    s.swapSim(module, cp);
+    expect(s.sim.inMenu!()).toBe(true);
+    s.step(30);
+    expect(snap(s).phase).toBe('garage'); // no auto-start on the new sim
+    expect(s.sim.checkpoint!()).toEqual(cp);
+    expect((s.ctx.load() as any)?.runs).toBe(runs);
+  });
+});

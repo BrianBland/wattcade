@@ -211,6 +211,12 @@ export interface GameSim {
   dispose?(): void;
   /** Optional: UI actions from the renderer (e.g. taps on a canvas menu); apply them on the next update(). */
   receive?(action: unknown): void;
+  /**
+   * Optional (live updates, src/live): at a natural break (between runs, waves, floors) return plain data a fresh sim
+   * can carry on from via `createSim(ctx, { resume })`; null otherwise. Called after every update while a logic change
+   * waits; the shell then disposes this sim and starts the new one. Everything else persistent goes through ctx.save.
+   */
+  checkpoint?(): unknown | null;
 }
 /** CSS px the shell's HUD covers on each edge of the (edge-to-edge) render surface. Draw backgrounds full-bleed; keep foreground UI and the play focus inside. */
 /** Actual HUD bounds in CSS pixels relative to the render surface. */
@@ -249,6 +255,8 @@ export interface GameModule {
   /** Optional: version of the snapshot() shape the renderer reads (default 1). Bump it whenever a change to the
    *  snapshot would break an older renderer or a newer renderer drawing an older sim, so live updates (src/live) never pair them. */
   snapshotFormat?: number;
+  /** Optional: where GameSim.checkpoint() lands, as a rider reads it ("in the Garage", "at the next wave"); live updates show it. */
+  liveCheckpoint?: string;
   /** Optional: one short line for the arcade card from this rider's save (profile.gameData[id]), e.g. "Best floor 7". Pure. */
   progressLine?(save: unknown): string | null;
   /** Optional: animated banner art for the arcade card (Canvas 2D, ~16:7). `t` = seconds; `color` = rider colour. Keep it tiny. */

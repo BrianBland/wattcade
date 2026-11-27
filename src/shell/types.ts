@@ -31,9 +31,11 @@ export interface SessionLike {
   pause(): void; resume(): void;
   mixer?: { rampIn(seconds?: number): void; readonly command?: TrainerCommand | null };
   finish(): SessionRecord;
-  ctx: { bike(): Readonly<BikeState>; debug?(key: string, value: number | string | boolean): void };
+  ctx: { bike(): Readonly<BikeState>; debug?(key: string, value: number | string | boolean): void; load?(): unknown };
   media?: { positionS(): number; setTrim(trim: number | null): void };
-  sim: { isOver(): boolean; snapshot(): unknown; hud?(): GameHud; inMenu?(): boolean; menuActions?: GameSim['menuActions']; receive?(action: unknown): void };
+  /** Live updates: carry on with another version's sim from a checkpoint (core's GameSession has it). */
+  swapSim?(game: import('../contracts').GameModule, resume: unknown): void;
+  sim: { checkpoint?(): unknown | null; isOver(): boolean; snapshot(): unknown; hud?(): GameHud; inMenu?(): boolean; menuActions?: GameSim['menuActions']; receive?(action: unknown): void };
 }
 export type Screen =
   | { name: 'profiles' } | { name: 'editor'; profileId: string | null } | { name: 'connect' }

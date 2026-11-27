@@ -52,7 +52,7 @@ export function LiveChip({ host, hidden }: { host: LiveHost | null; hidden?: boo
         </div>;
       })}
       {!pending.length && <p class="live-note">This game is up to date.</p>}
-      {pending.some((p) => p.kinds.has('logic')) && <p class="live-note">Tuning and art apply now. Logic changes apply the next time you start the game.</p>}
+      {pending.some((p) => p.kinds.has('logic')) && <p class="live-note">Tuning and art apply now. Logic changes apply {host.game.liveCheckpoint ?? 'the next time you start the game'}.</p>}
       {shell.length > 0 && <p class="live-note"><span class="live-kind shell">app</span>An app update ({shell[0].short}) is out. It loads when you reload after this ride.</p>}
     </div>}
   </div>;
@@ -79,8 +79,11 @@ export function LiveVersions({ host, onClose }: { host: LiveHost; onClose: () =>
   useEffect(() => { document.querySelector('.live-versions .focused')?.scrollIntoView?.({ block: 'nearest' }); }, [idx]);
   const marks = (shas: Array<string | null>) => {
     const all = shas.flatMap((x) => host.marks(x));
-    const now = all.filter((m) => !m.includes('next')), next = all.filter((m) => m.includes('next')).map((m) => m.replace(' next start', ''));
-    return <>{now.length > 0 && <span class="live-mark">running {now.join(' + ')}</span>}{next.length > 0 && <span class="live-mark queued">next start: {next.join(' + ')}</span>}</>;
+    const now = all.filter((m) => !m.includes('next')), next = all.filter((m) => m.includes('next'));
+    const at = (w: string) => next.filter((m) => m.endsWith(w)).map((m) => m.replace(` next ${w}`, ''));
+    return <>{now.length > 0 && <span class="live-mark">running {now.join(' + ')}</span>}
+      {at('checkpoint').length > 0 && <span class="live-mark queued">next checkpoint: {at('checkpoint').join(' + ')}</span>}
+      {at('start').length > 0 && <span class="live-mark queued">next start: {at('start').join(' + ')}</span>}</>;
   };
   const use = (i: number) => <span class="live-acts"><Btn small focused={idx === i} disabled={host.busy} onClick={() => { setIdx(i); actions[i](); }}>Use</Btn></span>;
   return <div class="overlay-modal chrome-ui">
@@ -103,7 +106,7 @@ export function LiveVersions({ host, onClose }: { host: LiveHost; onClose: () =>
         </li>}
       </ol>
       {!rows.length && <p class="live-note">{live.feed ? 'No published versions of this game yet.' : 'Looking for versions…'}</p>}
-      <p class="live-note">"Use" moves tuning and art now; logic changes wait for the next start. Your save is backed up whenever the logic changes.</p>
+      <p class="live-note">"Use" moves tuning and art now; logic changes wait for {host.game.liveCheckpoint ?? 'the next start'}. Your save is backed up whenever the logic changes.</p>
       {backups.length > 0 && <div class="live-backups">
         <h3>Save backups</h3>
         {backups.map((b, i) => <div class="live-row" key={b.time}>

@@ -210,11 +210,12 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         renderer.render(session.sim.snapshot(), session.ctx.bike(), input.state());
         loadingRef.current = false; setLoading(false);
         // mid-ride swaps for live updates: tunables move at once; a renderer is swapped while the sim keeps running
-        const swapRenderer = async (mod: GameModule) => {
+        const dropRenderer = () => { const old = renderer; renderer = null; rendererRef.current = null; try { old?.unmount(); } catch { /* best effort */ } };
+        const swapRenderer = async (mod: GameModule, dropNow = false) => {
+          if (dropNow) dropRenderer(); // the sim's snapshots just changed shape: stop drawing them with the old renderer
           const next = await mod.loadRenderer();
           if (disposed) { next.unmount(); return; }
-          const old = renderer; renderer = null; rendererRef.current = null;
-          try { old?.unmount(); } catch { /* best effort */ }
+          dropRenderer();
           warmHost?.remove(); warmHost = null;
           next.mount(mount.current!, { ...mountCtx, insets: readInsets() });
           next.setInsets?.(readInsets());
@@ -223,10 +224,24 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           if (disposed) { next.unmount(); return; }
           renderer = next; rendererRef.current = next;
         };
-        if (live.isEnabled()) setLiveHost(new LiveHost(game, profile.id, liveRun?.layers ?? null, {
-          swapRenderer: (mod) => swapRenderer(mod).catch(async (e) => { if (!renderer && !disposed) await swapRenderer(game); throw e; }),
+        // a logic change waiting for the sim's next checkpoint (GameSim.checkpoint); the loop hands over
+        let queuedSim: { mod: GameModule; sha: string | null } | null = null;
+        const host = live.isEnabled() ? new LiveHost(game, profile.id, liveRun?.layers ?? null, {
+          swapRenderer: (mod, dropNow) => swapRenderer(mod, dropNow).catch(async (e) => { if (!renderer && !disposed) await swapRenderer(game); throw e; }),
           applyTuning: (d) => { session.tuning?.applyDefaults(game.id, d ?? builtInTuning); },
-        }));
+          queueSim: (q) => { if (q && typeof session.sim.checkpoint !== 'function') return false; queuedSim = q; return true; },
+        }) : null;
+        setLiveHost(host);
+        const handOver = () => {
+          const q = queuedSim; if (!q || !host || !session.swapSim) return;
+          const state = session.sim.checkpoint?.();
+          if (state === null || state === undefined) return;
+          queuedSim = null;
+          const store = new LiveStore(profile.id), before = store.lastStartedSim(game.id) ?? null, data = session.ctx.load?.();
+          if (data !== undefined) store.backup(game.id, { time: Date.now(), beforeSim: before, afterSim: q.sha, data });
+          try { session.swapSim(q.mod, state); store.setStartedSim(game.id, q.sha); } catch (e) { toast(`Logic didn't start: ${e instanceof Error ? e.message : e}`); return; }
+          void host.simSwapped(q.sha, q.mod).then((msg) => { if (msg) toast(msg, 'good'); });
+        };
         if (goOnReady) go();
         let last = performance.now();
         const T = timers.current;
@@ -246,7 +261,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
             else if (p.has('b')) { disposed = true; leave(cb.current.onAbandon); return; }
           } else if (ph === 'menu') { // the game's own pre-game menu: run the sim (trainer stays neutral), GO once it's dismissed
             if (!pausedRef.current) {
-              session.frame(dt);
+              session.frame(dt); handOver();
               if (session.sim.isOver()) toEnding(true);
               else if (!session.sim.inMenu?.()) go(); // the menu's own Start is GO
             }
@@ -262,6 +277,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
                 if (trim > 0) session.frame(dt); else session.idle(dt); // hold the sim (not the bike) while the music buffers
                 if ((T.playS % 0.5) < dt) { for (const [k, v] of Object.entries(m.engine.debug())) session.ctx.debug?.(`music.${k}`, v); session.ctx.debug?.('music.err', +m.sync.errS.toFixed(3)); }
               } else session.frame(dt);
+              handOver();
               T.playS += dt;
               if ((T.playS >= seen.nextCheck)) { seen.nextCheck = T.playS + 10; celebrate(); }
               if (session.sim.isOver()) toEnding(true);

@@ -1,0 +1,20 @@
+{
+  "source_run": "https://github.com/BrianBland/wattcade/actions/runs/44686096816",
+  "source_sha": "2a4033d26fd5257ffef6b8381b78b6e666f107b6",
+  "note": "Cold-start order hints only. A missing path is ignored; the file still runs. Live Vitest results cache takes precedence.",
+  "unit": "milliseconds",
+  "threshold_ms": 20000,
+  "files": {
+    "src/games/watershed/test/scenarios.full.test.ts": 133989,
+    "src/games/watershed/test/scenarios.spin.test.ts": 100358,
+    "src/games/starfighter/test/sim.test.ts": 73381,
+    "src/games/watershed/test/scenarios.grind.test.ts": 72137,
+    "src/core/qa.sanity.test.ts": 41498,
+    "src/progression/scenarios.test.ts": 37325,
+    "src/games/dungeon/test/dungeon.test.ts": 32177,
+    "src/games/towerdefense/test/sim.test.ts": 30589,
+    "src/games/towerdefense/test/generator.test.ts": 24570,
+    "src/games/watershed/test/sim.test.ts": 22761,
+    "src/games/seaside/test/scenarios.test.ts": 22398
+  }
+}

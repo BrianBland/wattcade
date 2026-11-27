@@ -13,6 +13,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # pull_request github.sha is a synthetic merge; this is the commit to measure.
+      CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,7 +23,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: python3 scripts/td-check-assets.py
-      - run: npm test # includes every game's headless scenarios (npm run sim:all is the same set, for local use)
-      - run: npm run build
+      - name: Typecheck
+        run: python3 scripts/ci/measure.py .ci-metrics/typecheck.json -- npm run typecheck
+      - name: Validate Tower Defense assets
+        run: python3 scripts/ci/measure.py .ci-metrics/assets.json -- python3 scripts/td-check-assets.py
+      - name: Build
+        run: python3 scripts/ci/measure.py .ci-metrics/build.json -- npm run build
+      - name: Full test suite
+        # Headless scenarios included. sim:all is the same set, for local use.
+        run: python3 scripts/ci/measure.py .ci-metrics/tests.json -- npm test
+      - name: Retain CI measurements
+        if: always()
+        continue-on-error: true # Diagnostic storage must not replace the check results above.
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-metrics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .ci-metrics/*.json
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore

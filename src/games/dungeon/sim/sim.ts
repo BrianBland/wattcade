@@ -18,11 +18,11 @@ import {
 } from './skillTree';
 import { clearLine, cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { DELVE_MAX, RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
-import { BOSS_NAMES, FLOORS, SWEEPER, TIERS, planFor, tierOf, unlockAfterWin, type RunResult } from './descent';
+import { BOSS_NAMES, FLOORS, SWEEPER, TIERS, floorRoomCount, planFor, tierOf, unlockAfterWin, type RunResult } from './descent';
 import { ARCHETYPE_STRIKE, arcanePulseProc, onKillElementProc, stormChainTargets } from './elementProcs';
 import { evaluateLootOffer } from './lootOffer';
 import type {
-  BulletView, CampArchetypeCard, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard,
+  BulletView, CampArchetypeCard, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, FinishSeqView, Fx, Hazard,
   LootOfferView, ShrineView, SkillTreeView, Toast,
 } from './types';
 
@@ -379,10 +379,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (mod === 'swift') e.speed *= 1.7;
     if (mod === 'shielded') { e.shieldMax = e.maxHp * 0.4; e.shield = e.shieldMax; }
   }
+  let finishSeq: FinishSeqView | null = null;
   function buildFloor() {
     const fp = planFor(floor);
-    world = generateWorld(rng, floor, { theme: fp.zone, ...(fp.final ? { rooms: finalRooms() } : {}) });
-    enemies = []; bullets.length = 0; drops.length = 0; hazards.length = 0;
+    world = generateWorld(rng, floor, { theme: fp.zone, rooms: floorRoomCount(floor, runTier, finalRooms()) });
+    enemies = []; bullets.length = 0; drops.length = 0; hazards.length = 0; finishSeq = null;
     const eliteChance = Math.min(0.25 + T().elite, eliteBase() + 0.015 * (floor - 1) + T().elite);
     for (const room of world.rooms) for (const s of room.spawns) {
       const e = spawnEnemy(s.kind, s.x, s.y, room.id);
@@ -836,8 +837,16 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       for (const bl of bullets) if (!bl.friendly) bl.life = 0;
       addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.8, color: '#c77dff', r: 4 });
       if (last) {
-        toast('The Grim Sweeper is swept away! Ride through the finish.', '#ff8c2a');
-        addFx({ kind: 'banner', x: e.x, y: e.y, life: 4, color: '#ffd84a', text: 'FINISH LINE OPEN' });
+        toast('The Grim Sweeper fell! Find your bike and cross the finish line.', '#ff8c2a');
+        const br = world.rooms[e.room] ?? world.rooms.find((r) => r.boss)!;
+        const lineX = world.stairs.x, lineY = world.stairs.y;
+        let bikeY = lineY;
+        for (const dy of [2.5, 2.0, 1.5, 1.0, -1.5]) {
+          const cy = clamp(lineY + dy, br.y0 + 1.5, br.y0 + br.h - 1.5);
+          if (!walkSolid(Math.floor(lineX), Math.floor(cy))) { bikeY = cy; break; }
+        }
+        finishSeq = { stage: 'findBike', bikeX: lineX, bikeY, lineX, lineY, progress: 0, celebrateT: 0 };
+        addFx({ kind: 'banner', x: lineX, y: bikeY, life: 4, color: '#ffd84a', text: 'YOUR BIKE! RIDE TO THE FINISH' });
       }
       ctx.emit({ type: 'bossDefeated', data: { timeS: Math.round(t), floor, archetype, windows: expWindows, struck: expStruck } });
       return;
@@ -1672,6 +1681,27 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
 
     t += dt; navAge += dt; stuckCheck();
+    if (finishSeq && finishSeq.stage !== 'findBike') {
+      if (erg) ergSync(dirCfg().targets.cooldown.erg); else resSync('terrain', campGrade());
+      if (finishSeq.stage === 'rideToLine') {
+        const rate = autopilot ? 2.5 : 0.25 + 0.25 * clamp(bike.cadence3s / 90, 0.3, 1.8) + (bike.sprinting ? 0.35 : 0);
+        finishSeq.progress = Math.min(1, finishSeq.progress + rate * dt);
+        P.x = finishSeq.bikeX + (finishSeq.lineX - finishSeq.bikeX) * finishSeq.progress;
+        P.y = finishSeq.bikeY + (finishSeq.lineY - finishSeq.bikeY) * finishSeq.progress;
+        P.aim = Math.atan2(finishSeq.lineY - finishSeq.bikeY, finishSeq.lineX - finishSeq.bikeX);
+        P.moving = true;
+        if (finishSeq.progress >= 1) {
+          finishSeq.stage = 'celebrate'; finishSeq.celebrateT = 0; P.moving = false;
+          cue('unique');
+          addFx({ kind: 'banner', x: P.x, y: P.y, life: 3, color: '#ffd84a', text: 'STAGE COMPLETE!' });
+          for (let k = 0; k < 4; k++) addFx({ kind: 'boom', x: P.x + (k - 1.5) * 1.4, y: P.y - 0.6, life: 0.7 + k * 0.15, color: k % 2 ? '#ffd84a' : '#7fe7ff', r: 1.8 });
+        }
+      } else {
+        finishSeq.celebrateT += dt;
+        if (finishSeq.celebrateT >= (autopilot ? 0.15 : 2.6)) { descend(); }
+      }
+      return;
+    }
     refreshTreeMods(bike);
 
     // Power-zone edge triggers (Snap Attack Z4+ crits, Photo Finish Z5 Bullet Time)
@@ -1798,8 +1828,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       }
     }
 
-    // --- stairs
-    if (!boss.alive && tileAt(world, Math.floor(P.x), Math.floor(P.y)) === TILE.STAIRS) { descend(); return; }
+    // --- bike mount (Floor 7 finish) or stairs (floors 1..6)
+    if (!boss.alive && finishSeq?.stage === 'findBike') {
+      if (Math.hypot(P.x - finishSeq.bikeX, P.y - finishSeq.bikeY) < 0.9 || tileAt(world, Math.floor(P.x), Math.floor(P.y)) === TILE.STAIRS) {
+        finishSeq.stage = 'rideToLine'; finishSeq.progress = 0;
+        P.x = finishSeq.bikeX; P.y = finishSeq.bikeY;
+        cue('reward');
+        toast('Mounted up! Pedal across the finish line!', '#ffd84a');
+        addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#ffd84a', text: 'SPRINT FOR THE LINE!' });
+        return;
+      }
+    } else if (!boss.alive && tileAt(world, Math.floor(P.x), Math.floor(P.y)) === TILE.STAIRS) { descend(); return; }
 
     // --- aim
     const target = nearestEnemy();
@@ -2231,7 +2270,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     deepest = Math.max(deepest, floor); topLevel = Math.max(topLevel, P.level); earnedPrev += banked; lastDeath = undefined;
     ctx.emit({ type: 'descentWon', data: { tier: runTier, startFloor, timeS, archetype, perks: lastRun.perks } });
     bankStart += banked; totals.coins += banked; P.coinsEarned = 0; P.coins = 0;
-    bullets.length = 0; hazards.length = 0; navPath = []; curse = null; skillOffer = null; skillOfferDueT = -1;
+    bullets.length = 0; hazards.length = 0; navPath = []; curse = null; skillOffer = null; skillOfferDueT = -1; finishSeq = null;
     toast(`Descent complete in ${Math.floor(timeS / 60)}:${String(timeS % 60).padStart(2, '0')}! +${bonus} finish bonus.${lastRun.unlocked ? ` ${lastRun.unlocked} unlocked.` : ''}`, '#ffd84a');
     cue('unique');
     enterCamp();
@@ -2245,7 +2284,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const banked = P.coinsEarned; earnedPrev += banked; lastDeath = { floor, banked }; lastRun = buildRunResult(false, banked);
     if (!opts?.floor && floor === startFloor && startFloor > 1) startFloor = stepStart(-1);
     bankStart += P.coinsEarned; totals.coins += P.coinsEarned; P.coinsEarned = 0; P.coins = 0;
-    P.hp = 0; P.shield = 0; bullets.length = 0; hazards.length = 0; navPath = []; curse = null; skillOffer = null; skillOfferDueT = -1;
+    P.hp = 0; P.shield = 0; bullets.length = 0; hazards.length = 0; navPath = []; curse = null; skillOffer = null; skillOfferDueT = -1; finishSeq = null;
     toast(`You fell on floor ${floor}. ${banked} coins banked. Back to camp.`, '#ff5a5a');
     cue('hurt');
     enterCamp(true);
@@ -2377,6 +2416,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       flail: bossStarted && boss.alive && boss.variant === 2 ? { x: fl.x, y: fl.y, mode: fl.mode, t: fl.t, ang: fl.ang, tx: fl.tx, ty: fl.ty } : null,
       boss: bossStarted ? { active: boss.alive, name: BOSS_NAMES[boss.variant], hp: Math.max(0, boss.hp), maxHp: boss.maxHp, phase: bs.phase, cycle: bs.cycle, left: bs.left, fightT: bs.fightT, tide: tideBonus(bs.fightT, bossCfg()), splits: bossCfg().phaseSplits } : null,
       lootOffer: lootOffer ? { ...lootOffer.view, leftS: Math.max(0, lootOffer.leftS) } : null,
+      finishSeq: finishSeq ? { ...finishSeq } : null,
       stats: { roomsCleared, kills, deaths, damageDealt, output, fireT: fightT, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived, climbs: climbsTotal, skillPoints: totalSpentPoints(archetype, skillRanks) },
       hooks: {
         boss: bossStarted && boss.alive, shielded: sh.shielded, swamp: P.onSwamp, seg: dir.seg,

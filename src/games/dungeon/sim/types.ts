@@ -192,6 +192,16 @@ export interface DungeonSnapshot {
   boss: { active: boolean; name: string; hp: number; maxHp: number; phase: 1 | 2 | 3; cycle: 'idle' | 'windup' | 'exposed' | 'stagger'; left: number; fightT: number; tide: number; splits: [number, number] } | null;
   /** Active non-blocking loot choice prompt (default auto-resolves; Y flips). */
   lootOffer?: LootOfferView | null;
+  /** Floor 7 victory sequence (find your bike -> pedal across finish line -> celebrate). */
+  finishSeq?: FinishSeqView | null;
   stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; output: number; fireT: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number; climbs: number; skillPoints: number };
   hooks: { boss: boolean; shielded: boolean; swamp: boolean; seg: string; cadence: number; powerFtp: number };
+}
+
+export interface FinishSeqView {
+  stage: 'findBike' | 'rideToLine' | 'celebrate';
+  bikeX: number; bikeY: number;
+  lineX: number; lineY: number;
+  progress: number;   // 0..1 riding from bike to finish line
+  celebrateT: number; // seconds elapsed in celebration
 }

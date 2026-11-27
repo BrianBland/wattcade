@@ -4,9 +4,7 @@
 // these wrap onto a row above the card when the screen is too narrow).
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface RunLayout { playH: number; card: Rect; stance: Rect; gear: Rect }
-
 export interface PlayerHudLayout {
-  /** Overall bounding rect (crest + header + bars + potion/wing row, excluding optional perk/buff rows). */
   bounds: Rect;
   crest: Rect;
   headerY: number;
@@ -20,13 +18,14 @@ export interface PlayerHudLayout {
   toastY: number;
 }
 
-/** Pure geometry for the boxless top-left player HUD (crest + beveled HP/XP bars + generous bidons + Second Wind wing). */
-export function playerHudLayout(W: number, H: number, hu: number, hasPerks = false, hasBuffs = false): PlayerHudLayout {
+/** Boxless top-left player HUD geometry: ornate Level Crest anchoring beveled HP/XP bars,
+ *  floating stage/gold header, full-scale Bidon potions, Second Wind wing emblem, and SP pill. */
+export function playerHudLayout(W: number, H: number, hu: number, hasSkillBadge = false, hasBuffs = false): PlayerHudLayout {
   const pad = 14 * hu;
   const maxW = Math.max(150 * hu, Math.min(206 * hu, W - 2 * pad));
   const crestSz = 32 * hu;
   const headerH = 12 * hu;
-  const barX = pad + crestSz - 2 * hu; // tucked slightly under crest's right edge so crest anchors the bars
+  const barX = pad + crestSz - 2 * hu;
   const barW = Math.max(110 * hu, maxW - (barX - pad));
   const hpH = 14 * hu;
   const xpH = 4 * hu;
@@ -37,8 +36,8 @@ export function playerHudLayout(W: number, H: number, hu: number, hasPerks = fal
   const wingW = 24 * hu, wingH = 19 * hu;
   const boundsH = (potionsY + potionSize) - pad;
   const perkY = pad + boundsH + 5 * hu;
-  const perkH = hasPerks ? 19 * hu : 0;
-  const buffY = perkY + perkH + (hasPerks ? 3 * hu : 0);
+  const perkH = hasSkillBadge ? 18 * hu : 0;
+  const buffY = perkY + perkH + (hasSkillBadge ? 3 * hu : 0);
   const buffH = hasBuffs ? 18 * hu : 0;
   const toastY = buffY + buffH + 4 * hu;
   void H;
@@ -62,7 +61,7 @@ export function bossHudLayout(W: number, H: number, insetBottom: number, hu: num
   const pad = 14 * hu, compact = W < 700 * hu;
   const w = compact ? W - 2 * pad : Math.min(W * 0.4, 420 * hu);
   const x = compact ? pad : Math.max(W / 2 - w / 2, pad + 216 * hu);
-  const h = 48 * hu, y = Math.max(0, Math.min(pad + (compact ? 80 * hu : 0), H - insetBottom - h));
+  const h = 48 * hu, y = Math.max(0, Math.min(pad + (compact ? 106 * hu : 0), H - insetBottom - h));
   return { x, y, w: Math.max(0, Math.min(w, W - pad - x)), h };
 }
 

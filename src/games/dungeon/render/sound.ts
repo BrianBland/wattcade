@@ -77,7 +77,7 @@ export class DungeonSound {
     const rack = this.ensureRack();
     // 1. Adaptive multi-section music + subtle zone ambient bed (both auto-duck when external media plays)
     this.music.update(musicFor(s), true);
-    if (s.phase === 'run' && !s.perks?.offer) {
+    if (s.phase === 'run' && !s.skillTree?.offer) {
       const bed = ZONE_BED[s.world.theme % ZONE_BED.length] ?? ZONE_BED[0];
       setAmbient('dungeon-zone', s.boss?.active ? bed.vol * 0.45 : bed.vol, bed.freq, bed.q);
     } else {
@@ -91,7 +91,7 @@ export class DungeonSound {
       if (now >= this.nextDetailAt) {
         this.nextDetailAt = now + (s.phase === 'camp' ? 1.4 + Math.random() * 2.2 : 3.2 + Math.random() * 4.5);
         if (s.phase === 'camp') playAmbientDetail(rack, 'ember');
-        else if (!s.boss?.active && !s.perks?.offer) {
+        else if (!s.boss?.active && !s.skillTree?.offer) {
           const theme = s.world.theme % 4;
           playAmbientDetail(rack, theme === 1 ? 'drip' : theme === 2 ? 'chain' : theme === 3 ? 'magma' : 'ember');
         }
@@ -238,6 +238,15 @@ export class DungeonSound {
         this.music.duck(0.38, 0.8);
         return;
       }
+      case 'upgrade': { playDungeonSfx(rack, 'levelup'); return; }
+      case 'boltOn': { playDungeonSfx(rack, 'equip'); playDungeonSfx(rack, 'wardBlock', { pan: 0 }); return; }
+      case 'payoffSting':
+      case 'unlock': { playDungeonSfx(rack, 'unique'); this.music.duck(0.55, 0.5); return; }
+      case 'surge': { playDungeonSfx(rack, 'reward'); return; }
+      case 'chime': { playDungeonSfx(rack, 'shrine'); return; }
+      case 'swap':
+      case 'uiMove':
+      case 'uiBack': { playDungeonSfx(rack, 'select'); return; }
       default: {
         if (!this.rateOk(name, 0.04)) return;
         playDungeonSfx(rack, name, { pan: 0, element: s.weapon.element, weapon: s.weapon.base });

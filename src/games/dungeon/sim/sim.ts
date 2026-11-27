@@ -1,4 +1,4 @@
-import type { BikeState, Button, ControlHint, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
+import type { BikeState, Button, ControlHint, GameContext, GameHud, GameMenuAction, GameSim, InputState, Seconds } from '../../../contracts';
 import { generateWorld, tileAt, TILE, type EnemyKind, type Room, type ShrineKind, type World } from './world';
 import {
   ELEMENT_COLORS, RARITY_COLORS, SLOTS, UNIQUES, makeGear, makeUnique, makeWeapon, pickWeaponStyle, rollRarity, sellValue, starterWeapon, weaponScore,
@@ -7,24 +7,36 @@ import {
 import { DEFAULT_ZONE_REFILL, completeCooldown, startCooldown, effortFlourish, effortTint, refillRate, tickCooldown } from '../../../core/cooldown';
 import { DEFAULT_CFG, DEFAULT_TARGETS, newFloor, spinupCalled, stepDirector, type DirectorCfg, type DirectorState, type Seg } from './director';
 import { sprintBreak, DEFAULT_BOSS, bossDamageMult, bossStunned, newBoss, strikeBoss, stepBoss, tideBonus, type BossCfg, type BossState } from './boss';
-import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
-import { createArsenalCollection } from './arsenal';
-import { DEFAULT_OFFER, PERK_FX, PERKS, RARITY_NAMES, SLOT_NAMES, STYLE_NAMES, kitOf, perkMods, rollOffer, styleWeights, suggestPerk, type FloorRide, type PerkId, type PerkMods, type PerkRanks } from './perks';
+import {
+  ARCHETYPES, ARCHETYPE_ORDER, PACE_MODES, archetypeDirectorCfg, grimpeurProgress, isArchetypeUnlocked, unlockedArchetypes,
+  type ArchetypeId, type PaceBias,
+} from './archetypes';
+import {
+  SKILL_TREES, branchPoints, canInvestNode, chosenForksAndCapstones, computeTreeMods, deriveBuildTitle, getNodeById, getNodeRank,
+  investSkillNode, nodeState, quickPickCards, suggestQuickPick, totalSpentPoints,
+  type SkillRanks, type TreeMods,
+} from './skillTree';
 import { clearLine, cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { DELVE_MAX, RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
-import { BOSS_NAMES, FLOORS, SWEEPER, TIERS, ZONE_STARTS, planFor, tierOf, unlockAfterWin, type RunResult } from './descent';
+import { BOSS_NAMES, FLOORS, SWEEPER, TIERS, floorRoomCount, planFor, tierOf, unlockAfterWin, type RunResult } from './descent';
+import { ARCHETYPE_STRIKE, arcanePulseProc, onKillElementProc, stormChainTargets } from './elementProcs';
 import { evaluateLootOffer } from './lootOffer';
-import type { BulletView, CampView, PerkView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, LootOfferView, ShrineView, Toast } from './types';
+import type {
+  BulletView, CampArchetypeCard, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, FinishSeqView, Fx, Hazard,
+  LootOfferView, ShrineView, SkillTreeView, Toast,
+} from './types';
 
 interface Enemy {
   id: number; kind: EnemyKind | 'boss'; x: number; y: number; r: number; hp: number; maxHp: number;
   speed: number; contact: number; contactCd: number; fireCd: number; fireCd2: number; room: number; alive: boolean; spin: number;
-  hurtT: number; slowT: number; dotT: number; dotDps: number; tell: number; state: number; vx: number; vy: number; xp: number; wob: number;
-  summoned: number; variant: number; elite: EliteMod | null; shield: number; shieldMax: number; orbitCd: number;
+  hurtT: number; slowT: number; dotT: number; dotDps: number; burnStacks: number; condT: number; tell: number; state: number;
+  vx: number; vy: number; xp: number; wob: number; summoned: number; variant: number; elite: EliteMod | null;
+  shield: number; shieldMax: number; orbitCd: number;
 }
 interface Bullet {
   x: number; y: number; vx: number; vy: number; r: number; dmg: number; life: number; age: number; friendly: boolean;
-  w?: Weapon; hits?: number[]; pierce: number; bounce: number; crit?: boolean; child?: boolean; ric?: number; drone?: boolean;
+  w?: Weapon; hits?: number[]; pierce: number; bounce: number; crit?: boolean; child?: boolean; ric?: number;
+  orb?: boolean; crush?: boolean; bleed?: boolean;
 }
 interface Drop extends DropView { item?: Weapon | Gear; value: number }
 interface Ctl { mx: number; my: number; roll: boolean }
@@ -47,7 +59,6 @@ const SHRINES: Record<ShrineKind, { label: string; window: number; color: string
   sprint: { label: 'Shrine of Gold: sprint twice', window: 60, color: '#ffd84a' },
   whirl: { label: 'Shrine of the Whirlwind: spin fast (easy gear) for 15s', window: 45, color: '#8fd8ff' },
 };
-// Curses: temporary difficulty spikes. While cursed you earn +50% coins/XP; surviving (or breaking it with a sprint) pays a bounty.
 const CURSES: Record<CurseKind, { name: string; desc: string; color: string; dur: number }> = {
   frenzy:   { name: 'Attack!',          desc: 'enemies move 40% faster',        color: '#ff5a5a', dur: 60 },
   hexed:    { name: 'Road Rash',        desc: 'you take 40% more damage',       color: '#c77dff', dur: 60 },
@@ -59,52 +70,55 @@ const CURSES: Record<CurseKind, { name: string; desc: string; color: string; dur
 };
 const CURSE_KINDS = Object.keys(CURSES) as CurseKind[];
 const PLAYER_R = 0.35, MAX_FX = 140;
-/** The hero's body against walls (slightly slimmer than its hit radius, so it fits 1-tile corridors with slack). */
 const HERO_WALL_R = 0.3;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-/** Distance from point p to segment a-b (swept projectile hits). */
 function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
   const vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy;
   const k = l2 > 0 ? clamp(((px - ax) * vx + (py - ay) * vy) / l2, 0, 1) : 0;
   return Math.hypot(px - ax - vx * k, py - ay - vy * k);
 }
 
-/** Longest hit-stop (s). Longer stops (the old 0.5 s boss intro, 0.8 s boss death) read to riders as the game freezing. */
 const HIT_STOP_MAX = 0.1;
 const DX4 = [1, -1, 0, 0], DY4 = [0, 0, 1, -1];
 
-export interface DungeonOpts { seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean; stance?: StanceId; erg?: boolean; actionBot?: boolean; invulnerable?: boolean;
-  /** headless perk policy: 'suggest' (default: the highlighted card), 'first' (left card), 'none' (never offered) */
-  perks?: 'suggest' | 'first' | 'none' }
-export interface DungeonTotals { runs: number; deaths: number; floors: number; bosses: number; coins: number }
+export interface DungeonOpts {
+  seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean;
+  archetype?: ArchetypeId; erg?: boolean; actionBot?: boolean; invulnerable?: boolean;
+  /** headless skill-tree policy: 'suggest' (default), 'first', 'none' (bank without auto-popup) */
+  skills?: 'suggest' | 'first' | 'none';
+}
+export interface DungeonTotals { runs: number; deaths: number; floors: number; bosses: number; coins: number; climbs?: number }
 export interface DungeonSave {
   ver?: number; bank?: number; upgrades?: Levels; bestFloor?: number; runs?: number; autoInvest?: boolean;
-  stance?: StanceId; stancesUnlocked?: StanceId[]; totals?: DungeonTotals; erg?: boolean;
-  /** v3: the fixed descent. `tier` = chosen Category, `tierUnlocked` = highest unlocked, `wins` per tier index. */
+  archetype?: ArchetypeId; climbs?: number; totals?: DungeonTotals; erg?: boolean;
   tier?: number; tierUnlocked?: number; wins?: number[]; bestWinS?: number;
 }
-export const SAVE_VER = 3;
-/** Upgrade an old save in place: v1 -> v2 refunds retired upgrades (Swiftness) as coins and adds totals. Pure. */
+export const SAVE_VER = 4;
+
+/** Upgrade an old save in place: refunds retired upgrades (Swiftness, Arcanist stance) as coins and initializes archetype/climbs. Pure. */
 export function migrateSave(s: DungeonSave | null | undefined): DungeonSave {
   const out: DungeonSave = { ...(s ?? {}) };
   out.upgrades = { ...(out.upgrades ?? {}) };
+  const ups = out.upgrades as Record<string, number>;
   if ((out.ver ?? 1) < 2) {
-    const ups = out.upgrades as Record<string, number>;
-    for (const [id, def] of Object.entries(RETIRED)) if (ups[id]) { out.bank = (out.bank ?? 0) + spentOn(def, ups[id]); delete ups[id]; }
-    out.totals = out.totals ?? { runs: out.runs ?? 0, deaths: 0, floors: 0, bosses: 0, coins: 0 };
+    if (ups.swift) { out.bank = (out.bank ?? 0) + spentOn(RETIRED.swift, ups.swift); delete ups.swift; }
+    out.totals = out.totals ?? { runs: out.runs ?? 0, deaths: 0, floors: 0, bosses: 0, coins: 0, climbs: 0 };
   }
   if ((out.ver ?? 1) < 3) {
-    // endless floors -> a fixed descent: clamp the depth record, refund Delver levels the Shortcuts upgrade no longer has
-    const ups = out.upgrades as Record<string, number>, d = UPGRADES.find((u) => u.id === 'delve')!;
+    const d = UPGRADES.find((u) => u.id === 'delve')!;
     if ((ups.delve ?? 0) > DELVE_MAX) { out.bank = (out.bank ?? 0) + spentOn(d, ups.delve) - spentOn(d, DELVE_MAX); ups.delve = DELVE_MAX; }
     out.bestFloor = Math.min(FLOORS, out.bestFloor ?? 1);
+  }
+  if ((out.ver ?? 1) < 4) {
+    if (ups.arcanist) { out.bank = (out.bank ?? 0) + spentOn(RETIRED.arcanist, ups.arcanist); delete ups.arcanist; }
+    out.archetype = out.archetype && out.archetype in ARCHETYPES ? out.archetype : 'rouleur';
+    out.climbs = out.climbs ?? out.totals?.climbs ?? 0;
   }
   out.ver = SAVE_VER;
   return out;
 }
 
 const ACTION_BUTTON: Record<ActionId, 'a' | 'b' | 'y' | 'z'> = { strike: 'a', ward: 'b', rally: 'y', potion: 'z' };
-const PERK_FX_DRONE_EVERY = PERK_FX.droneEveryS, PERK_FX_DRONE_DMG = PERK_FX.droneDmg;
 const ACTION_LABEL: Record<ActionId, string> = { strike: 'Strike', ward: 'Ward', rally: 'Rally', potion: 'Potion' };
 
 export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim {
@@ -133,143 +147,178 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const rallyDur = tn.num('rallyDurS', 10, 1, 30, 1);
   const rallyMult = tn.num('rallyFireMult', 1.5, 1, 3, 0.05, 'fire-rate multiplier while Rally is up');
   const lootPromptS = tn.num('lootPromptS', 8, 2, 20, 0.5, 'seconds a Loot Choice prompt waits before taking its default choice');
-  const rollCd = tn.num('aiRollCdS', 2, 0.5, 10, 0.5, 'the AI rolls out of a crowd when hurt (0.3 s invulnerable); this is its cooldown');
+  const rollCd = tn.num('aiRollCdS', 2, 0.5, 10, 0.5, 'AI dodge-roll cooldown');
   const potionCd = tn.num('potionCdS', 6, 0, 30, 0.5, 'Potion (Z) cooldown');
   const zoneRates = [1, 0, 0, 0, 0, 0];
   const zoneRefill = [1, 2, 3, 4, 5].map((z) => tn.num(`cdRefillZ${z}`, DEFAULT_ZONE_REFILL[z], 0.1, 10, 0.1, `cooldown refill speed at power zone ${z} (x base)`));
   const sprintCompletes = tn.bool('cdSprintCompletes', true, 'a detected sprint finishes every refilling action');
-  const stanceCommitT = tn.num('stanceCommitS', 0.4, 0.1, 2, 0.05, 'D-pad cycling is free; the stance commits this long after the last press');
-  const stanceSwapT = tn.num('stanceSwapS', 0.5, 0, 5, 0.1, 'no attacks while the committed stance swaps in');
-  const styleSettleT = tn.num('styleSettleS', 3, 0, 20, 0.5, 'a stance style bonus starts this long after the stance swaps in (no bonus from rapid swapping)');
-  const styleAmt = tn.num('styleBonus', 0.03, 0, 0.5, 0.01, 'stance style bonus in its cadence band (power must be zone 2+)');
-  const stanceDropBias = tn.num('stanceDropBias', 0.6, 0, 1, 0.05, 'share of weapon drops rolled for the current stance');
-  const cadRef = tn.num('dmgCadenceRef', 90, 0, 140, 1, 'shots come per crank rev; per-shot damage x ref/cadence (clamped 0.8-1.5) so damage per second follows power, not cadence (0 = off)');
+  const archDropBias = tn.num('archetypeDropBias', 0.72, 0, 1, 0.05, 'share of weapon drops rolled for the active hero archetype');
+  const cadRef = tn.num('dmgCadenceRef', 90, 0, 140, 1, 'per-shot cadence normalization (0 = off)');
   const potionHeal = tn.num('potionHeal', 0.38, 0.1, 1, 0.05, 'fraction of max HP');
-  const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if the rider has not drunk in the last 10 s');
+  const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if rider has not drunk in 10 s');
   const maxHpT = tn.num('playerHp', 100, 20, 500, 10);
   const enemyDmgScale = tn.num('enemyDamageScale', 1.9, 0.1, 3, 0.1);
   const enemyHpMult = tn.num('enemyHpMult', 1.5, 0.2, 5, 0.1, 'base enemy HP multiplier');
   const enemyHpGrowth = tn.num('enemyHpGrowth', 1.36, 1, 2, 0.01, 'enemy HP multiplier per floor');
   const bossHpT = tn.num('bossHp', 4500, 100, 20000, 50, 'base boss HP (x enemyHpMult, x bossHpGrowth per floor)');
-  const sprintMult = tn.num('bossSprintDamageMult', 2, 1, 5, 0.1, 'extra damage for sprinting (or the ERG surge) while the boss is exposed');
+  const sprintMult = tn.num('bossSprintDamageMult', 2, 1, 5, 0.1, 'extra damage for sprinting (or ERG surge) while boss is exposed');
   const bossTn = {
     p2: tn.num('bossPhase2Hp', DEFAULT_BOSS.phaseSplits[0], 0.1, 0.95, 0.01), p3: tn.num('bossPhase3Hp', DEFAULT_BOSS.phaseSplits[1], 0.05, 0.9, 0.01),
-    bigEveryS: tn.num('bossBigEveryS', DEFAULT_BOSS.bigEveryS, 6, 60, 1, 'idle seconds before the telegraphed big attack (phase 1; -3 s per phase)'),
+    bigEveryS: tn.num('bossBigEveryS', DEFAULT_BOSS.bigEveryS, 6, 60, 1),
     windupS: tn.num('bossWindupS', DEFAULT_BOSS.windupS, 0.5, 5, 0.1),
-    exposedS: tn.num('bossExposedS', DEFAULT_BOSS.exposedS, 1, 15, 0.5, 'stun window after the big attack'),
+    exposedS: tn.num('bossExposedS', DEFAULT_BOSS.exposedS, 1, 15, 0.5),
     exposedMult: tn.num('bossExposedMult', DEFAULT_BOSS.exposedMult, 1, 5, 0.1),
     strikeBonusS: tn.num('bossStrikeBonusS', DEFAULT_BOSS.strikeBonusS, 0, 5, 0.5), parryBonusS: tn.num('bossParryBonusS', DEFAULT_BOSS.parryBonusS, 0, 5, 0.5),
-    tideAfterS: tn.num('bossTideAfterS', DEFAULT_BOSS.tideAfterS, 30, 600, 10, 'Turning Tide starts after this long on the boss'),
-    tideRate: tn.num('bossTideRate', DEFAULT_BOSS.tideRate, 0, 0.05, 0.001, 'extra boss damage taken per second of tide'),
+    tideAfterS: tn.num('bossTideAfterS', DEFAULT_BOSS.tideAfterS, 30, 600, 10),
+    tideRate: tn.num('bossTideRate', DEFAULT_BOSS.tideRate, 0, 0.05, 0.001),
   };
-  const bossCfg = (): BossCfg => ({ ...DEFAULT_BOSS, phaseSplits: [bossTn.p2(), Math.min(bossTn.p3(), bossTn.p2() - 0.05)], bigEveryS: bossTn.bigEveryS(), windupS: bossTn.windupS(),
-    exposedS: bossTn.exposedS(), exposedMult: bossTn.exposedMult(), strikeBonusS: bossTn.strikeBonusS(), parryBonusS: bossTn.parryBonusS(), tideAfterS: bossTn.tideAfterS(), tideRate: bossTn.tideRate() });
+  const bossCfg = (): BossCfg => ({
+    ...DEFAULT_BOSS, phaseSplits: [bossTn.p2(), Math.min(bossTn.p3(), bossTn.p2() - 0.05)], bigEveryS: bossTn.bigEveryS(), windupS: bossTn.windupS(),
+    exposedS: bossTn.exposedS(), exposedMult: bossTn.exposedMult(), strikeBonusS: bossTn.strikeBonusS(), parryBonusS: bossTn.parryBonusS(),
+    tideAfterS: bossTn.tideAfterS(), tideRate: bossTn.tideRate(),
+  });
   const itemDropPct = tn.num('itemDropPct', 10, 0, 100, 1, '% chance an enemy drops a weapon/gear');
-  const uniquePct = tn.num('uniqueDropPct', 0.6, 0, 100, 0.1, '% of item drops that are uniques (elites x1.5, bosses x10)');
+  const uniquePct = tn.num('uniqueDropPct', 0.6, 0, 100, 0.1, '% of item drops that are uniques');
   const eliteBase = tn.num('eliteChance', 0.05, 0, 1, 0.01, 'elite chance on floor 1 (+1.5%/floor, max 25%)');
-  const curseChance = tn.num('curseChance', 0.08, 0, 1, 0.01, 'chance per uncleared room entered (+1%/floor, max 20%)');
-  const curseGrade = tn.num('gradeCurseMire', 2, 0, 8, 0.5, 'extra grade during the Headwind curse');
-  const sprintHeal = tn.num('sprintHealFrac', 0.45, 0, 1, 0.05, 'a sprint heals this fraction of max HP (Second breath)');
-  const sprintGuard = tn.num('sprintGuard', 0.6, 0, 1, 0.05, 'damage taken is cut by this fraction while sprinting');
-  const sprintBreakS = tn.num('bossSprintBreakS', 4, 0, 10, 0.5, 'a sprint started while the boss is idle exposes it for this long');
-  const fireS = tn.num('sprintFiredUpS', 90, 0, 120, 5, 'after a sprint the hero is Fired Up for this long');
+  const curseChance = tn.num('curseChance', 0.08, 0, 1, 0.01, 'chance per uncleared room entered');
+  const curseGrade = tn.num('gradeCurseMire', 2, 0, 8, 0.5, 'extra grade during Headwind curse');
+  const sprintHeal = tn.num('sprintHealFrac', 0.45, 0, 1, 0.05, 'a sprint heals this fraction of max HP');
+  const sprintGuard = tn.num('sprintGuard', 0.6, 0, 1, 0.05, 'damage taken cut while sprinting');
+  const sprintBreakS = tn.num('bossSprintBreakS', 4, 0, 10, 0.5, 'sprint while boss idle exposes it');
+  const fireS = tn.num('sprintFiredUpS', 90, 0, 120, 5, 'Fired Up duration after sprint');
   const fireMult = tn.num('sprintFiredUpDmg', 2, 1, 3, 0.05, 'damage multiplier while sprinting or Fired Up');
-  const sprintSw = tn.num('sprintSecondWindS', 120, 0, 600, 10, 'a sprint takes this many seconds off the Second Wind recharge');
-  const swCdT = tn.num('secondWindCdS', 540, 30, 1800, 10, 'Second Wind recharge at base rate (zone 1); 540 = about 6 min of zone 2 at the 1.5x refill');
-  const swHeal = tn.num('secondWindHeal', 0.5, 0.1, 1, 0.05, 'Second Wind heals this fraction of max HP');
+  const sprintSw = tn.num('sprintSecondWindS', 120, 0, 600, 10, 'sprint seconds off Second Wind CD');
+  const swCdT = tn.num('secondWindCdS', 540, 30, 1800, 10, 'Second Wind recharge');
+  const swHeal = tn.num('secondWindHeal', 0.5, 0.1, 1, 0.05, 'Second Wind heal fraction');
   const swInvuln = tn.num('secondWindInvulnS', 1, 0, 3, 0.1);
-  const campAutoS = tn.num('campAutoStartS', 45, 5, 300, 5, 'camp starts the next descent after this long');
+  const campAutoS = tn.num('campAutoStartS', 45, 5, 300, 5, 'camp auto-starts after this long');
   const dirTn = {
-    warmupS: tn.num('paceWarmupS', DEFAULT_CFG.warmupS, 0, 600, 10, 'warm-up on the first floor of a run'),
-    ambushS: tn.num('paceAmbushS', DEFAULT_CFG.ambushS, 10, 120, 5, 'ambush effort length (Z3-4)'),
+    warmupS: tn.num('paceWarmupS', DEFAULT_CFG.warmupS, 0, 600, 10),
+    ambushS: tn.num('paceAmbushS', DEFAULT_CFG.ambushS, 10, 120, 5),
     recoverS: tn.num('paceRecoverS', DEFAULT_CFG.recoverS, 0, 300, 5),
-    spinupS: tn.num('paceSpinupS', DEFAULT_CFG.spinupS, 5, 60, 1, 'called spin-up length (>100 rpm)'),
+    spinupS: tn.num('paceSpinupS', DEFAULT_CFG.spinupS, 5, 60, 1),
     firstAmbushAtS: tn.num('paceFirstAmbushS', DEFAULT_CFG.firstAmbushAtS, 0, 600, 5),
     spinupAfterS: tn.num('paceSpinupAfterS', DEFAULT_CFG.spinupAfterS, 0, 300, 5),
-    secondEffortMin: tn.num('paceSecondEffortMin', DEFAULT_CFG.secondEffortMin, 0, 180, 5, 'ride minutes after which floors get a 2nd ambush'),
+    secondEffortMin: tn.num('paceSecondEffortMin', DEFAULT_CFG.secondEffortMin, 0, 180, 5),
     spinRpm: tn.num('paceSpinRpm', DEFAULT_CFG.spinRpm, 80, 140, 1),
   };
   const segTn = Object.fromEntries((Object.keys(DEFAULT_TARGETS) as Seg[]).map((k) => [k, {
-    erg: tn.num(`erg_${k}`, DEFAULT_TARGETS[k].erg, 0.3, 1.5, 0.01, `ERG target (FTP fraction) during ${k}`),
-    grade: tn.num(`grade_${k}`, DEFAULT_TARGETS[k].grade, -5, 10, 0.5, `grade offset during ${k}`) }])) as Record<Seg, { erg: () => number; grade: () => number }>;
-  // built at most once per tick (update() clears it): it was rebuilt several times a tick, the largest per-tick allocation
-  // and is now reused across ticks unless a tuning value actually changed (it was ~8% of all allocation)
-  let cfgMemo: DirectorCfg | null = null, cfgFresh = false;
-  const dirFns = Object.values(dirTn) as Array<() => number>, segKeys = Object.keys(DEFAULT_TARGETS) as Seg[];
-  const cfgSig = new Float64Array(dirFns.length + 2 * segKeys.length);
-  const cfgChanged = (): boolean => {
-    let ch = false, i = 0;
-    for (const f of dirFns) { const v = f(); if (v !== cfgSig[i]) { cfgSig[i] = v; ch = true; } i++; }
-    for (const k of segKeys) for (const v of [segTn[k].erg(), segTn[k].grade()]) { if (v !== cfgSig[i]) { cfgSig[i] = v; ch = true; } i++; }
-    return ch;
-  };
-  const dirCfg = (): DirectorCfg => { if (!cfgFresh) { cfgFresh = true; if (cfgChanged()) cfgMemo = null; } return cfgMemo ??= buildCfg(); };
-  const buildCfg = (): DirectorCfg => ({
-    ...(Object.fromEntries(Object.entries(dirTn).map(([k, f]) => [k, f()])) as Omit<DirectorCfg, 'targets'>),
-    targets: Object.fromEntries((Object.keys(DEFAULT_TARGETS) as Seg[]).map((k) => [k, { ...DEFAULT_TARGETS[k], erg: segTn[k].erg(), grade: segTn[k].grade() }])) as DirectorCfg['targets'],
-  });
-  const ambushN = tn.num('ambushEnemies', 4, 1, 12, 1, 'extra enemies in an ambush (+1 per 3 floors)');
-  const ergSurge = tn.num('ergBossSurge', 1.15, 0.8, 2, 0.05, 'ERG target (FTP fraction) during boss wind-up and Exposed windows');
-  const spinGoodFrac = tn.num('spinupGoodFrac', 0.5, 0, 1, 0.05, 'share of a called spin-up above the rpm that counts as answered');
-  const campGrade = tn.num('gradeCamp', 0, -5, 10, 0.5, 'camp is cool-down: flat road');
+    erg: tn.num(`erg_${k}`, DEFAULT_TARGETS[k].erg, 0.3, 1.5, 0.01),
+    grade: tn.num(`grade_${k}`, DEFAULT_TARGETS[k].grade, -5, 10, 0.5),
+  }])) as Record<Seg, { erg: () => number; grade: () => number }>;
+  const ambushN = tn.num('ambushEnemies', 4, 1, 12, 1);
+  const ergSurge = tn.num('ergBossSurge', 1.15, 0.8, 2, 0.05);
+  const spinGoodFrac = tn.num('spinupGoodFrac', 0.5, 0, 1, 0.05);
+  const campGrade = tn.num('gradeCamp', 0, -5, 10, 0.5);
   const terrainGrade = tn.num('gradeTerrain', 1, 0, 10, 0.5);
   const swampGrade = tn.num('gradeSwamp', 4, 0, 12, 0.5);
   const woundedGrade = tn.num('gradeWounded', 2, 0, 10, 0.5);
   const woundedFrac = tn.num('woundedHpFrac', 0.4, 0.1, 0.9, 0.05);
   const surgeGrade = tn.num('gradeBossSurge', 5, 0, 12, 0.5);
-  const whirlRpm = tn.num('whirlRpm', 95, 60, 140, 1, 'Whirlwind shrine cadence floor (rpm)');
-  const sweeperHp = tn.num('sweeperHpMult', 1.25, 0.3, 4, 0.05, 'Grim Sweeper HP vs a normal boss on the final floor');
-  const finalRooms = tn.num('finalFloorRooms', 4, 2, 12, 1, 'rooms on the final floor (the Broom Wagon), boss room included');
-  const winBonus = tn.num('winBonusCoins', 1500, 0, 20000, 50, 'coins for finishing a descent (x the Category coin multiplier)');
-  const perkStrength = tn.num('perkStrength', 1, 0, 3, 0.05, 'scales every perk effect (1 = as designed)');
-  const perkAutoS = tn.num('perkAutoPickS', 20, 3, 120, 1, 'the highlighted perk is taken after this long');
-  const perkDelayS = tn.num('perkOfferDelayS', 1.5, 0, 10, 0.25, 'the perk offer opens this long after a boss falls');
-  const perkLegW = tn.num('perkLegendaryWeight', DEFAULT_OFFER.weights[2], 0, 10, 0.25, 'legendary weight in an offer (common 10, rare 4)');
-  const perkPity = tn.num('perkPityStep', DEFAULT_OFFER.pityStep, 0, 5, 0.25, 'each offer without a legendary raises its weight by this fraction');
+  const whirlRpm = tn.num('whirlRpm', 95, 60, 140, 1);
+  const sweeperHp = tn.num('sweeperHpMult', 1.25, 0.3, 4, 0.05);
+  const finalRooms = tn.num('finalFloorRooms', 4, 2, 12, 1);
+  const winBonus = tn.num('winBonusCoins', 1500, 0, 20000, 50);
+  const skillAutoS = tn.num('skillAutoPickS', 18, 3, 120, 1, 'highlighted Quick-Pick skill card auto-invests after this long');
+  const skillDelayS = tn.num('skillOfferDelayS', 0.55, 0, 5, 0.1, 'level-up auto-popup delay after room clear');
 
   const rng = () => ctx.rng();
 
   // ---------- meta (persisted across runs) ----------
   const saved = migrateSave(ctx.load<DungeonSave>());
-  const totals: DungeonTotals = { runs: 0, deaths: 0, floors: 0, bosses: 0, coins: 0, ...(saved.totals ?? {}) };
+  const totals: DungeonTotals = { runs: 0, deaths: 0, floors: 0, bosses: 0, coins: 0, climbs: 0, ...(saved.totals ?? {}) };
   const levels: Levels = { ...(saved.upgrades ?? {}) };
   let bankStart = saved.bank ?? 0, bestFloor = Math.min(FLOORS, saved.bestFloor ?? 1), runs = saved.runs ?? 0, sessionRuns = 0, autoInvestOn = saved.autoInvest ?? true;
+  let climbsTotal = saved.climbs ?? totals.climbs ?? 0;
   let tierUnlocked = clamp(saved.tierUnlocked ?? 0, 0, TIERS.length - 1), tier = clamp(saved.tier ?? tierUnlocked, 0, tierUnlocked), runTier = tier;
   const wins: number[] = TIERS.map((_, i) => saved.wins?.[i] ?? 0);
-  let bestWinS = saved.bestWinS ?? 0, runT0 = 0, runKills0 = 0, runBosses0 = 0, descentsWon = 0, lastRun: RunResult | undefined;
+  let bestWinS = saved.bestWinS ?? 0, runT0 = 0, runKills0 = 0, runBosses0 = 0, runClimbs0 = 0, descentsWon = 0, lastRun: RunResult | undefined;
   const T = () => tierOf(runTier);
   let mods: MetaMods = metaMods(levels, bestFloor);
-  // a descent starts at the Keep; shortcut starts are a camp choice (they skip the loot, levels and perks of the floors before)
   let startFloor = clamp(opts?.floor ?? 1, 1, FLOORS);
   let sprintingNow = false, firedUpUntil = -1;
   let phase: 'camp' | 'run' = 'camp', campSel = 0, campT = 0, campLockT = 0;
-  let erg = opts?.erg ?? !!saved.erg, dir: DirectorState = newFloor(true), firstFloorOfRun = true, spinGood = 0, ergCurseSpinT = 0;
-  let swCd: Cooldown = { left: 0, total: 0 }; let swUsedT = -99, secondWinds = 0, deepest = 1, topLevel = 1, earnedPrev = 0, lastDeath: CampView['lastDeath'];
-  const pending: Array<{ type: 'campRow'; row: number }> = []; // taps from the renderer
-  // ---------- perks (per descent) ----------
-  let perksTaken = 0, perkRanks: PerkRanks = {}, pm: PerkMods = perkMods({}), perkPityN = 0, perkDueT = -1, perkTap = -1;
-  let offer: { ids: PerkId[]; sel: number; suggest: number; age: number; boss: string; floor: number } | null = null;
-  const drones: Array<{ x: number; y: number; cd: number; shotT: number }> = [];
-  const ride: FloorRide = { t: 0, z2: 0, spin: 0, sprints: 0, bossT: 0, surge: 0 };
-  const potionCap = () => mods.potionCap + pm.potionCap;
+  let erg = opts?.erg ?? !!saved.erg, dir: DirectorState = newFloor(true), spinGood = 0, ergCurseSpinT = 0;
+  let swCd: Cooldown = { left: 0, total: 0 }, swUsedT = -99, secondWinds = 0, deepest = 1, topLevel = 1, earnedPrev = 0, lastDeath: CampView['lastDeath'];
+
+  // ---------- archetype, mid-ride pace bias & skill tree ----------
+  const unlockProgress = () => ({ bestFloor, climbs: climbsTotal });
+  let archetype: ArchetypeId = opts?.archetype ?? saved.archetype ?? 'rouleur';
+  if (!opts?.archetype && !isArchetypeUnlocked(archetype, unlockProgress())) archetype = 'rouleur';
+  let paceBias: PaceBias = 0;
+  let skillRanks: SkillRanks = {};
+  let unspentSP = 0;
+  let relicBonusBranches: number[] = [];
+  let skillOfferDueT = -1;
+  let skillOffer: {
+    mode: 'quick' | 'full';
+    sel: number;
+    focusNodeId: string;
+    age: number;
+    manual: boolean;
+    reason: string;
+  } | null = null;
+  let tm: TreeMods = computeTreeMods(archetype, skillRanks, { cadence: 0, powerZone: 1, effortZone: 1, sprinting: false, firedUp: false, climbing: false });
+
+  // Dynamic skill-tree runtime state (per run)
+  let wardBlocks = 0;
+  let pelotonThornsUntil = -1;
+  let potionArmorUntil = -1;
+  let floorSecondWindUsed = false;
+  let musetteRooms = 0;
+  let z4CritCharges = 0;
+  let prevPowerZone = 1;
+  let bulletTimeUntil = -1;
+  let momentumStacks = 0;
+  let lastVampHealT = -99;
+  let mountainKingUntil = -1;
+  let pullTimer = 0;
+  let calderaTimer = 0;
+  let haloTimer = 0;
+  let wardWasUp = false;
+
+  const pendingActions: Array<
+    | { type: 'campRow'; row: number }
+    | { type: 'selectArchetype'; id: ArchetypeId }
+    | { type: 'paceBias'; bias: PaceBias }
+    | { type: 'openSkillTree' }
+    | { type: 'skillPick'; nodeId: string; confirm?: boolean }
+    | { type: 'skillCard'; i: number }
+    | { type: 'skillMode'; mode: 'quick' | 'full' }
+    | { type: 'skillClose' }
+  > = [];
+
+  // Director config memoization incorporating active Archetype & Pace Bias
+  let cfgMemo: DirectorCfg | null = null, cfgFresh = false;
+  let cfgArch: ArchetypeId = archetype, cfgBias: PaceBias = paceBias;
+  const dirFns = Object.values(dirTn) as Array<() => number>, segKeys = Object.keys(DEFAULT_TARGETS) as Seg[];
+  const cfgSig = new Float64Array(dirFns.length + 2 * segKeys.length);
+  const cfgChanged = (): boolean => {
+    let ch = cfgArch !== archetype || cfgBias !== paceBias;
+    cfgArch = archetype; cfgBias = paceBias;
+    let i = 0;
+    for (const f of dirFns) { const v = f(); if (v !== cfgSig[i]) { cfgSig[i] = v; ch = true; } i++; }
+    for (const k of segKeys) for (const v of [segTn[k].erg(), segTn[k].grade()]) { if (v !== cfgSig[i]) { cfgSig[i] = v; ch = true; } i++; }
+    return ch;
+  };
+  const buildBaseCfg = (): DirectorCfg => ({
+    ...(Object.fromEntries(Object.entries(dirTn).map(([k, f]) => [k, f()])) as Omit<DirectorCfg, 'targets'>),
+    targets: Object.fromEntries((Object.keys(DEFAULT_TARGETS) as Seg[]).map((k) => [k, { ...DEFAULT_TARGETS[k], erg: segTn[k].erg(), grade: segTn[k].grade() }])) as DirectorCfg['targets'],
+  });
+  const dirCfg = (): DirectorCfg => {
+    if (!cfgFresh) { cfgFresh = true; if (cfgChanged()) cfgMemo = null; }
+    return cfgMemo ??= archetypeDirectorCfg(buildBaseCfg(), archetype, paceBias);
+  };
+
+  const potionCap = () => mods.potionCap + tm.potionCapAdd;
 
   // ---------- hero ----------
   const P = {
-    x: 0, y: 0, hp: 0, maxHp: 0, potions: 3, ward: 0, rally: 0, lastPotionT: -99, rollCd: 0, rollT: 0, rollDx: 0, rollDy: 0,
+    x: 0, y: 0, hp: 0, maxHp: 0, shield: 0, potions: 3, ward: 0, rally: 0, lastPotionT: -99, rollCd: 0, rollT: 0, rollDx: 0, rollDy: 0,
     invuln: 0, hurtT: -99, aim: 0, lastShotRevs: ctx.bike().crankRevs, onSwamp: false, speedMult: 1, moveAng: 0, moving: false, targetId: 0,
     level: 1, xp: 0, coins: 0, coinsEarned: 0, shots: 0,
   };
   let weapon: Weapon = starterWeapon();
-  let stance: StanceId = opts?.stance ?? saved.stance ?? 'ranger';
-  const slots = {} as Record<StanceId, Weapon>;
-  function fillSlots(level: number) {
-    slots.ranger = weapon;
-    for (const id of ['vanguard', 'skirmisher', 'arcanist'] as StanceId[]) slots[id] = level > 1 ? makeWeapon(rng, level, 1, STANCES[id].starter) : makeWeapon(rng, 1, 0, STANCES[id].starter);
-    if (!stancesFor(mods.arcanist).includes(stance)) stance = 'ranger';
-    weapon = slots[stance];
-  }
-  let swapT = 0, swapTo: StanceId | null = null, pick: StanceId | null = null, pickT = 0, stanceSince = -99, styleOn = false, suggestion: StanceId | null = null;
-  const sb = (k: string) => (styleOn && STANCES[stance].bonus === k ? 1 + styleAmt() : 1);
   const gear: Partial<Record<Slot, Gear>> = {};
   let bestFind: Weapon | Gear = weapon;
   const tapped: ActionId[] = [];
@@ -280,8 +329,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const gearSum = (k: keyof Gear['stats']) => SLOTS.reduce((a, s) => a + (gear[s]?.stats[k] ?? 0), 0);
   function recomputeHp(heal: boolean) {
     const frac = P.maxHp > 0 ? P.hp / P.maxHp : 1;
-    P.maxHp = (maxHpT() + 10 * (P.level - 1) + gearSum('maxHp')) * mods.hpMult;
+    P.maxHp = (maxHpT() + 10 * (P.level - 1) + gearSum('maxHp')) * mods.hpMult * ARCHETYPES[archetype].hpMult;
     P.hp = heal ? P.maxHp : clamp(frac * P.maxHp, 1, P.maxHp);
+    P.shield = Math.min(P.shield, P.maxHp * 0.35);
   }
 
   // ---------- floor state ----------
@@ -292,13 +342,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let shrines: Shrine[] = [];
   let current = 0, safeRoom = 0, bossStarted = false, bossT = 0, hitT = 0;
   let bs: BossState = newBoss();
-  /** The Gear Masher's chainring flail: a yo-yo throw on its chain, a whirl while winding up, a slam for the big attack. */
   type FlailMode = 'hand' | 'out' | 'back' | 'whirl' | 'slam' | 'rest';
   const fl = { mode: 'hand' as FlailMode, t: 0, x: 0, y: 0, x0: 0, y0: 0, tx: 0, ty: 0, ang: 0, hitCd: 0, second: false, px: 0, py: 0, pvx: 0, pvy: 0 };
   const FLAIL_OUT = 0.55, FLAIL_HOLD = 0.15, FLAIL_BACK = 0.6, FLAIL_REACH = 7, FLAIL_HIT_R = 0.5;
   let curse: { kind: CurseKind; left: number; total: number; s0: number } | null = null, cursesSurvived = 0;
   const cursed = (k: CurseKind) => curse?.kind === k;
-  const bounty = () => (curse ? 1.5 : 1);
+  const bounty = () => (curse ? 1.5 : 1) * PACE_MODES[paceBias].bountyMult;
   const bullets: Bullet[] = [];
   const drops: Drop[] = [];
   const hazards: Array<Hazard & { dmg: number }> = [];
@@ -307,8 +356,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const cues: Array<{ name: string; id: number }> = [];
   let nextId = 1, cueId = 0;
   let t = 0, kills = 0, deaths = 0, damageDealt = 0, output = 0, fightT = 0, roomsCleared = 0, bossDefeated = 0, floorsCleared = 0, elitesSlain = 0, uniquesFound = 0;
-  let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99, navChk = 0, stuckStats = 0, exploring = false;
-  /** Movement-flow instrumentation (headless metrics/tests; cheap counters only). */
+  let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99, stuckStats = 0, exploring = false;
   const fstat = { exploreT: 0, speedSum: 0, slowT: 0, wallT: 0, corridorT: 0, corridorSpeedSum: 0, offCenterT: 0, overshootT: 0 };
   let navPrev: { x: number; y: number } | null = null;
   let flow: Int16Array = new Int16Array(0), flowQ = new Int32Array(0), flowKey = -1;
@@ -319,7 +367,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const d = ENEMY_DEF[kind], hp = d.hp * hpMul();
     const e: Enemy = {
       id: nextId++, kind, x, y, r: d.r, hp, maxHp: hp, speed: d.speed, contact: d.contact * dmgMul(), contactCd: 0,
-      fireCd: 0.8 + rng() * 1.5, fireCd2: 2 + rng() * 2, room, alive: true, spin: 0, hurtT: -99, slowT: 0, dotT: 0, dotDps: 0,
+      fireCd: 0.8 + rng() * 1.5, fireCd2: 2 + rng() * 2, room, alive: true, spin: 0, hurtT: -99, slowT: 0, dotT: 0, dotDps: 0, burnStacks: 0, condT: 0,
       tell: 0, state: 0, vx: 0, vy: 0, xp: d.xp * (1 + 0.3 * (floor - 1)), wob: rng() * 6, summoned: 0, variant: 0,
       elite: null, shield: 0, shieldMax: 0, orbitCd: 0,
     };
@@ -331,10 +379,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (mod === 'swift') e.speed *= 1.7;
     if (mod === 'shielded') { e.shieldMax = e.maxHp * 0.4; e.shield = e.shieldMax; }
   }
+  let finishSeq: FinishSeqView | null = null;
   function buildFloor() {
     const fp = planFor(floor);
-    world = generateWorld(rng, floor, { theme: fp.zone, ...(fp.final ? { rooms: finalRooms() } : {}) });
-    enemies = []; bullets.length = 0; drops.length = 0; hazards.length = 0;
+    world = generateWorld(rng, floor, { theme: fp.zone, rooms: floorRoomCount(floor, runTier, finalRooms()) });
+    enemies = []; bullets.length = 0; drops.length = 0; hazards.length = 0; finishSeq = null;
     const eliteChance = Math.min(0.25 + T().elite, eliteBase() + 0.015 * (floor - 1) + T().elite);
     for (const room of world.rooms) for (const s of room.spawns) {
       const e = spawnEnemy(s.kind, s.x, s.y, room.id);
@@ -346,8 +395,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     Object.assign(boss, { kind: 'boss', r: 1.1, hp, maxHp: hp, speed: 1.1, contact: 18 * dmgMul(), fireCd: 2, fireCd2: 1.2, xp: 120 * (1 + 0.3 * (floor - 1)), variant: fp.boss });
     if (fp.boss === SWEEPER) boss.r = 1.35;
     shrines = world.rooms.filter((r) => r.shrine).map((r) => ({ room: r.id, kind: r.shrine!.kind, x: r.shrine!.x, y: r.shrine!.y, state: 'idle' as const, progress: 0, left: 0, s0: 0 }));
-    Object.assign(ride, { t: 0, z2: 0, spin: 0, sprints: 0, bossT: 0, surge: 0 });
     current = 0; safeRoom = 0; bossStarted = false; bossT = 0; bs = newBoss(); fl.mode = 'hand'; fl.px = P.x; fl.py = P.y; fl.pvx = fl.pvy = 0; navPath = []; navKey = ''; flowKey = -1;
+    floorSecondWindUsed = false;
     P.x = world.spawn.x; P.y = world.spawn.y;
     markSeen(world.rooms[0]);
   }
@@ -355,34 +404,41 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   buildFloor();
 
   function persist() {
-    ctx.save({ ver: SAVE_VER, bank: Math.round(bankStart + P.coinsEarned), upgrades: { ...levels }, bestFloor, runs, autoInvest: autoInvestOn, tier, tierUnlocked, wins: [...wins], bestWinS,
-      stance, stancesUnlocked: stancesFor(mods.arcanist), erg, totals: { ...totals, coins: totals.coins + P.coinsEarned } } satisfies DungeonSave);
+    ctx.save({
+      ver: SAVE_VER, bank: Math.round(bankStart + P.coinsEarned), upgrades: { ...levels }, bestFloor, runs, autoInvest: autoInvestOn,
+      tier, tierUnlocked, wins: [...wins], bestWinS, archetype, climbs: climbsTotal, erg,
+      totals: { ...totals, climbs: climbsTotal, coins: totals.coins + P.coinsEarned },
+    } satisfies DungeonSave);
   }
 
   // ---------- fx / sound ----------
   function addFx(f: Omit<Fx, 't0'>): Fx { const o = { ...f, t0: t }; fx.push(o); if (fx.length > MAX_FX) fx.splice(0, fx.length - MAX_FX); return o; }
   function toast(text: string, color = '#fff') { toasts.push({ text, color, t0: t }); if (toasts.length > 5) toasts.shift(); }
   function cue(name: string) { cues.push({ name, id: ++cueId }); if (cues.length > 40) cues.shift(); }
-  /** Hit-stop, capped at HIT_STOP_MAX: the sim (and so every animation) stops, so anything longer looks like a hang. */
   function freeze(s: number) { hitT = Math.max(hitT, Math.min(s, HIT_STOP_MAX)); }
 
-  // ---------- resistance (only sets on change) ----------
+  // ---------- resistance ----------
   const resState = new Map<string, number | null>();
   function resSync(id: string, grade: number | null) {
     if (resState.get(id) === grade) return;
     resState.set(id, grade);
     if (grade === null) ctx.resistance.clear(id); else ctx.resistance.set({ id, mode: 'sim', gradePct: grade });
   }
-
-  /** Grade mode: shifters drive virtual gears and the game adds grade. ERG: the trainer holds the segment's power; no gears. */
   function applyMode() {
     resState.clear(); ctx.resistance.clearAll();
-    ctx.resistance.useVirtualGears(!erg); // shifters are gears only (and unused in ERG); actions live on A/B/Y/Z
+    ctx.resistance.useVirtualGears(!erg);
   }
   applyMode();
   function ergSync(f: number) {
     if (resState.get('pace') === f) return;
     resState.set('pace', f); ctx.resistance.set({ id: 'pace', mode: 'erg', ftpFraction: f });
+  }
+  function clearCombatGrades() {
+    for (const id of ['swamp', 'wounded', 'boss-surge', 'curse-mire']) resSync(id, null);
+  }
+  function holdRecoveryRoad() {
+    if (erg) ergSync(dirCfg().targets.cooldown.erg);
+    else { clearCombatGrades(); resSync('terrain', campGrade()); }
   }
 
   // ---------- geometry ----------
@@ -390,12 +446,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const rid = world.doorRoom[ty * world.w + tx];
     return rid !== undefined && world.rooms[rid].locked;
   };
-  /** Blocks projectiles. */
   const solid = (tx: number, ty: number) => {
     const k = tileAt(world, tx, ty);
     return k === TILE.WALL || (k === TILE.DOOR && doorLocked(tx, ty));
   };
-  /** Blocks walking (adds pits and braziers). */
   const walkSolid = (tx: number, ty: number) => {
     const k = tileAt(world, tx, ty);
     return k === TILE.PIT || k === TILE.PILLAR || solid(tx, ty);
@@ -403,8 +457,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const blocked = (x: number, y: number, r: number) =>
     walkSolid(Math.floor(x - r), Math.floor(y - r)) || walkSolid(Math.floor(x + r), Math.floor(y - r)) ||
     walkSolid(Math.floor(x - r), Math.floor(y + r)) || walkSolid(Math.floor(x + r), Math.floor(y + r));
-  /** Axis-separated move; when one axis is blocked, nudge toward the tile centre on the other axis so corners don't snag.
-   *  A body already overlapping a wall (knockback, rolls, spawn) is eased back toward its tile centre first, so it can't wedge. */
   function move(e: { x: number; y: number }, dx: number, dy: number, r: number) {
     if (blocked(e.x, e.y, r)) {
       const step = Math.max(Math.abs(dx), Math.abs(dy), 0.02);
@@ -428,7 +480,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const liveInRoom = (rid: number) => enemies.filter((e) => isLive(e, rid));
   const liveCount = (rid: number) => { let n = 0; for (const e of enemies) if (isLive(e, rid)) n++; return n; };
 
-  /** Room-local BFS distance field from the player, so melee enemies walk around pits and braziers. */
   function updateFlow() {
     const r = activeRoom();
     const px = clamp(Math.floor(P.x), r.x0, r.x0 + r.w - 1), py = clamp(Math.floor(P.y), r.y0, r.y0 + r.h - 1);
@@ -437,7 +488,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     flowKey = key;
     if (flow.length !== r.w * r.h) flow = new Int16Array(r.w * r.h);
     flow.fill(-1);
-    if (flowQ.length < r.w * r.h) flowQ = new Int32Array(r.w * r.h); // BFS queue, reused (was a fresh array plus 4 pairs per cell)
+    if (flowQ.length < r.w * r.h) flowQ = new Int32Array(r.w * r.h);
     const q = flowQ; let qn = 0;
     q[qn++] = (py - r.y0) * r.w + (px - r.x0);
     flow[q[0]] = 0;
@@ -465,7 +516,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     for (const [ox, oy] of NEIGH8) {
       const v = at(ex + ox, ey + oy);
       if (v < 0 || v >= best) continue;
-      if (ox && oy && (at(ex + ox, ey) < 0 || at(ex, ey + oy) < 0)) continue; // no corner cutting
+      if (ox && oy && (at(ex + ox, ey) < 0 || at(ex, ey + oy) < 0)) continue;
       best = v; bx = ox; by = oy;
     }
     if (!bx && !by) return { x: dx / d, y: dy / d };
@@ -479,14 +530,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     return cadenceSpeed(c, spinCalled(), curve);
   }
 
-
-  /** The boss's push window (telegraph + exposed): boss-surge grade in grade mode, the called surge in ERG. */
   function bossShield(): { shielded: boolean; leftS: number; nextS: number } {
     if (!bossStarted || !boss.alive) return { shielded: false, leftS: 0, nextS: 0 };
     const push = bs.cycle === 'windup' || bs.cycle === 'exposed';
     return { shielded: push, leftS: push ? bs.left : 0, nextS: bs.cycle === 'idle' ? bs.left : 0 };
   }
-
 
   // ---------- loot ----------
   function dropAt(x: number, y: number, kind: Drop['kind'], value: number, item?: Weapon | Gear) {
@@ -500,12 +548,14 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function dropItem(x: number, y: number, bump: number, uniqueMult = 1) {
     const lvl = floor + (rng() < 0.3 ? 1 : 0), rar = rollRarity(rng, bump + (rng() < mods.rarityBumpChance ? 1 : 0));
     if (rng() * 100 < uniquePct() * uniqueMult * mods.dropMult) dropAt(x, y, 'weapon', 0, makeUnique(rng, lvl + 1));
-    else if (rng() < 0.45) { const st = stylesFor(stance, mods.arcanist); dropAt(x, y, 'weapon', 0, makeWeapon(rng, lvl, rar, rng() < stanceDropBias() ? pickWeaponStyle(st, rng()) : undefined)); }
-    else dropAt(x, y, 'gear', 0, makeGear(rng, lvl, rar));
+    else if (rng() < 0.45) {
+      const styles = ARCHETYPES[archetype].weaponStyles;
+      dropAt(x, y, 'weapon', 0, makeWeapon(rng, lvl, rar, rng() < archDropBias() ? pickWeaponStyle(styles, rng()) : undefined));
+    } else dropAt(x, y, 'gear', 0, makeGear(rng, lvl, rar));
   }
   function coinValue() { return Math.max(1, Math.round((1 + rng() * 2) * (1 + 0.3 * (floor - 1)) * mods.coinMult * T().coins)); }
   function addCoins(v: number) { v = Math.round(v * bounty()); P.coins += v; P.coinsEarned += v; }
-  interface PendingLoot { item: Weapon | Gear; sid: StanceId; view: LootOfferView; leftS: number }
+  interface PendingLoot { item: Weapon | Gear; view: LootOfferView; leftS: number }
   let lootOffer: PendingLoot | null = null;
   let lootOfferId = 0;
   let lootTap: 'equip' | 'drop' | null = null;
@@ -513,16 +563,16 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function applyLootSell(it: Weapon | Gear, v: number) {
     addCoins(v); toast(`Sold ${it.name} +${v}c`, '#bbb'); cue('coin');
   }
-  function applyLootEquip(it: Weapon | Gear, sid: StanceId) {
+  function applyLootEquip(it: Weapon | Gear) {
     const col = RARITY_COLORS[it.rarity];
-    if ('base' in it) { slots[sid] = it; if (sid === stance && !swapTo) weapon = it; } else { gear[it.slot] = it; recomputeHp(false); }
+    if ('base' in it) weapon = it; else { gear[it.slot] = it; recomputeHp(false); }
     if (it.rarity > bestFind.rarity || (it.rarity === bestFind.rarity && it.level > bestFind.level)) bestFind = it;
-    toast('base' in it ? `Equipped ${it.name} (${STANCES[sid].name})` : `Equipped ${it.name}`, col);
+    toast(`Equipped ${it.name}`, col);
     addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.8, color: col, r: 1.4 });
     if (it.rarity === 5) {
       uniquesFound++; freeze(0.3); cue('unique');
       const u = UNIQUES.find((x) => x.name === it.name);
-      addFx({ kind: 'banner', x: P.x, y: P.y, life: 3.5, color: col, text: `UNIQUE — ${it.name}${u ? ': ' + u.blurb : ''}` });
+      addFx({ kind: 'banner', x: P.x, y: P.y, life: 3.5, color: col, text: `UNIQUE - ${it.name}${u ? ': ' + u.blurb : ''}` });
       ctx.emit({ type: 'uniqueFound', data: { name: it.name, floor } });
     } else cue('equip');
   }
@@ -530,7 +580,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (!lootOffer) return;
     const o = lootOffer;
     lootOffer = null; lootTap = null;
-    if (choice === 'equip') applyLootEquip(o.item, o.sid);
+    if (choice === 'equip') applyLootEquip(o.item);
     else applyLootSell(o.item, o.view.sellCoins);
   }
   function flushLootOffer() { if (lootOffer) resolveLootOffer(lootOffer.view.defaultChoice); }
@@ -543,57 +593,121 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       return;
     }
     const it = d.item!;
-    const sid = 'base' in it ? stanceOfStyle(it.base, mods.arcanist) : stance;
-    if ('base' in it && arsenal.collect(it.base, it.rarity, mods.arcanist)) {
-      toast('Full Arsenal: epic+ weapons collected for all 4 stances', '#ffd84a');
-      ctx.emit({ type: 'fullArsenal', data: { floor, stances: 4, minRarity: 3 } });
-    }
     const v = Math.round(sellValue(it.level, Math.min(4, it.rarity) as Rarity) * mods.coinMult);
-    const cur = 'base' in it ? slots[sid] : gear[it.slot];
-    const evalOffer = evaluateLootOffer(it, cur, v, sid);
+    const cur = 'base' in it ? weapon : gear[it.slot];
+    const evalOffer = evaluateLootOffer(it, cur, v, archetype);
     if (!evalOffer) { applyLootSell(it, v); return; }
     if (autopilot) {
-      if (evalOffer.defaultChoice === 'equip') applyLootEquip(it, sid); else applyLootSell(it, v);
+      if (evalOffer.defaultChoice === 'equip') applyLootEquip(it); else applyLootSell(it, v);
       return;
     }
     // Commit any earlier pending offer to its default before presenting the new drop
     flushLootOffer();
     const totalS = lootPromptS();
-    lootOffer = { item: it, sid, leftS: totalS, view: { ...evalOffer, id: ++lootOfferId, leftS: totalS, totalS } };
+    lootOffer = { item: it, leftS: totalS, view: { ...evalOffer, id: ++lootOfferId, leftS: totalS, totalS } };
     cue(it.rarity === 5 ? 'unique' : 'pickup');
   }
 
   // ---------- combat ----------
-  /** Fury: a long boss fight gets dangerous for the hero too, racing Turning Tide. */
   function bossFury() { return bossStarted && boss.alive && floor > 1 ? clamp((bs.fightT - furyAfter()) * furyRate(), 0, 1.5) : 0; }
-  /** Damage numbers: every hit shows; rapid hits on one enemy merge into one rising number (keeps the fx budget). */
   let expWindows = 0, expStruck = 0, expHit = false;
-  const arsenal = createArsenalCollection();
   const dmgFx = new Map<number, { fx: Fx; v: number; t: number }>();
   function dmgNumber(e: Enemy, dmg: number, crit: boolean, color: string) {
-    // keep the RNG stream identical to the old (big hits only) numbers: draw only where they drew
     const jit = crit || dmg >= e.maxHp * 0.08 || e.kind === 'boss' ? rng() : ((e.id * 37 + Math.round(t * 30)) % 9) / 9;
     if (dmg < 0.5) return;
     const m = dmgFx.get(e.id);
     if (m && !crit && t - m.t < 0.25 && fx.includes(m.fx)) { m.v += dmg; m.fx.text = String(Math.round(m.v)); m.fx.t0 = t; m.t = t; return; }
-    const f = addFx({ kind: 'text', x: e.x + (jit - 0.5) * 0.4, y: e.y - e.r - 0.2, life: crit ? 0.9 : 0.7, color: crit ? '#ffd84a' : color, text: String(Math.round(dmg)), big: crit || e.kind === 'boss' && dmg >= e.maxHp * 0.01 });
+    const f = addFx({ kind: 'text', x: e.x + (jit - 0.5) * 0.4, y: e.y - e.r - 0.2, life: crit ? 0.9 : 0.7, color: crit ? '#ffd84a' : color, text: String(Math.round(dmg)), big: crit || (e.kind === 'boss' && dmg >= e.maxHp * 0.01) });
     if (f && !crit) dmgFx.set(e.id, { fx: f, v: dmg, t }); else dmgFx.delete(e.id);
     if (dmgFx.size > 64) dmgFx.clear();
   }
-  function hurtPlayer(dmg: number) {
-    if (P.invuln > 0 || opts?.invulnerable) return; // invulnerable: test-only, for deterministic output checks
-    if (P.ward > 0) { if (t - P.hurtT > 0.25) cue('hit'); P.hurtT = t - 1; return; }
-    const armor = clamp(gearSum('armor'), 0, 0.75);
-    const taken = dmg * enemyDmgScale() * STANCES[stance].dmgTaken / sb('armor') * (1 - armor) * (cursed('hexed') ? 1.4 : 1) * (1 + bossFury()) * (sprintingNow ? 1 - sprintGuard() : 1) * pm.taken;
+
+  function healPlayer(amount: number) {
+    if (amount <= 0) return;
+    const before = P.hp;
+    P.hp = Math.min(P.maxHp, P.hp + amount);
+    const overflow = Math.max(0, amount - (P.hp - before));
+    if (tm.bottomlessMusette && overflow > 0) {
+      P.shield = Math.min(P.maxHp * 0.35, P.shield + overflow * 0.6);
+    }
+  }
+
+  function triggerThorns(bike: Readonly<BikeState>, mult = 1) {
+    if (tm.thornsPct <= 0) return;
+    const r = 2.6 * tm.thornsRadiusMult;
+    const dmg = weapon.dmg * playerDmg(bike) * tm.thornsPct * mult * (t < pelotonThornsUntil ? 2.5 : 1);
+    for (const e of liveInRoom(current)) {
+      if (Math.hypot(e.x - P.x, e.y - P.y) < r + e.r) damageEnemy(e, dmg, bike, false, '#ffd84a');
+    }
+  }
+
+  function hurtPlayer(dmg: number, bike?: Readonly<BikeState>) {
+    if (P.invuln > 0 || opts?.invulnerable) return;
+    const b = bike ?? ctx.bike();
+    // Dodge (Slipstream)
+    if (tm.dodgeAdd > 0 && rng() < tm.dodgeAdd) {
+      addFx({ kind: 'text', x: P.x, y: P.y - 0.7, life: 0.65, color: '#84ff9a', text: 'DODGE' });
+      if (tm.leadOutCd > 0) { cds.strike.left = Math.max(0, cds.strike.left - tm.leadOutCd); cds.rally.left = Math.max(0, cds.rally.left - tm.leadOutCd); }
+      if (tm.untouchableCrit) {
+        momentumStacks = Math.min(10, momentumStacks + 1);
+        const near = nearestEnemy();
+        if (near) {
+          const ang = Math.atan2(near.y - P.y, near.x - P.x);
+          shoot(ang, weapon.dmg * playerDmg(b) * 1.6, weapon.speed * 1.2, true, true);
+        }
+      }
+      return;
+    }
+    // Ward block
+    if (P.ward > 0) {
+      if (t - P.hurtT > 0.25) cue('hit');
+      P.hurtT = t - 1;
+      wardBlocks++;
+      triggerThorns(b, 1.15);
+      if (tm.aegisRiposte) {
+        const ripDmg = weapon.dmg * playerDmg(b) * 2.2;
+        addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.4, color: '#ffd84a', r: 3.2 });
+        for (const e of liveInRoom(current)) if (Math.hypot(e.x - P.x, e.y - P.y) < 3.2 + e.r) damageEnemy(e, ripDmg, b, true, '#ffd84a');
+        if (bossStarted && boss.alive && bs.cycle === 'exposed') bs.left += 2;
+      }
+      if (tm.unbreakablePeloton && wardBlocks % 3 === 0) {
+        P.rally = Math.max(P.rally, rallyDur() * 0.65);
+        pelotonThornsUntil = t + 3;
+        toast('Unbreakable Peloton! Free Rally + 2.5× Thorns', '#ffd84a');
+        addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.9, color: '#ffd84a', r: 2.2 });
+      }
+      return;
+    }
+    const armor = clamp(gearSum('armor') + tm.armorAdd + (t < potionArmorUntil ? tm.potionArmorBonus : 0), 0, 0.78);
+    let taken = dmg * enemyDmgScale() * ARCHETYPES[archetype].dmgTaken * PACE_MODES[paceBias].dmgTakenMult * (1 - armor)
+      * (cursed('hexed') ? 1.4 : 1) * (1 + bossFury()) * (sprintingNow ? 1 - sprintGuard() : 1);
+    if (P.shield > 0) {
+      const ab = Math.min(P.shield, taken);
+      P.shield -= ab;
+      taken -= ab;
+    }
     P.hp -= taken;
+    triggerThorns(b, 1);
     if (taken >= 1 && t - P.hurtT > 0.2) addFx({ kind: 'text', x: P.x + 0.3, y: P.y - 0.7, life: 0.7, color: '#ff5a6e', text: `-${Math.round(taken)}` });
     if (t - P.hurtT > 0.25) cue('hurt');
     P.hurtT = t;
-    if (P.hp <= 0 && swCd.left <= 0) secondWind();
+    if (P.hp <= 0) {
+      if (tm.secondWindTree && !floorSecondWindUsed) {
+        floorSecondWindUsed = true;
+        P.hp = Math.max(1, P.maxHp * 0.35);
+        P.invuln = 1.4;
+        for (const e of liveInRoom(current)) {
+          const dx = e.x - P.x, dy = e.y - P.y, d = Math.hypot(dx, dy) || 1;
+          if (d < 3.5 && e.kind !== 'boss') move(e, (dx / d) * 1.5, (dy / d) * 1.5, e.r);
+        }
+        addFx({ kind: 'banner', x: P.x, y: P.y, life: 2, color: '#7dff8a', text: 'FEED ZONE SECOND WIND' });
+        cue('levelup');
+      } else if (swCd.left <= 0) secondWind();
+    }
   }
-  /** Automatic last-ditch save: on a hit that would kill, heal, a moment of invulnerability, and a knockback. */
+
   function secondWind() {
-    P.hp = Math.max(1, P.maxHp * Math.max(swHeal(), pm.swHeal)); P.invuln = swInvuln(); swUsedT = t; secondWinds++;
+    P.hp = Math.max(1, P.maxHp * swHeal()); P.invuln = swInvuln(); swUsedT = t; secondWinds++;
     ctx.emit({ type: 'secondWind', data: { floor, boss: bossStarted && boss.alive && current === boss.room } });
     swCd = startCooldown(swCdT());
     for (const e of liveInRoom(current)) {
@@ -605,44 +719,142 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#ffe08a', text: 'SECOND WIND' });
     addFx({ kind: 'levelup', x: P.x, y: P.y, life: 1, color: '#ffe08a', r: 3.5 });
   }
-  function damageEnemy(e: Enemy, raw: number, bike: Readonly<BikeState>, crit = false, color = '#fff') {
+
+  function damageEnemy(e: Enemy, raw: number, bike: Readonly<BikeState>, crit = false, color = '#fff', crush = false, fromProc = false) {
     if (!e.alive) return;
     let dmg = raw;
+    if (e.condT > 0) dmg *= 1.2;
+    if (e.kind === 'boss' || e.elite) dmg *= 1 + tm.bossEliteDmg;
     if (e.kind === 'boss') {
       dmg *= bossDamageMult(bs, bossCfg());
-      if (bs.cycle === 'exposed' && (bike.sprinting || (erg && bike.ftpFraction >= ergSurge() * 0.85))) dmg *= sprintMult();
-      dmg *= 1 + pm.bossDmg;
+      if (bs.cycle === 'exposed') {
+        if (bike.sprinting || (erg && bike.ftpFraction >= ergSurge() * 0.85)) dmg *= sprintMult();
+        dmg *= 1 + tm.horsExposedDmgAdd;
+      }
+      if (tm.soloBossDmg > 0) dmg *= 1 + tm.soloBossDmg;
+    } else if (tm.soloBossDmg > 0 && liveCount(e.room) <= 1) {
+      dmg *= 1 + tm.soloBossDmg;
     }
+    if (tm.polkaExecute && e.hp / e.maxHp < (e.kind === 'boss' ? 0.22 : 0.3)) dmg *= 1.6;
     if (cursed('bulwark')) dmg *= 0.65;
-    if (e.shield > 0) { const ab = Math.min(e.shield, dmg * 0.8); e.shield -= ab; dmg -= ab; }
+    if (e.shield > 0) {
+      const shMult = crush ? tm.guardBreakerMult : crit && tm.soloBossDmg > 0 ? 1.35 : 1;
+      const ab = Math.min(e.shield, dmg * 0.8);
+      e.shield = Math.max(0, e.shield - ab * shMult);
+      dmg -= ab * 0.7;
+    }
     const applied = Math.min(dmg, e.hp);
     e.hp -= dmg; damageDealt += applied; e.hurtT = t;
+    if (tm.highAltitudeLoh > 0) healPlayer(P.maxHp * tm.highAltitudeLoh * 0.2);
+    if (crit && tm.vampiricSprint && (bike.powerZone >= 4 || bike.sprinting || t < firedUpUntil) && t - lastVampHealT > 0.8) {
+      lastVampHealT = t;
+      healPlayer(P.maxHp * 0.04);
+    }
     dmgNumber(e, dmg, crit, color);
-    if (e.hp <= 0) killEnemy(e);
+    if (e.hp <= 0) {
+      const proc = !fromProc && e.kind !== 'boss' ? onKillElementProc(e, weapon.element, liveInRoom(current)) : null;
+      killEnemy(e, bike);
+      if (proc) {
+        addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.35, color: proc.color, r: proc.radius });
+        const procDmg = weapon.dmg * playerDmg(bike) * proc.dmgMult;
+        for (const o of proc.targets as Enemy[]) {
+          if (proc.applySlowS > 0) o.slowT = Math.max(o.slowT, proc.applySlowS);
+          if (proc.applyDotS > 0) { o.dotT = Math.max(o.dotT, proc.applyDotS); o.dotDps = Math.max(o.dotDps, procDmg * 0.3); }
+          damageEnemy(o, procDmg, bike, false, proc.color, false, true);
+        }
+      }
+    }
   }
-  function killEnemy(e: Enemy) {
+
+  function grantMountainKing() {
+    if (!tm.crownOfCol) return;
+    mountainKingUntil = t + 12;
+    healPlayer(P.maxHp * 0.2);
+    toast('Crown of the Col! Mountain King active', '#ff66a8');
+  }
+
+  function checkGrimpeurUnlock(): boolean {
+    const before = isArchetypeUnlocked('grimpeur', { bestFloor: bestFloor, climbs: Math.max(0, climbsTotal - 1) });
+    const now = isArchetypeUnlocked('grimpeur', unlockProgress());
+    if (!before && now) {
+      toast('NEW HERO UNLOCKED: The Grimpeur (Climber)!', '#ff6e5a');
+      addFx({ kind: 'banner', x: P.x, y: P.y, life: 3.5, color: '#ff6e5a', text: 'THE GRIMPEUR UNLOCKED!' });
+      cue('unlock');
+      return true;
+    }
+    return false;
+  }
+
+  function killEnemy(e: Enemy, bike?: Readonly<BikeState>) {
+    const b = bike ?? ctx.bike();
     e.alive = false; kills++;
     addFx({ kind: 'death', x: e.x, y: e.y, life: 0.5, color: e.kind === 'boss' ? '#cc00aa' : e.elite ? '#ff8c2a' : '#dddddd', r: e.r * 2 });
-    ctx.emit({ type: 'kill', data: { kind: e.kind, room: e.room, elite: !!e.elite, stance } });
+    ctx.emit({ type: 'kill', data: { kind: e.kind, room: e.room, elite: !!e.elite, archetype } });
     gainXp(e.xp);
+
+    // Skill-tree on-kill triggers
+    if (tm.leadOutCd > 0) {
+      cds.strike.left = Math.max(0, cds.strike.left - tm.leadOutCd);
+      cds.rally.left = Math.max(0, cds.rally.left - tm.leadOutCd);
+    }
+    if (tm.polkaExecute) healPlayer(P.maxHp * 0.03);
+    if (tm.packFinisher && (b.sprinting || t < firedUpUntil)) {
+      firedUpUntil = Math.max(firedUpUntil, t + 2);
+      const expDmg = weapon.dmg * playerDmg(b) * 1.4;
+      addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.4, color: '#ff9a3c', r: 2.6 });
+      for (const o of liveInRoom(current)) if (o.id !== e.id && Math.hypot(o.x - e.x, o.y - e.y) < 2.6 + o.r) damageEnemy(o, expDmg, b, true, '#ff9a3c');
+    }
+    if (tm.pyreDetonation && e.dotT > 0) {
+      const pyreDmg = weapon.dmg * playerDmg(b) * 1.8;
+      addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.45, color: '#ff6b4a', r: 2.8 });
+      for (const o of liveInRoom(current)) if (o.id !== e.id && Math.hypot(o.x - e.x, o.y - e.y) < 2.8 + o.r) {
+        o.dotT = Math.max(o.dotT, 3); o.dotDps = Math.max(o.dotDps, pyreDmg * 0.22);
+        damageEnemy(o, pyreDmg, b, false, '#ff6b4a');
+      }
+    }
+
     const coins = e.kind === 'boss' ? 14 : e.elite ? 4 : 1 + (rng() < 0.4 ? 1 : 0);
     for (let i = 0; i < coins; i++) dropAt(e.x, e.y, 'coin', coinValue());
     if (e.kind === 'boss') {
       dropItem(e.x, e.y, 2, 10); dropItem(e.x, e.y, 1, 10); dropAt(e.x, e.y, 'potion', 0);
-      bossDefeated++; totals.bosses++; freeze(0.8); cue('bossDie');
+      bossDefeated++; totals.bosses++; climbsTotal++; freeze(0.8); cue('bossDie');
+      checkGrimpeurUnlock();
       const last = e.variant === SWEEPER;
-      if (opts?.perks !== 'none' && !last) perkDueT = t + perkDelayS();
+      if (!last) {
+        // Boss kill replaces old generic perk picker: grants +1 Bonus Skill Point + Boss Trophy Relic!
+        unspentSP++;
+        const rb = ARCHETYPES[archetype].relicBranchIndex;
+        if (!relicBonusBranches.includes(rb)) {
+          relicBonusBranches.push(rb);
+          const bName = SKILL_TREES[archetype][rb].name;
+          toast(`Boss Trophy: ${ARCHETYPES[archetype].relicName} (+1 ${bName} skills) + 1 SP!`, '#ffd84a');
+        } else {
+          toast(`${BOSS_NAMES[e.variant]} defeated! +1 Bonus Skill Point`, '#ffd84a');
+        }
+        if (opts?.skills !== 'none') skillOfferDueT = t + skillDelayS();
+      }
       for (let k = 0; k < 5; k++) addFx({ kind: 'boom', x: e.x + Math.cos(k * 1.3) * k * 0.5, y: e.y + Math.sin(k * 1.3) * k * 0.5, life: 0.6 + k * 0.2, color: k % 2 ? '#ffe08a' : '#c77dff', r: 2 + k });
-      for (const b of bullets) if (!b.friendly) b.life = 0;
+      for (const bl of bullets) if (!bl.friendly) bl.life = 0;
       addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.8, color: '#c77dff', r: 4 });
-      toast(last ? 'The Grim Sweeper is swept away! Ride through the finish.' : `${BOSS_NAMES[e.variant]} defeated! Stairs open.`, '#ff8c2a');
-      if (last) addFx({ kind: 'banner', x: e.x, y: e.y, life: 4, color: '#ffd84a', text: 'FINISH LINE OPEN' });
-      ctx.emit({ type: 'bossDefeated', data: { timeS: Math.round(t), floor, stance, windows: expWindows, struck: expStruck } });
+      if (last) {
+        toast('The Grim Sweeper fell! Find your bike and cross the finish line.', '#ff8c2a');
+        const br = world.rooms[e.room] ?? world.rooms.find((r) => r.boss)!;
+        const lineX = world.stairs.x, lineY = world.stairs.y;
+        let bikeY = lineY;
+        for (const dy of [2.5, 2.0, 1.5, 1.0, -1.5]) {
+          const cy = clamp(lineY + dy, br.y0 + 1.5, br.y0 + br.h - 1.5);
+          if (!walkSolid(Math.floor(lineX), Math.floor(cy))) { bikeY = cy; break; }
+        }
+        finishSeq = { stage: 'findBike', bikeX: lineX, bikeY, lineX, lineY, progress: 0, celebrateT: 0 };
+        addFx({ kind: 'banner', x: lineX, y: bikeY, life: 4, color: '#ffd84a', text: 'YOUR BIKE! RIDE TO THE FINISH' });
+      }
+      ctx.emit({ type: 'bossDefeated', data: { timeS: Math.round(t), floor, archetype, windows: expWindows, struck: expStruck } });
       return;
     }
     cue('kill');
     if (e.elite) {
       elitesSlain++; freeze(0.08);
+      grantMountainKing();
       dropItem(e.x, e.y, 1, 1.5);
       if (e.elite === 'splitting') for (let k = 0; k < 2; k++) {
         const c = spawnEnemy(e.kind as EnemyKind, e.x + (k ? 0.4 : -0.4), e.y, e.room);
@@ -654,16 +866,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       if (rng() < 0.03) dropAt(e.x, e.y, 'potion', 0);
     }
   }
+
   function gainXp(v: number) {
     P.xp += v * mods.xpMult * bounty();
     while (P.xp >= xpNext(P.level)) {
       P.xp -= xpNext(P.level); P.level++;
+      unspentSP++;
       recomputeHp(true); freeze(0.15); cue('levelup');
-      toast(`Level ${P.level}! +10 HP, +4% dmg, healed`, '#7dff5a');
-      addFx({ kind: 'levelup', x: P.x, y: P.y, life: 1.4, color: '#7dff5a', r: 2.5 });
-      ctx.emit({ type: 'levelUp', data: { level: P.level } });
+      toast(`Level ${P.level}! +1 Skill Point banked (${unspentSP} SP)`, '#ffd84a');
+      addFx({ kind: 'levelup', x: P.x, y: P.y, life: 1.4, color: '#ffd84a', r: 2.5 });
+      ctx.emit({ type: 'levelUp', data: { level: P.level, unspentSP } });
     }
   }
+
   function enemyShot(x: number, y: number, a: number, speed: number, dmg: number, r = 0.2, life = 5) {
     bullets.push({ x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, r, dmg: dmg * dmgMul(), life, age: 0, friendly: false, pierce: 0, bounce: 0 });
   }
@@ -682,25 +897,87 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   const cadNorm = (bike: Readonly<BikeState>) => (cadRef() > 0 ? clamp(cadRef() / Math.max(30, bike.cadence3s), 0.8, 1.5) : 1);
   const playerDmg = (bike: Readonly<BikeState>) =>
-    cadNorm(bike) * sb('dmg') * baseDamage() * clamp(bike.ftpFraction, 0.3, 2.5) * (1 + 0.06 * weapon.plus) * (1 + 0.04 * (P.level - 1) + gearSum('dmgPct')) * mods.dmgMult * (1 + pm.dmg) * (bike.sprinting || t < firedUpUntil ? fireMult() * pm.firedUp : 1);
-  function shoot(a: number, dmg: number, sp: number, child: boolean, crit = false) {
+    cadNorm(bike) * PACE_MODES[paceBias].dmgMult * baseDamage() * clamp(bike.ftpFraction, 0.3, 2.5)
+    * (1 + 0.06 * weapon.plus) * (1 + 0.04 * (P.level - 1) + gearSum('dmgPct')) * mods.dmgMult
+    * (1 + momentumStacks * 0.05) * (t < mountainKingUntil ? 1.35 : 1)
+    * (bike.sprinting || t < firedUpUntil ? fireMult() : 1);
+
+  function shoot(a: number, dmg: number, sp: number, child: boolean, crit = false, extra?: { orb?: boolean; crush?: boolean; bleed?: boolean; pierce?: number }) {
     const w = weapon;
     bullets.push({
       x: P.x, y: P.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-      r: w.base === 'orb' ? (child ? 0.18 : 0.3) : w.base === 'flame' ? 0.22 : w.base === 'pellet' ? 0.14 : 0.2,
-      dmg, life: w.range * (1 + pm.range) / w.speed, age: 0, friendly: true, w, hits: [], pierce: w.pierce + pm.pierce, bounce: w.bounce, crit, child, ric: 0,
+      r: extra?.orb ? 0.36 : w.base === 'orb' ? (child ? 0.18 : 0.3) : w.base === 'flame' ? 0.22 : w.base === 'pellet' ? 0.14 : 0.2,
+      dmg, life: extra?.orb ? 3.2 : w.range / w.speed, age: 0, friendly: true, w, hits: [],
+      pierce: (extra?.pierce ?? w.pierce) + (extra?.orb ? 8 : 0), bounce: w.bounce, crit, child, ric: 0,
+      orb: extra?.orb, crush: extra?.crush, bleed: extra?.bleed,
     });
   }
+
+  function chainLightningFrom(e: Enemy, dmg: number, bike: Readonly<BikeState>, bounces: number) {
+    const pts = [{ x: e.x, y: e.y }], hit = [e.id];
+    let from = e;
+    for (let c = 0; c < bounces; c++) {
+      let nx = nearestEnemy(from.x, from.y, hit, 5.2);
+      // Forked Arc can bounce back to the Boss!
+      if (!nx && tm.forkedArc && bossStarted && boss.alive && boss.id !== from.id) nx = boss;
+      if (!nx) break;
+      hit.push(nx.id); pts.push({ x: nx.x, y: nx.y });
+      if (tm.forkedArc) nx.condT = Math.max(nx.condT, 4);
+      damageEnemy(nx, dmg * 0.72, bike, false, '#64d8ff');
+      from = nx;
+    }
+    if (pts.length > 1) addFx({ kind: 'chain', x: e.x, y: e.y, life: 0.28, color: '#64d8ff', pts });
+    if (tm.ballLightning) {
+      const ang = Math.atan2(e.y - P.y, e.x - P.x);
+      shoot(ang, dmg * 0.65, 3.8, true, false, { orb: true });
+    }
+  }
+
   function fire(bike: Readonly<BikeState>) {
     const w = weapon, n = w.count;
-    const critCh = gearSum('crit') + (w.element === 'arcane' ? 0.08 : 0) + 0.04 + pm.crit;
+    const critCh = gearSum('crit') + (w.element === 'arcane' ? 0.08 : 0) + 0.04 + tm.critAdd;
+    const isCrush = tm.crushingDmgAdd > 0;
+    const crushMult = 1 + tm.crushingDmgAdd;
+    P.shots++;
+    const anvilNow = tm.anvilDrop && P.shots % 3 === 0;
+
     for (let i = 0; i < n; i++) {
       const off = n > 1 ? (i / (n - 1) - 0.5) * w.spread : 0;
       const a = P.aim + off + (w.base === 'flame' ? (rng() - 0.5) * 0.25 : 0);
-      const crit = rng() < critCh;
-      shoot(a, w.dmg * playerDmg(bike) * (crit ? 2 : 1), w.speed * (w.base === 'flame' ? 0.85 + rng() * 0.3 : 1), false, crit);
+      const forcedCrit = z4CritCharges > 0 || t < bulletTimeUntil || tm.titanTorque;
+      const crit = forcedCrit || rng() < critCh;
+      if (z4CritCharges > 0 && i === 0) z4CritCharges--;
+      const shotDmg = w.dmg * playerDmg(bike) * crushMult * (anvilNow ? 2.2 : 1) * (crit ? tm.critDmgMult : 1);
+      shoot(a, shotDmg, w.speed * (w.base === 'flame' ? 0.85 + rng() * 0.3 : 1), false, crit, { crush: isCrush, bleed: tm.sunderCleave });
     }
-    P.shots++;
+    if (anvilNow) {
+      const tgt = nearestEnemy();
+      if (tgt) addFx({ kind: 'boom', x: tgt.x, y: tgt.y, life: 0.3, color: '#ffaa3c', r: 1.5 });
+    }
+    if (isCrush && tm.titanTorque) {
+      cds.rally.left = Math.max(0, cds.rally.left - 0.6);
+      cds.strike.left = Math.max(0, cds.strike.left - 0.6);
+    }
+    // Shatter Volley storm shards
+    if (tm.shatterShards > 0) {
+      for (let s = 0; s < tm.shatterShards; s++) {
+        const off = (s - (tm.shatterShards - 1) / 2) * 0.26;
+        shoot(P.aim + off, w.dmg * playerDmg(bike) * 0.55, w.speed * 1.15, true, false, { pierce: 1 });
+      }
+    }
+    // Sunder Cleave extra sweeping bolts
+    if (tm.sunderCleave) {
+      for (const off of [-0.45, 0.45]) shoot(P.aim + off, w.dmg * playerDmg(bike) * 0.7, w.speed * 0.9, true, false, { pierce: 2, bleed: true, crush: isCrush });
+    }
+    // Phantom Cadence echo shot at 95+ rpm
+    if (tm.phantomCadence && P.shots % 2 === 0) {
+      shoot(P.aim + (rng() - 0.5) * 0.14, w.dmg * playerDmg(bike) * 0.75, w.speed * 1.1, true, false);
+    }
+    // Static Charge chain lightning trigger
+    if (tm.staticEvery > 0 && P.shots % tm.staticEvery === 0) {
+      const tgt = nearestEnemy();
+      if (tgt) chainLightningFrom(tgt, w.dmg * playerDmg(bike) * 0.65, bike, tm.forkedArc ? 6 : 3);
+    }
     if (w.unique === 'nova' && P.shots % 5 === 0) {
       for (let i = 0; i < 12; i++) shoot(P.aim + (i / 12) * Math.PI * 2, w.dmg * playerDmg(bike) * 0.6, w.speed * 0.8, true);
       addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.3, color: ELEMENT_COLORS[w.element], r: 1.5 });
@@ -709,27 +986,48 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (w.base !== 'flame') addFx({ kind: 'muzzle', x: P.x + Math.cos(P.aim) * 0.45, y: P.y + Math.sin(P.aim) * 0.45, life: 0.08, color: ELEMENT_COLORS[w.element] });
   }
 
-  /** Returns true if the bullet should keep flying (ricochet). */
   function onHit(b: Bullet, e: Enemy, bike: Readonly<BikeState>): boolean {
-    const w = b.w!, col = ELEMENT_COLORS[w.element];
-    damageEnemy(e, b.dmg, bike, b.crit, col);
+    const w = b.w!, col = b.orb ? '#64d8ff' : ELEMENT_COLORS[w.element];
+    damageEnemy(e, b.dmg, bike, b.crit, col, b.crush);
     addFx({ kind: 'hit', x: b.x, y: b.y, life: 0.2, color: col, r: 0.4 });
     cue(b.crit ? 'crit' : 'hit');
     if (w.element === 'frost') e.slowT = 1.5;
-    if (w.element === 'fire' || w.element === 'venom') { e.dotT = w.element === 'venom' ? 3 : 1.5; e.dotDps = Math.max(e.dotDps * 0.5, b.dmg * 0.25); }
+    if (w.element === 'fire' || w.element === 'venom' || tm.emberBurnPct > 0 || b.bleed) {
+      e.dotT = Math.max(e.dotT, 3);
+      const burnAdd = tm.emberBurnPct > 0 ? b.dmg * tm.emberBurnPct / 3 : b.dmg * 0.25;
+      e.dotDps = Math.max(e.dotDps * 0.6, burnAdd);
+      e.burnStacks = Math.min(5, e.burnStacks + 1);
+    }
+    // Thunderhead Capstone: Crits call down a Skybolt!
+    if (b.crit && tm.thunderhead && !b.child) {
+      addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.35, color: '#64d8ff', r: 1.8 });
+      e.slowT = Math.max(e.slowT, 1.2);
+      damageEnemy(e, b.dmg * 1.1, bike, false, '#64d8ff');
+    }
     if (w.blast > 0 && !b.child) blast(b, bike, col);
     const chains = w.chain + (w.element === 'storm' && rng() < 0.25 ? 1 : 0);
-    if (chains > 0 && !b.child) {
-      const pts = [{ x: e.x, y: e.y }], hit = [e.id];
-      let from = e;
-      for (let c = 0; c < chains; c++) {
-        const nx = nearestEnemy(from.x, from.y, hit, 4.5);
-        if (!nx) break;
-        hit.push(nx.id); pts.push({ x: nx.x, y: nx.y });
-        damageEnemy(nx, b.dmg * 0.7, bike, false, col);
-        from = nx;
+    if (chains > 0 && !b.child) chainLightningFrom(e, b.dmg, bike, chains + (tm.forkedArc ? 3 : 0));
+    if (b.crit && !b.child) {
+      if (w.element === 'storm' && chains === 0) {
+        const ch = stormChainTargets(e, liveInRoom(current), 2, 4.2);
+        if (ch.targets.length) {
+          addFx({ kind: 'chain', x: e.x, y: e.y, life: 0.28, color: '#ffe45e', pts: ch.pts });
+          for (const nx of ch.targets as Enemy[]) damageEnemy(nx, b.dmg * ch.dmgMult, bike, false, '#ffe45e', false, true);
+        }
+      } else if (w.element === 'arcane') {
+        const ap = arcanePulseProc(e.x, e.y, e.id, liveInRoom(current), 2.8);
+        if (ap.targets.length) {
+          addFx({ kind: 'levelup', x: e.x, y: e.y, life: 0.32, color: ap.color, r: ap.radius });
+          for (const nx of ap.targets as Enemy[]) {
+            if (nx.kind !== 'boss') {
+              const d = Math.hypot(e.x - nx.x, e.y - nx.y) || 1;
+              nx.x += ((e.x - nx.x) / d) * Math.min(ap.pullTiles, d * 0.4);
+              nx.y += ((e.y - nx.y) / d) * Math.min(ap.pullTiles, d * 0.4);
+            }
+            damageEnemy(nx, b.dmg * ap.dmgMult, bike, false, ap.color, false, true);
+          }
+        }
       }
-      if (pts.length > 1) addFx({ kind: 'chain', x: e.x, y: e.y, life: 0.25, color: col, pts: [{ x: b.x - b.vx * 0.03, y: b.y - b.vy * 0.03 }, ...pts] });
     }
     if (w.unique === 'split' && !b.child) {
       const a0 = Math.atan2(b.vy, b.vx);
@@ -754,39 +1052,103 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     for (const o of liveInRoom(current)) if (!b.hits!.includes(o.id) && Math.hypot(o.x - b.x, o.y - b.y) < b.w!.blast + o.r) damageEnemy(o, b.dmg * 0.6, bike, false, col);
   }
 
-  // ---------- rider actions (A Strike, B Ward, Y Rally, Z Potion; shifters stay gears) ----------
+  // ---------- rider actions (A Strike, B Ward, Y Rally, Z Potion; D-pad L/R Pace Bias, D-pad Up Skill Tree) ----------
   const spinCalled = () => spinupCalled(dir) || shrines.some((x) => x.state === 'active' && x.kind === 'whirl');
   function startCd(id: ActionId, s0: number) { cds[id] = { left: s0, total: s0 }; }
+  function effectiveStrikeRadius() { return strikeRadius() * (tm.magmaSlam ? 1.6 : 1); }
+
   function doStrike(bike: Readonly<BikeState>) {
-    const hit = liveInRoom(current).filter((e) => Math.hypot(e.x - P.x, e.y - P.y) < strikeRadius() + e.r);
+    const rad = effectiveStrikeRadius();
+    const hit = liveInRoom(current).filter((e) => Math.hypot(e.x - P.x, e.y - P.y) < rad + e.r);
     if (!hit.length) { cue('deny'); return false; }
-    const dmg = weapon.dmg * playerDmg(bike) * strikeMult();
-    // Record before damage: a killing Strike emits bossDefeated synchronously.
-    if (hit.some((e) => e.kind === 'boss') && bs.cycle === 'exposed' && !expHit) { expHit = true; expStruck++; }
-    for (const e of hit) { damageEnemy(e, dmg, bike, true, '#ffd84a'); e.slowT = Math.max(e.slowT, 2); }
+    const stFx = ARCHETYPE_STRIKE[archetype];
+    const strikeCol = tm.magmaSlam ? '#ff6b4a' : stFx.color;
+    const dmg = weapon.dmg * playerDmg(bike) * strikeMult() * (tm.magmaSlam ? 1.25 : 1);
+    if (hit.some((e) => e.kind === 'boss') && bs.cycle === 'exposed') {
+      if (!expHit) { expHit = true; expStruck++; }
+      if (tm.photoFinish) { bulletTimeUntil = t + 4; toast('PHOTO FINISH! Bullet Time (4s)', '#ff9a3c'); }
+    }
+    for (const e of hit) {
+      damageEnemy(e, dmg, bike, true, strikeCol, tm.crushingDmgAdd > 0);
+      e.slowT = Math.max(e.slowT, 2);
+      if (tm.cinderWake || tm.magmaSlam) { e.dotT = Math.max(e.dotT, 4); e.dotDps = Math.max(e.dotDps, dmg * 0.25); }
+      if (e.alive && e.kind !== 'boss' && stFx.knockbackMult > 1) {
+        const d = Math.hypot(e.x - P.x, e.y - P.y) || 1;
+        const rm = world.rooms[e.room];
+        e.x = clamp(e.x + ((e.x - P.x) / d) * 0.7 * stFx.knockbackMult, rm.x0 + e.r + 0.05, rm.x0 + rm.w - e.r - 0.05);
+        e.y = clamp(e.y + ((e.y - P.y) / d) * 0.7 * stFx.knockbackMult, rm.y0 + e.r + 0.05, rm.y0 + rm.h - e.r - 0.05);
+      }
+    }
+    // Archetype-flavored Strike signature payoffs
+    if (stFx.shardCount > 0) {
+      const a0 = P.aim;
+      for (let k = 0; k < stFx.shardCount; k++) {
+        const a = a0 + (k - (stFx.shardCount - 1) / 2) * 0.24;
+        bullets.push({
+          x: P.x, y: P.y, vx: Math.cos(a) * 14, vy: Math.sin(a) * 14, r: 0.2,
+          dmg: dmg * 0.35, life: 0.55, age: 0, friendly: true, w: weapon,
+          pierce: 2, bounce: 0, hits: [], crit: true, child: true,
+        });
+      }
+    }
+    if (weapon.element === 'storm' && hit[0]) {
+      const ch = stormChainTargets(hit[0], liveInRoom(current), 3, 4.8);
+      if (ch.targets.length) {
+        addFx({ kind: 'chain', x: hit[0].x, y: hit[0].y, life: 0.32, color: '#ffe45e', pts: ch.pts });
+        for (const nx of ch.targets as Enemy[]) damageEnemy(nx, dmg * 0.35, bike, false, '#ffe45e', false, true);
+      }
+    }
     if (hit.some((e) => e.kind === 'boss') && strikeBoss(bs, bossCfg())) toast(`Timed Strike: exposed +${bossCfg().strikeBonusS}s`, '#ffd84a');
-    addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.4, color: '#ffd84a', r: strikeRadius() });
+    addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.42, color: strikeCol, r: rad });
+    addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.36, color: stFx.accent, r: rad * 0.8 });
     freeze(0.08); cue('explode');
     return true;
   }
+
   function act(id: ActionId, bike: Readonly<BikeState>): boolean {
-    if (cds[id].left > 0) { cue('deny'); return false; }
-    if (id === 'strike') { if (!doStrike(bike)) return false; startCd('strike', strikeCd()); }
-    else if (id === 'ward') {
-      P.ward = wardDur(); startCd('ward', wardCd()); cue('pickup');
+    if (cds[id].left > 0 && !(id === 'strike' && t < bulletTimeUntil)) { cue('deny'); return false; }
+    if (id === 'strike') {
+      if (!doStrike(bike)) return false;
+      if (t >= bulletTimeUntil) startCd('strike', strikeCd());
+    } else if (id === 'ward') {
+      P.ward = wardDur() * tm.wardDurMult;
+      startCd('ward', wardCd()); cue('pickup');
       addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.6, color: '#7fe7ff', r: 1.4 });
     } else if (id === 'rally') {
       const spin = spinCalled();
-      P.rally = rallyDur() * (spin ? 1.35 : 1); startCd('rally', rallyCd()); cue('reward');
+      P.rally = rallyDur() * (spin ? 1.35 : 1); startCd('rally', rallyCd() * tm.rallyCdMult); cue('reward');
+      if (tm.cinderWake) {
+        const dmg = weapon.dmg * playerDmg(bike) * 1.4;
+        addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.5, color: '#ff6b4a', r: 3.4 });
+        for (const e of liveInRoom(current)) if (Math.hypot(e.x - P.x, e.y - P.y) < 3.4 + e.r) {
+          e.slowT = Math.max(e.slowT, 3); e.dotT = Math.max(e.dotT, 4); e.dotDps = Math.max(e.dotDps, dmg * 0.25);
+          damageEnemy(e, dmg, bike, false, '#ff6b4a');
+        }
+      }
       toast(spin ? 'Rally! Spin-up surge' : 'Rally! Faster attacks', '#8fd8ff');
     } else {
       if (P.potions <= 0 || P.hp >= P.maxHp) { cue('deny'); return false; }
-      P.potions--; P.hp = Math.min(P.maxHp, P.hp + P.maxHp * potionHeal() * (1 + pm.potionHeal)); P.lastPotionT = t; startCd('potion', potionCd()); cue('potion');
+      P.potions--; healPlayer(P.maxHp * potionHeal()); P.lastPotionT = t;
+      if (tm.potionArmorBonus > 0) potionArmorUntil = t + 4;
+      if (tm.sugarRush) { firedUpUntil = Math.max(firedUpUntil, t + 8); toast('Sugar Rush! Fired Up (8s)', '#7dff8a'); }
+      startCd('potion', potionCd()); cue('potion');
       addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.6, color: '#ff6b8a', r: 1 });
     }
     ctx.emit({ type: 'action', data: { id, floor } });
     return true;
   }
+
+  function setPaceBias(next: PaceBias) {
+    const clamped = clamp(next, -1, 1) as PaceBias;
+    if (clamped === paceBias) { cue('deny'); return; }
+    paceBias = clamped;
+    cfgMemo = null;
+    const pm = PACE_MODES[paceBias];
+    cue(paceBias > 0 ? 'surge' : paceBias < 0 ? 'chime' : 'swap');
+    toast(`Pace: ${pm.label} - ${pm.desc}`, pm.color);
+    ctx.emit({ type: 'paceBias', data: { bias: paceBias, id: pm.id, floor } });
+  }
+
   function riderActions(input: Readonly<InputState>, bike: Readonly<BikeState>) {
     const p = (b: Button) => input.pressed.has(b);
     if (lootOffer && lootTap) resolveLootOffer(lootTap);
@@ -794,7 +1156,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       if (id === 'rally' && lootOffer) resolveLootOffer(lootOffer.view.defaultChoice === 'equip' ? 'drop' : 'equip');
       else act(id, bike);
     }
-    if (p('left') || p('right')) changeStance(p('right') ? 1 : -1);
+    if (p('left')) setPaceBias((paceBias - 1) as PaceBias);
+    if (p('right')) setPaceBias((paceBias + 1) as PaceBias);
+    if (p('up')) { openSkillOffer(true, unspentSP > 0 ? 'full' : 'full', 'Build & Skill Tree'); return; }
     if (p('a')) act('strike', bike);
     if (p('b')) act('ward', bike);
     if (p('y')) {
@@ -805,9 +1169,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (shouldAutoPotion(P.hp / P.maxHp, P.potions, t - P.lastPotionT, autoPotionFrac()) && cds.potion.left <= 0) act('potion', bike);
     if (opts?.actionBot) botActions(bike);
   }
-  /** Test bot that uses actions the way a rider should (headless balance only). */
+
   function botActions(bike: Readonly<BikeState>) {
-    const live = liveInRoom(current), near = live.filter((e) => Math.hypot(e.x - P.x, e.y - P.y) < strikeRadius() + e.r);
+    const live = liveInRoom(current), near = live.filter((e) => Math.hypot(e.x - P.x, e.y - P.y) < effectiveStrikeRadius() + e.r);
     const fighting = bossStarted && boss.alive && current === boss.room;
     if (cds.strike.left <= 0 && near.length && ((fighting && bs.cycle === 'exposed' && near.includes(boss)) || (!fighting && near.length >= 3))) act('strike', bike);
     if (cds.ward.left <= 0 && ((fighting && bs.cycle === 'windup' && bs.left < 0.8) || (!fighting && P.hp < P.maxHp * 0.4 && near.length >= 2))) act('ward', bike);
@@ -815,21 +1179,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (cds.potion.left <= 0 && P.potions > 0 && P.hp < P.maxHp * 0.5) act('potion', bike);
   }
 
-  function changeStance(dir: number) {
-    const list = stancesFor(mods.arcanist);
-    if (list.length < 2) { cue('deny'); return; }
-    // free cycling: each press moves the pick; nothing changes until the presses stop (a press mid-swap cancels it)
-    const from = pick ?? swapTo ?? stance, i = list.indexOf(from), next = list[(i + dir + list.length) % list.length];
-    if (swapTo) { swapTo = null; swapT = 0; }
-    pick = next; pickT = stanceCommitT(); cue('select');
-    toast(`${STANCES[next].name}: ${STANCES[next].role}`, STANCES[next].color);
-  }
   function paceTick(dt: number, bike: Readonly<BikeState>) {
     const r = activeRoom(), cfg = dirCfg(), seg0 = dir.seg;
-    const evs = stepDirector(dir, { dt, rideMin: t / 60, inFight: r.locked && !r.cleared && !r.boss,
-      bossActive: bossStarted && boss.alive && current === boss.room, bossDone: bossStarted && !boss.alive }, cfg);
+    const evs = stepDirector(dir, {
+      dt, rideMin: t / 60, inFight: r.locked && !r.cleared && !r.boss,
+      bossActive: bossStarted && boss.alive && current === boss.room, bossDone: bossStarted && !boss.alive,
+    }, cfg);
     if (dir.seg === 'spinup' && bike.cadence3s >= cfg.spinRpm) spinGood += dt;
-    // segment banners for the calm segments (ambush, spin-up and boss announce themselves)
     if (dir.seg !== seg0 && SEG_BANNER[dir.seg]) addFx({ kind: 'banner', x: P.x, y: P.y, life: 2, color: '#8fd8ff', text: SEG_BANNER[dir.seg]! });
     for (const ev of evs) {
       if (ev === 'ambush') {
@@ -840,12 +1196,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           const y = side === 0 ? r.y0 + 1.5 : side === 1 ? r.y0 + r.h - 1.5 : r.y0 + 1 + f * (r.h - 2);
           if (!solid(Math.floor(x), Math.floor(y))) spawnEnemy((['chaser', 'bat', 'archer', 'brute'] as EnemyKind[])[k % (floor > 2 ? 4 : 2)], x, y, r.id);
         }
-        toast('AMBUSH! Push Z3-4', '#ff7a2a'); cue('bossStart'); freeze(0.15);
+        toast(cfg.targets.ambush.label, '#ff7a2a'); cue('bossStart'); freeze(0.15);
         addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#ff7a2a', text: 'AMBUSH' });
         ctx.emit({ type: 'ambush', data: { floor } });
-      } else if (ev === 'ambushEnd') toast('Ambush over: recover', '#8fd8ff');
-      else if (ev === 'spinup') { spinGood = 0; toast(`Spin up! Over ${cfg.spinRpm} rpm. Rally is live`, '#8fd8ff'); cue('select'); addFx({ kind: 'banner', x: P.x, y: P.y, life: 2, color: '#8fd8ff', text: 'SPIN UP' }); }
-      else if (ev === 'spinupEnd') {
+      } else if (ev === 'ambushEnd') {
+        climbsTotal++;
+        checkGrimpeurUnlock();
+        toast('Ambush over: recover', '#8fd8ff');
+      } else if (ev === 'spinup') {
+        spinGood = 0; toast(`Spin up! Over ${cfg.spinRpm} rpm. Rally is live`, '#8fd8ff'); cue('select');
+        addFx({ kind: 'banner', x: P.x, y: P.y, life: 2, color: '#8fd8ff', text: 'SPIN UP' });
+      } else if (ev === 'spinupEnd') {
         if (spinGood >= spinGoodFrac() * cfg.spinupS) {
           for (const k of Object.keys(cds) as ActionId[]) completeCooldown(cds[k]);
           const v = Math.round(15 * floor * mods.coinMult); addCoins(v);
@@ -855,30 +1216,151 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       }
     }
   }
-  function stanceTick(dt: number, bike: Readonly<BikeState>) {
-    if (pick) {
-      pickT -= dt;
-      if (pickT <= 0) {
-        if (pick !== stance) { swapTo = pick; swapT = stanceSwapT(); cue('equip'); ctx.emit({ type: 'stance', data: { stance: pick, floor } }); }
-        pick = null;
-      }
-    }
-    // the swap resets the shot timer (no free shot) and restarts the style-bonus settle time
-    if (swapTo) { swapT -= dt; if (swapT <= 0) { swapT = 0; stance = swapTo; swapTo = null; weapon = slots[stance]; P.lastShotRevs = bike.crankRevs; stanceSince = t; } }
-    styleOn = t - stanceSince >= styleSettleT() && styleActive(stance, bike.cadence3s, bike.powerZone, spinCalled());
-    const live = liveInRoom(current);
-    suggestion = suggestStance({ boss: bossStarted && boss.alive && current === boss.room, shielded: bossShield().shielded, crowd: live.length, elite: live.some((e) => !!e.elite), arcanist: mods.arcanist });
-    if (suggestion === stance || swapTo || pick) suggestion = null;
+
+  // ---------- skill tree modal (auto-popup on room clear, manual D-pad Up / Pause Build Inspector) ----------
+  function refreshTreeMods(bike: Readonly<BikeState>) {
+    const climbing = dir.seg === 'ambush' || dir.seg === 'boss';
+    tm = computeTreeMods(archetype, skillRanks, {
+      cadence: bike.cadence3s,
+      powerZone: bike.powerZone,
+      effortZone: bike.effortZone,
+      sprinting: bike.sprinting,
+      firedUp: t < firedUpUntil,
+      climbing,
+      relicBonusBranches,
+    });
   }
 
-  // stuck detector: with a path but < 0.25 tiles of progress in 0.75s, follow raw tile centres (no smoothing) for a while
-  let stuckX = 0, stuckY = 0, stuckT = 0, rawUntil = -1;
+  function firstAvailableNodeId(): string {
+    const cards = quickPickCards(archetype, skillRanks);
+    if (cards.length) return cards[suggestQuickPick(archetype, skillRanks, cards)].node.id;
+    return SKILL_TREES[archetype][0].nodes[0].id;
+  }
+
+  function openSkillOffer(manual: boolean, mode: 'quick' | 'full', reason: string) {
+    const cards = quickPickCards(archetype, skillRanks);
+    if (!manual && (!cards.length || unspentSP <= 0)) return;
+    const sug = opts?.skills === 'first' ? 0 : suggestQuickPick(archetype, skillRanks, cards);
+    skillOffer = {
+      mode: cards.length === 0 ? 'full' : mode,
+      sel: sug,
+      focusNodeId: cards[sug]?.node.id ?? firstAvailableNodeId(),
+      age: 0,
+      manual,
+      reason,
+    };
+    cue('shrine');
+    holdRecoveryRoad();
+    ctx.emit({ type: 'skillOffer', data: { floor, mode: skillOffer.mode, unspentSP, manual } });
+  }
+
+  function applySkillInvest(nodeId: string, bike: Readonly<BikeState>): boolean {
+    if (!canInvestNode(archetype, skillRanks, nodeId, unspentSP)) { cue('deny'); return false; }
+    if (!investSkillNode(archetype, skillRanks, nodeId)) { cue('deny'); return false; }
+    unspentSP--;
+    const found = getNodeById(archetype, nodeId)!;
+    refreshTreeMods(bike);
+    if (nodeId === 'r_f_t1') P.potions = Math.min(potionCap(), P.potions + 1);
+    P.lastShotRevs = bike.crankRevs;
+    const investCue = found.node.tier === 4 ? 'payoffSting' : found.node.tier === 3 ? 'boltOn' : 'upgrade';
+    cue(investCue);
+    addFx({ kind: 'levelup', x: P.x, y: P.y, life: 1.2, color: found.branch.color, r: 2.5 });
+    const rank = getNodeRank(skillRanks, nodeId);
+    const label = found.node.tier === 4 ? `KEYSTONE: ${found.node.name}` : found.node.tier === 3 ? `FORK LOCKED: ${found.node.name}` : `${found.node.name} (${rank}/${found.node.maxRank})`;
+    toast(label, found.branch.color);
+    ctx.emit({ type: 'skillInvest', data: { archetype, nodeId, branch: found.branch.id, tier: found.node.tier, rank, floor } });
+
+    // Close automatically in quick mode once all banked SP are spent (or if nothing left to upgrade)
+    const nextCards = quickPickCards(archetype, skillRanks);
+    if (skillOffer) {
+      if (unspentSP <= 0 && !skillOffer.manual) {
+        skillOffer = null;
+      } else if (skillOffer.mode === 'quick' && nextCards.length === 0) {
+        skillOffer = null;
+      } else {
+        const sug = opts?.skills === 'first' ? 0 : suggestQuickPick(archetype, skillRanks, nextCards);
+        skillOffer.sel = sug;
+        skillOffer.age = 0;
+        if (skillOffer.mode === 'quick' && nextCards[sug]) skillOffer.focusNodeId = nextCards[sug].node.id;
+      }
+    }
+    return true;
+  }
+
+  function moveTreeFocus(dx: number, dy: number) {
+    if (!skillOffer) return;
+    const branches = SKILL_TREES[archetype];
+    let bIdx = 0, nIdx = 0;
+    for (let bi = 0; bi < branches.length; bi++) {
+      const idx = branches[bi].nodes.findIndex((n) => n.id === skillOffer!.focusNodeId);
+      if (idx >= 0) { bIdx = bi; nIdx = idx; break; }
+    }
+    if (dx !== 0) {
+      bIdx = (bIdx + dx + branches.length) % branches.length;
+      nIdx = Math.min(nIdx, branches[bIdx].nodes.length - 1);
+    }
+    if (dy !== 0) {
+      nIdx = (nIdx + dy + branches[bIdx].nodes.length) % branches[bIdx].nodes.length;
+    }
+    skillOffer.focusNodeId = branches[bIdx].nodes[nIdx].id;
+    cue('uiMove');
+  }
+
+  function skillOfferUpdate(dt: number, input: Readonly<InputState>, bike: Readonly<BikeState>) {
+    const o = skillOffer!;
+    const cards = quickPickCards(archetype, skillRanks);
+    const p = (b: Button) => input.pressed.has(b);
+
+    // Handle pointer taps sent from renderer
+    for (const a of pendingActions.splice(0)) {
+      if (a.type === 'skillClose') { skillOffer = null; P.lastShotRevs = bike.crankRevs; cue('uiBack'); return; }
+      if (a.type === 'skillMode') { o.mode = a.mode; o.age = 0; cue('select'); continue; }
+      if (a.type === 'skillCard' && a.i >= 0 && a.i < cards.length) {
+        o.sel = a.i;
+        applySkillInvest(cards[a.i].node.id, bike);
+        if (!skillOffer) return;
+      }
+      if (a.type === 'skillPick') {
+        const wasFocused = o.focusNodeId === a.nodeId;
+        o.focusNodeId = a.nodeId;
+        const found = getNodeById(archetype, a.nodeId);
+        // Two-step protection on irreversible Tier 3 Forks: first tap focuses to inspect, second tap or Confirm button locks in
+        if (found?.node.fork && !wasFocused && !a.confirm) {
+          cue('uiMove');
+          continue;
+        }
+        if (canInvestNode(archetype, skillRanks, a.nodeId, unspentSP)) applySkillInvest(a.nodeId, bike);
+        else cue('uiMove');
+        if (!skillOffer) return;
+      }
+    }
+
+    if (p('b')) { skillOffer = null; P.lastShotRevs = bike.crankRevs; cue('uiBack'); return; }
+    if (p('y')) { o.mode = o.mode === 'quick' ? 'full' : 'quick'; o.age = 0; cue('select'); return; }
+
+    if (o.mode === 'quick') {
+      o.age += dt;
+      if (cards.length > 0) {
+        if (p('left') || p('up')) { o.sel = (o.sel + cards.length - 1) % cards.length; o.focusNodeId = cards[o.sel].node.id; cue('select'); }
+        if (p('right') || p('down')) { o.sel = (o.sel + 1) % cards.length; o.focusNodeId = cards[o.sel].node.id; cue('select'); }
+        if (o.age >= 0.4 && (p('a') || p('z'))) { applySkillInvest(cards[o.sel].node.id, bike); return; }
+        const limit = autopilot ? Math.min(1.5, skillAutoS()) : skillAutoS();
+        if (!o.manual && o.age >= limit) { applySkillInvest(cards[o.sel].node.id, bike); return; }
+      }
+    } else {
+      // Full 3-branch tree navigation (timer paused so rider can plan calmly)
+      if (p('left')) moveTreeFocus(-1, 0);
+      if (p('right')) moveTreeFocus(1, 0);
+      if (p('up')) moveTreeFocus(0, -1);
+      if (p('down')) moveTreeFocus(0, 1);
+      if (p('a') || p('z')) applySkillInvest(o.focusNodeId, bike);
+    }
+    holdRecoveryRoad();
+  }
+
+  // ---------- navigation & AI ----------
+  let stuckX = 0, stuckY = 0, stuckT = 0;
   const pathTo = (tx: number, ty: number) => (navPrev = { x: P.x, y: P.y }, findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty, { smooth: false, wallCost: 0.35 }));
-  /**
-   * Pure pursuit along the tile-centre path: steer at the farthest point up to LOOK tiles ahead that the hero's body can
-   * reach in a straight, clear line (corridor centre lines stay the target; open rooms get smooth diagonals). Eases to
-   * ~80% speed into a sharp bend so it turns cleanly instead of grinding the corner.
-   */
   const LOOK = 1.3;
   function pursue(): { x: number; y: number } | null {
     if (!navPath.length) return null;
@@ -899,7 +1381,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const m = Math.hypot(vx, vy) || 1;
     let speed = 1;
     const a = navPath[0], b = navPath[1];
-    if (b && Math.hypot(a.x - P.x, a.y - P.y) < 0.9) { // bend coming up: slow a touch
+    if (b && Math.hypot(a.x - P.x, a.y - P.y) < 0.9) {
       const t1x = a.x - P.x, t1y = a.y - P.y, t2x = b.x - a.x, t2y = b.y - a.y;
       const c = (t1x * t2x + t1y * t2y) / ((Math.hypot(t1x, t1y) || 1) * (Math.hypot(t2x, t2y) || 1));
       if (c < 0.5) speed = 0.82;
@@ -910,7 +1392,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     fstat.exploreT += dt; fstat.speedSum += ratio * dt; if (ratio < 0.5) fstat.slowT += dt;
     if (blocked(P.x, P.y, HERO_WALL_R + 0.03)) fstat.wallT += dt;
     const a = navPrev, b = navPath[0];
-    if (a && b) { // overshoot: distance from the planned leg (prev waypoint -> next waypoint)
+    if (a && b) {
       const vx = b.x - a.x, vy = b.y - a.y, L2 = vx * vx + vy * vy || 1, u = Math.max(0, Math.min(1, ((P.x - a.x) * vx + (P.y - a.y) * vy) / L2));
       if (Math.hypot(P.x - a.x - u * vx, P.y - a.y - u * vy) > 0.4) fstat.overshootT += dt;
     }
@@ -925,7 +1407,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function stuckCheck() {
     if (!navPath.length || P.rollT > 0 || !exploring) { stuckT = t; stuckX = P.x; stuckY = P.y; return; }
     if (Math.hypot(P.x - stuckX, P.y - stuckY) > 0.25) { stuckT = t; stuckX = P.x; stuckY = P.y; return; }
-    if (t - stuckT > 0.75) { navAge = 99; stuckT = t; stuckStats++; } // re-plan from where we are
+    if (t - stuckT > 0.75) { navAge = 99; stuckT = t; stuckStats++; }
   }
   function navTarget(): { key: string; x: number; y: number } | null {
     if (!boss.alive) return { key: 'stairs', x: Math.floor(world.stairs.x), y: Math.floor(world.stairs.y) };
@@ -941,29 +1423,29 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     return { key: `room${r.id}`, x: r.x0 + (r.w >> 1), y: r.y0 + (r.h >> 1) };
   }
 
-  let dbgTick = 0; // the debug overlay string is rebuilt every 15 ticks (0.5 s), not every tick: it was the top per-tick allocation
+  let dbgTick = 0;
   function autopilotCtl(): Ctl {
     exploring = false;
     let mx = 0, my = 0, roll = false;
     const near = nearestEnemy();
     P.targetId = near?.id ?? 0;
     const room = activeRoom();
+    const arch = ARCHETYPES[archetype];
     if (near && room.locked) {
       const dx = near.x - P.x, dy = near.y - P.y, d = Math.hypot(dx, dy) || 1;
-      // stand off at a comfortable fraction of weapon range (flamers fight up close)
-      // the boss is helpless while exposed: step in so the rider's Strike can land
-      const want = near === boss && bs.cycle === 'exposed' && cds.strike.left <= 0 ? Math.max(1, strikeRadius() * 0.6) : STANCES[stance].standoff(standoff(weapon.range, near));
+      const baseWant = arch.standoff(standoff(weapon.range, near)) + (paceBias === -1 ? 0.9 : paceBias === 1 ? -0.4 : 0);
+      const want = near === boss && bs.cycle === 'exposed' && cds.strike.left <= 0 ? Math.max(1, effectiveStrikeRadius() * 0.6) : Math.max(1.2, baseWant);
       const s = d > want + 1 ? 1 : d < want - 1 ? -1 : 0;
       mx = (dx / d) * s; my = (dy / d) * s;
-      if (s === 1) { // close in along a real path (pits/braziers may be in the way)
+      if (s === 1) {
         const key = `fight${near.id}`;
         if (navKey !== key || navAge > 0.75 || !navPath.length) { navPath = pathTo(Math.floor(near.x), Math.floor(near.y)); navKey = key; navAge = 0; }
         while (navPath.length > 1 && Math.hypot(navPath[0].x - P.x, navPath[0].y - P.y) < 0.45) navPrev = navPath.shift()!;
         const v = pursue(); if (v) { mx = v.x; my = v.y; }
       }
       const pathing = s === 1 && navPath.length > 0;
-      if (s === 0) { const k = 0.25 + 0.6 * STANCES[stance].strafe; mx = -dy / d * k; my = dx / d * k; } // circle-strafe (by stance)
-      for (const b of bullets) { // sidestep incoming shots (perpendicular to their path) so we can still advance
+      if (s === 0) { const k = 0.25 + 0.6 * arch.strafe; mx = -dy / d * k; my = dx / d * k; }
+      for (const b of bullets) {
         if (b.friendly) continue;
         const bx = P.x - b.x, by = P.y - b.y, bd = Math.hypot(bx, by), bv = Math.hypot(b.vx, b.vy) || 1;
         if (bd > 2.2 || bd < 0.01 || bx * b.vx + by * b.vy <= 0) continue;
@@ -973,7 +1455,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       for (const h of hazards) { const hx = h.x - P.x, hy = h.y - P.y, hd = Math.hypot(hx, hy) || 1; if (hd < h.r + 1) { mx -= hx / hd * 2; my -= hy / hd * 2; } }
       const cx = room.x0 + room.w / 2 - P.x, cy = room.y0 + room.h / 2 - P.y;
       if (!pathing && !inRoom(room, P.x, P.y, 1.6)) { mx += cx * 0.2; my += cy * 0.2; }
-      if (d < 1.4 && P.hp < P.maxHp * 0.6) { mx = -dx / d; my = -dy / d; roll = P.rollCd <= 0; } // roll out when hurt and crowded
+      if (d < 1.4 && P.hp < P.maxHp * 0.6) { mx = -dx / d; my = -dy / d; roll = P.rollCd <= 0; }
     } else if (!drops.some((d) => Math.hypot(d.x - P.x, d.y - P.y) < 6)) {
       const tgt = navTarget();
       exploring = !!tgt;
@@ -985,13 +1467,27 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
     const n = Math.hypot(mx, my);
     if (n > 1) { mx /= n; my /= n; }
-    if ((dbgTick = (dbgTick + 1) % 15) === 0) ctx.debug('autopilot', `${mx.toFixed(2)},${my.toFixed(2)} path${navPath.length} ${navKey} near${near ? near.id + '@' + near.x.toFixed(1) + ',' + near.y.toFixed(1) : '-'}`);
+    if ((dbgTick = (dbgTick + 1) % 15) === 0) ctx.debug('autopilot', `${mx.toFixed(2)},${my.toFixed(2)} path${navPath.length} ${navKey}`);
     return { mx, my, roll };
   }
 
-  // ---------- camp (between runs) ----------
+  // ---------- camp (between runs: Hero Archetype Select + Camp Upgrades + Build Summary) ----------
+  function cycleArchetype(dirStep: number) {
+    const unlocked = unlockedArchetypes(unlockProgress());
+    if (unlocked.length < 2) { cue('deny'); return; }
+    const i = Math.max(0, unlocked.indexOf(archetype));
+    archetype = unlocked[(i + dirStep + unlocked.length) % unlocked.length];
+    cfgMemo = null;
+    cue('select');
+    persist();
+  }
+
   function campRows(): CampView['rows'] {
-    const rows: CampView['rows'] = [{ kind: 'start', name: 'Begin descent', desc: `Floor ${startFloor} of ${FLOORS} · ${tierOf(tier).name}` }];
+    const a = ARCHETYPES[archetype];
+    const rows: CampView['rows'] = [
+      { kind: 'start', name: `Ride as ${a.shortName}`, desc: `Floor ${startFloor} of ${FLOORS} · ${tierOf(tier).name} · ${a.workoutTag}` },
+      { kind: 'archetype', name: 'Hero Archetype', desc: `◀ ${a.name} ▶  ${erg ? a.ergLabel : a.gradeLabel}` },
+    ];
     if (mods.startFloors.length > 1) rows.push({ kind: 'floor', name: 'Start at', desc: `◀ ${planFor(startFloor).name} (floor ${startFloor}) ▶` });
     if (tierUnlocked > 0) rows.push({ kind: 'tier', name: 'Category', desc: `◀ ${tierOf(tier).name} ▶  ${tierOf(tier).blurb}` });
     for (const d of UPGRADES) {
@@ -999,24 +1495,36 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       rows.push({ kind: 'upgrade', id: d.id, name: d.name, desc: d.desc, level: L, max: d.max, cost, affordable: cost !== undefined && cost <= bankStart });
     }
     rows.push({ kind: 'auto', name: 'Auto-invest at start', desc: autoInvestOn ? 'ON' : 'OFF' });
-    rows.push({ kind: 'erg', name: 'Trainer mode', desc: erg ? 'ERG: the game sets your power' : 'Grade: you shift gears' });
+    rows.push({ kind: 'erg', name: 'Trainer mode', desc: erg ? 'ERG: game holds archetype power' : 'Grade: you shift gears' });
     return rows;
   }
+
   function campUpdate(dt: number, input: Readonly<InputState>, bike: Readonly<BikeState>) {
-    if (campLockT > 0) { campLockT = Math.max(0, campLockT - dt); pending.length = 0; return; }
+    if (campLockT > 0) { campLockT = Math.max(0, campLockT - dt); pendingActions.length = 0; return; }
     const rows = campRows();
     const p = (b: Button) => input.pressed.has(b);
     let tapped = false;
-    for (const a of pending.splice(0)) if (a.type === 'campRow' && a.row >= 0 && a.row < rows.length) { campSel = a.row; tapped = true; }
+    for (const a of pendingActions.splice(0)) {
+      if (a.type === 'selectArchetype') {
+        if (isArchetypeUnlocked(a.id, unlockProgress())) { archetype = a.id; cfgMemo = null; campT = 0; cue('select'); persist(); }
+        else { cue('deny'); toast(`Unlock The Grimpeur: ${ARCHETYPES.grimpeur.unlockReq}`, '#ff6e5a'); }
+      } else if (a.type === 'campRow' && a.row >= 0 && a.row < rows.length) {
+        campSel = a.row; tapped = true;
+      }
+    }
     if (p('up')) { campSel = (campSel + rows.length - 1) % rows.length; cue('select'); campT = 0; }
     if (p('down')) { campSel = (campSel + 1) % rows.length; cue('select'); campT = 0; }
     campSel = Math.min(campSel, rows.length - 1);
     const row = rows[campSel];
-    if (row.kind === 'floor' && (p('left') || p('right'))) { startFloor = stepStart(p('left') ? -1 : 1); cue('select'); campT = 0; }
-    if (row.kind === 'tier' && (p('left') || p('right'))) { tier = clamp(tier + (p('left') ? -1 : 1), 0, tierUnlocked); cue('select'); campT = 0; persist(); }
-    if (p('a') || p('z') || tapped) { // A or Z on the Ride diamond; taps select + activate
+    if (row.kind === 'archetype' && (p('left') || p('right'))) { cycleArchetype(p('left') ? -1 : 1); campT = 0; }
+    else if (row.kind === 'floor' && (p('left') || p('right'))) { startFloor = stepStart(p('left') ? -1 : 1); cue('select'); campT = 0; }
+    else if (row.kind === 'tier' && (p('left') || p('right'))) { tier = clamp(tier + (p('left') ? -1 : 1), 0, tierUnlocked); cue('select'); campT = 0; persist(); }
+    else if ((row.kind === 'start') && (p('left') || p('right'))) { cycleArchetype(p('left') ? -1 : 1); campT = 0; }
+
+    if (p('a') || p('z') || tapped) {
       campT = 0;
       if (row.kind === 'start') { startRun(); return; }
+      if (row.kind === 'archetype') { cycleArchetype(1); }
       if (row.kind === 'floor') { startFloor = startFloor >= mods.maxStartFloor ? 1 : stepStart(1); cue('select'); }
       if (row.kind === 'tier') { tier = tier >= tierUnlocked ? 0 : tier + 1; cue('select'); persist(); }
       if (row.kind === 'auto') { autoInvestOn = !autoInvestOn; cue('select'); persist(); }
@@ -1032,13 +1540,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (bike.cadence3s > 30) campT += dt;
     if (campT >= campAutoS() || (autopilot && campT >= Math.min(campAutoS(), 10))) startRun();
   }
-  /** Move the chosen start between unlocked zone starts. */
+
   function stepStart(d: number): number {
     const f = mods.startFloors, i = Math.max(0, f.indexOf(startFloor));
     return f[clamp(i + d, 0, f.length - 1)];
   }
-  /** Snap a start floor to the deepest unlocked zone start at or above it. */
   const snapStart = (f: number) => mods.startFloors.filter((s) => s <= f).pop() ?? 1;
+
   function startRun() {
     if (autoInvestOn) {
       const r = autoInvest(bankStart, levels);
@@ -1047,29 +1555,44 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
     mods = metaMods(levels, bestFloor);
     if (!opts?.floor) startFloor = snapStart(startFloor);
-    floor = startFloor; runTier = tier; runT0 = t; runKills0 = kills; runBosses0 = bossDefeated;
+    floor = startFloor; runTier = tier; runT0 = t; runKills0 = kills; runBosses0 = bossDefeated; runClimbs0 = climbsTotal;
     bestFloor = Math.max(bestFloor, floor);
     runs++; sessionRuns++;
-    totals.runs++; P.coins = 0; P.coinsEarned = 0; lastDeath = undefined;
+    totals.runs++; P.coins = 0; P.coinsEarned = 0; P.shield = 0; lastDeath = undefined;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
-    weapon = starterWeapon(floor, rng); fillSlots(P.level); arsenal.reset(); bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
-    perkRanks = {}; pm = perkMods({}); perkPityN = 0; perkDueT = -1; offer = null; lootOffer = null; lootTap = null; drones.length = 0;
-    // a shortcut start skips bosses, so it packs one perk per skipped boss (the suggested card of a normal deal)
-    if (opts?.perks !== 'none') for (let k = 1; k < floor; k++) {
-      const r = rollOffer(rng, perkRanks, perkPityN, { stance, stances: stancesFor(mods.arcanist), style: styleWeights(ride) }, { weights: [DEFAULT_OFFER.weights[0], DEFAULT_OFFER.weights[1], perkLegW()], pityStep: perkPity() });
-      perkPityN = r.pity; if (!r.ids.length) break;
-      const id = r.ids[suggestPerk(r.ids, perkRanks, { hpFrac: 1, bossFightS: 0, deaths: 0, stance })];
-      perkRanks[id] = (perkRanks[id] ?? 0) + 1; perksTaken++;
+    paceBias = 0; cfgMemo = null;
+    const arch = ARCHETYPES[archetype];
+    for (const sl of SLOTS) delete gear[sl];
+    weapon = floor > 1 ? makeWeapon(rng, P.level, 1, arch.starterStyle) : makeWeapon(rng, 1, 0, arch.starterStyle);
+    bestFind = weapon;
+    skillRanks = {}; unspentSP = 0; relicBonusBranches = []; skillOffer = null; skillOfferDueT = -1; lootOffer = null; lootTap = null;
+    wardBlocks = 0; pelotonThornsUntil = -1; potionArmorUntil = -1; floorSecondWindUsed = false; musetteRooms = 0;
+    z4CritCharges = 0; bulletTimeUntil = -1; momentumStacks = 0; mountainKingUntil = -1; pullTimer = 0; calderaTimer = 0; haloTimer = 0;
+
+    // Shortcut start grants starting skill points for skipped floors
+    if (floor > 1) {
+      const bonus = floor - 1;
+      if (autopilot && opts?.skills !== 'none') {
+        for (let k = 0; k < bonus; k++) {
+          const cards = quickPickCards(archetype, skillRanks);
+          if (!cards.length) break;
+          const sug = suggestQuickPick(archetype, skillRanks, cards);
+          investSkillNode(archetype, skillRanks, cards[sug].node.id);
+        }
+      } else {
+        unspentSP += bonus;
+      }
+      toast(`Shortcut: +${bonus} Skill Point${bonus > 1 ? 's' : ''} for the road`, '#8fd8ff');
     }
-    pm = perkMods(perkRanks, perkStrength(), { stance, cadence: ctx.bike().cadence3s, zone2: ctx.bike().effortZone === 2 });
-    if (floor > 1 && perksTaken) toast(`Shortcut: ${floor - 1} perk${floor > 2 ? 's' : ''} packed for the road`, '#8fd8ff');
+
+    refreshTreeMods(ctx.bike());
     P.potions = potionCap();
     buildFloor(); dir = newFloor(true);
     recomputeHp(true);
     P.lastShotRevs = ctx.bike().crankRevs;
     phase = 'run';
     cue('stairs');
-    toast(`Run ${runs}: ${planFor(floor).name}, floor ${floor} of ${FLOORS}${runTier ? ` · ${T().name}` : ''}`, '#ffd84a');
+    toast(`${arch.name} · ${planFor(floor).name}, floor ${floor}/${FLOORS}`, arch.color);
     persist();
   }
   if (autopilot || opts?.skipCamp) startRun();
@@ -1079,7 +1602,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     for (const s of shrines) {
       if (s.state !== 'active') continue;
       s.left -= dt;
-      // fury is a 20 s effort: judge it on power, HR can't climb in time
       if (s.kind === 'fury' && Math.min(5, bike.powerZone) >= 3) s.progress += dt / 20;
       if (s.kind === 'whirl' && bike.cadence3s >= whirlRpm()) s.progress += dt / 15;
       if (s.kind === 'endurance' && bike.effortZone === 2) s.progress += dt / (SHRINES.endurance.window * 0.85);
@@ -1094,7 +1616,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     freeze(0.2); cue('reward');
     addFx({ kind: 'levelup', x: s.x, y: s.y, life: 1.5, color: SHRINES[s.kind].color, r: 3 });
     if (s.kind === 'fury') {
-      weapon = { ...weapon, plus: weapon.plus + 2 }; weapon.score = weaponScore(weapon); slots[stance] = weapon;
+      weapon = { ...weapon, plus: weapon.plus + 2 }; weapon.score = weaponScore(weapon);
       toast(`Fury! ${weapon.name} is now +${weapon.plus}`, '#ff8c2a');
     } else if (s.kind === 'whirl') {
       for (let i = 0; i < 8; i++) dropAt(s.x, s.y, 'coin', coinValue());
@@ -1109,72 +1631,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       toast(`Patience rewarded: ${n} treasure${n > 1 ? 's' : ''}`, '#5aa9ff');
     }
     ctx.emit({ type: 'shrine', data: { kind: s.kind, floor } });
-  }
-
-  // ---------- perks (one of three after every boss) ----------
-  function clearCombatGrades() {
-    for (const id of ['swamp', 'wounded', 'boss-surge', 'curse-mire']) resSync(id, null);
-  }
-  function openOffer() {
-    const r = rollOffer(rng, perkRanks, perkPityN, { stance, stances: stancesFor(mods.arcanist), style: styleWeights(ride) }, { weights: [DEFAULT_OFFER.weights[0], DEFAULT_OFFER.weights[1], perkLegW()], pityStep: perkPity() });
-    perkPityN = r.pity;
-    if (!r.ids.length) return; // everything maxed
-    const sug = opts?.perks === 'first' ? 0 : suggestPerk(r.ids, perkRanks, { hpFrac: P.hp / P.maxHp, bossFightS: bs.fightT, deaths: 0, stance });
-    offer = { ids: r.ids, sel: sug, suggest: sug, age: 0, boss: BOSS_NAMES[boss.variant], floor };
-    perkTap = -1; cue('shrine');
-    if (erg) ergSync(dirCfg().targets.cooldown.erg); else { clearCombatGrades(); resSync('terrain', campGrade()); }
-    ctx.emit({ type: 'perkOffer', data: { floor, ids: r.ids.join(',') } });
-  }
-  function perkUpdate(dt: number, input: Readonly<InputState>, bike: Readonly<BikeState>) {
-    const o = offer!; o.age += dt;
-    const p = (b: Button) => input.pressed.has(b);
-    if (p('left') || p('up')) { o.sel = (o.sel + o.ids.length - 1) % o.ids.length; cue('select'); }
-    if (p('right') || p('down')) { o.sel = (o.sel + 1) % o.ids.length; cue('select'); }
-    if (perkTap >= 0 && perkTap < o.ids.length) { o.sel = perkTap; perkTap = -1; takePerk(o.sel, bike); return; }
-    // the rider confirms with A or Z; the highlighted card is taken after perkAutoPickS (the autopilot takes it at once)
-    if (o.age >= 0.6 && (p('a') || p('z'))) { takePerk(o.sel, bike); return; }
-    if (o.age >= (autopilot ? Math.min(2, perkAutoS()) : perkAutoS())) takePerk(o.sel, bike);
-    if (erg) ergSync(dirCfg().targets.cooldown.erg); else { clearCombatGrades(); resSync('terrain', campGrade()); }
-  }
-  function takePerk(i: number, bike: Readonly<BikeState>) {
-    const id = offer!.ids[i], d = PERKS[id];
-    offer = null;
-    perkRanks[id] = (perkRanks[id] ?? 0) + 1; perksTaken++;
-    pm = perkMods(perkRanks, perkStrength(), { stance, cadence: bike.cadence3s, zone2: bike.effortZone === 2 });
-    if (id === 'musette') P.potions = Math.min(potionCap(), P.potions + 1);
-    P.lastShotRevs = bike.crankRevs; // no burst of saved-up shots
-    freeze(0.1); cue('reward');
-    addFx({ kind: 'levelup', x: P.x, y: P.y, life: 1.4, color: d.color, r: 2.8 });
-    addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: d.color, text: `${d.name.toUpperCase()}${(perkRanks[id] ?? 0) > 1 ? ' ' + 'I'.repeat(perkRanks[id]!) : ''}` });
-    toast(`${d.name}: ${d.desc(perkRanks[id]!, perkStrength())}`, d.color);
-    ctx.emit({ type: 'perk', data: { id, rank: perkRanks[id], floor, rarity: d.rarity } });
-  }
-  /** Domestique drones: follow the hero on a slow orbit and shoot the nearest enemy. */
-  function droneTick(dt: number, bike: Readonly<BikeState>, target: Enemy | null) {
-    while (drones.length < pm.drones) drones.push({ x: P.x, y: P.y, cd: 0.4 * drones.length, shotT: -9 });
-    drones.length = Math.min(drones.length, pm.drones);
-    drones.forEach((dr, k) => {
-      const a = t * 1.4 + k * Math.PI, hx = P.x + Math.cos(a) * 1.1, hy = P.y - 0.6 + Math.sin(a) * 0.45, f = Math.min(1, dt * 6);
-      dr.x += (hx - dr.x) * f; dr.y += (hy - dr.y) * f;
-      dr.cd -= dt;
-      if (!target || dr.cd > 0 || swapT > 0) return;
-      dr.cd = PERK_FX_DRONE_EVERY; dr.shotT = t;
-      const ang = Math.atan2(target.y - dr.y, target.x - dr.x), sp = 9;
-      bullets.push({ x: dr.x, y: dr.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 0.14, dmg: weapon.dmg * playerDmg(bike) * PERK_FX_DRONE_DMG,
-        life: 0.9, age: 0, friendly: true, w: weapon, hits: [], pierce: 0, bounce: 0, child: true, ric: 3, drone: true });
-    });
-  }
-  function perkView(): PerkView {
-    return {
-      ranks: (Object.keys(perkRanks) as PerkId[]).map((id) => ({ id, rank: perkRanks[id]!, name: PERKS[id].name, color: PERKS[id].color, rarity: PERKS[id].rarity })),
-      kit: kitOf(perkRanks), light: pm.light, drones: drones.map((d) => ({ x: d.x, y: d.y, shot: t - d.shotT })),
-      offer: offer ? {
-        sel: offer.sel, suggest: offer.suggest, age: offer.age, autoS: autopilot ? Math.min(2, perkAutoS()) : perkAutoS(), boss: offer.boss, floor: offer.floor,
-        cards: offer.ids.map((id) => { const d = PERKS[id], r = perkRanks[id] ?? 0; return { id, name: d.name, rarity: d.rarity, rarityName: RARITY_NAMES[d.rarity], cat: d.cat, color: d.color,
-          rank: r, max: d.max, blurb: d.blurb, desc: d.desc(r + 1, perkStrength()),
-          slot: d.slot === 'stance' && d.stance ? STANCES[d.stance].name : d.slot === 'ride' && d.style ? STYLE_NAMES[d.style] : SLOT_NAMES[d.slot], slotKind: d.slot }; }),
-      } : null,
-    };
   }
 
   // ---------- curses ----------
@@ -1205,29 +1661,74 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   // ---------- update ----------
   function update(dt: Seconds) {
     const bike = ctx.bike(), input = ctx.input();
-    cfgFresh = false; // tuning may change between ticks: re-check (cheaply) once per tick
-    if (phase === 'camp') { t += dt; campUpdate(dt, input, bike); if (erg) ergSync(dirCfg().targets.cooldown.erg); else resSync('terrain', campGrade()); return; }
-    if (offer) { perkUpdate(dt, input, bike); return; } // the world waits while the rider chooses
-    if (hitT > 0) { hitT -= dt; return; } // hit-stop
-    if (perkDueT >= 0 && t >= perkDueT) { perkDueT = -1; openOffer(); return; }
+    cfgFresh = false;
+    if (phase === 'camp') { t += dt; campUpdate(dt, input, bike); holdRecoveryRoad(); return; }
+    if (skillOffer) { skillOfferUpdate(dt, input, bike); return; }
+
+    // Drain any UI-triggered actions while running
+    for (const a of pendingActions.splice(0)) {
+      if (a.type === 'openSkillTree') { openSkillOffer(true, 'full', 'Build & Skill Tree'); return; }
+      if (a.type === 'paceBias') setPaceBias(a.bias);
+    }
+
+    if (hitT > 0) { hitT -= dt; return; }
+    if (skillOfferDueT >= 0 && t >= skillOfferDueT) {
+      skillOfferDueT = -1;
+      if (unspentSP > 0 && opts?.skills !== 'none') {
+        openSkillOffer(false, 'quick', `Level ${P.level} · Room Cleared`);
+        if (skillOffer) return;
+      }
+    }
+
     t += dt; navAge += dt; stuckCheck();
-    pm = perkMods(perkRanks, perkStrength(), { stance, cadence: bike.cadence3s, zone2: bike.effortZone === 2 });
-    ride.t += dt; if (bike.effortZone === 2) ride.z2 += dt; if (bike.cadence3s >= PERK_FX.spinRpm) ride.spin += dt;
-    if (bossStarted && boss.alive && current === boss.room) { ride.bossT += dt; if ((bs.cycle === 'windup' || bs.cycle === 'exposed') && (bike.powerZone >= 4 || bike.sprinting)) ride.surge += dt; }
+    if (finishSeq && finishSeq.stage !== 'findBike') {
+      if (erg) ergSync(dirCfg().targets.cooldown.erg); else resSync('terrain', campGrade());
+      if (finishSeq.stage === 'rideToLine') {
+        const rate = autopilot ? 2.5 : 0.25 + 0.25 * clamp(bike.cadence3s / 90, 0.3, 1.8) + (bike.sprinting ? 0.35 : 0);
+        finishSeq.progress = Math.min(1, finishSeq.progress + rate * dt);
+        P.x = finishSeq.bikeX + (finishSeq.lineX - finishSeq.bikeX) * finishSeq.progress;
+        P.y = finishSeq.bikeY + (finishSeq.lineY - finishSeq.bikeY) * finishSeq.progress;
+        P.aim = Math.atan2(finishSeq.lineY - finishSeq.bikeY, finishSeq.lineX - finishSeq.bikeX);
+        P.moving = true;
+        if (finishSeq.progress >= 1) {
+          finishSeq.stage = 'celebrate'; finishSeq.celebrateT = 0; P.moving = false;
+          cue('unique');
+          addFx({ kind: 'banner', x: P.x, y: P.y, life: 3, color: '#ffd84a', text: 'STAGE COMPLETE!' });
+          for (let k = 0; k < 4; k++) addFx({ kind: 'boom', x: P.x + (k - 1.5) * 1.4, y: P.y - 0.6, life: 0.7 + k * 0.15, color: k % 2 ? '#ffd84a' : '#7fe7ff', r: 1.8 });
+        }
+      } else {
+        finishSeq.celebrateT += dt;
+        if (finishSeq.celebrateT >= (autopilot ? 0.15 : 2.6)) { descend(); }
+      }
+      return;
+    }
+    refreshTreeMods(bike);
+
+    // Power-zone edge triggers (Snap Attack Z4+ crits, Photo Finish Z5 Bullet Time)
+    const pz = Math.min(5, bike.powerZone);
+    if (pz >= 4 && prevPowerZone < 4 && tm.z4CritCharges > 0) z4CritCharges = tm.z4CritCharges;
+    if (pz >= 5 && prevPowerZone < 5 && tm.photoFinish && t >= bulletTimeUntil) {
+      bulletTimeUntil = t + 4;
+      toast('PHOTO FINISH! Z5 Bullet Time', '#ff9a3c');
+    }
+    prevPowerZone = pz;
+
     const ctl = autopilotCtl();
     for (let z = 0; z < 5; z++) zoneRates[z + 1] = zoneRefill[z]();
-    const rate = refillRate(bike.powerZone, zoneRates);
+    const rate = refillRate(bike.powerZone, zoneRates) * PACE_MODES[paceBias].cdRefillMult;
     lastRate = rate;
-    for (const k of CD_KEYS) tickCooldown(cds[k], dt, rate * (1 + pm.cdRefill));
+    for (const k of CD_KEYS) tickCooldown(cds[k], dt, rate);
     sprintingNow = bike.sprinting;
-    tickCooldown(swCd, dt, rate * pm.swRate); // Second Wind refills with effort too, but a sprint does not finish it
+    tickCooldown(swCd, dt, rate);
+
     if (bike.sprintCount > lastSprints) {
-      lastSprints = bike.sprintCount; ride.sprints++;
-      firedUpUntil = t + fireS();
-      // Second breath: a sprint pays on its own, even if no action buttons are pressed
-      if (phase === 'run' && sprintHeal() + pm.sprintHeal > 0 && P.hp < P.maxHp) { P.hp = Math.min(P.maxHp, P.hp + P.maxHp * (sprintHeal() + pm.sprintHeal)); toast('Second breath', '#7dff9a'); }
+      lastSprints = bike.sprintCount;
+      firedUpUntil = t + fireS() + tm.firedUpAddS;
+      if (tm.z4CritCharges > 0) z4CritCharges = tm.z4CritCharges;
+      if (phase === 'run' && sprintHeal() > 0 && P.hp < P.maxHp) { healPlayer(P.maxHp * sprintHeal()); toast('Second breath', '#7dff9a'); }
       if (swCd.left > 0) swCd.left = Math.max(0, swCd.left - sprintSw());
-      if (phase === 'run' && bossStarted && boss.alive && current === boss.room && sprintBreak(bs, sprintBreakS())) {
+      if (phase === 'run' && bossStarted && boss.alive && current === boss.room && sprintBreak(bs, sprintBreakS() * tm.horsExposedDurMult)) {
+        grantMountainKing();
         toast('Sprint broke its guard! Exposed', '#ffd84a'); cue('crit'); expWindows++; expHit = false; ctx.emit({ type: 'bossExposed', data: { floor, parried: false, sprint: true } });
       }
       if (sprintCompletes() && (Object.keys(cds) as ActionId[]).map((k) => completeCooldown(cds[k])).some(Boolean)) {
@@ -1235,20 +1736,61 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         ctx.emit({ type: 'actionsRecharged', data: { floor } });
       }
     }
-    P.ward = Math.max(0, P.ward - dt); P.rally = Math.max(0, P.rally - dt);
+
+    // Iron Curtain end-of-Ward heal
+    P.ward = Math.max(0, P.ward - dt);
+    if (wardWasUp && P.ward <= 0 && tm.wardEndHeal > 0) healPlayer(P.maxHp * tm.wardEndHeal);
+    wardWasUp = P.ward > 0;
+
+    P.rally = Math.max(0, P.rally - dt);
     riderActions(input, bike);
+    if (skillOffer) return; // opened via D-pad Up
     if (lootOffer) {
       lootOffer.leftS -= dt;
       if (lootOffer.leftS <= 0) resolveLootOffer(lootOffer.view.defaultChoice);
     }
-    stanceTick(dt, bike);
     paceTick(dt, bike);
+
+    // Periodic skill-tree auras (Slipstream Pull, Perpetual Flywheel Blazing Halo, Volcanic Ascent Caldera)
+    if (tm.slipstreamPull) {
+      pullTimer += dt;
+      if (pullTimer >= 3) {
+        pullTimer = 0;
+        for (const e of liveInRoom(current)) {
+          if (e.kind === 'boss') continue;
+          const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy);
+          if (d > 1.8 && d < 6.5) { move(e, (dx / d) * 1.4, (dy / d) * 1.4, e.r); e.slowT = Math.max(e.slowT, 2); }
+        }
+      }
+    }
+    if (tm.blazingHalo) {
+      haloTimer += dt;
+      if (haloTimer >= 0.6) {
+        haloTimer = 0;
+        for (const e of liveInRoom(current)) if (Math.hypot(e.x - P.x, e.y - P.y) < 2.6 + e.r) damageEnemy(e, e.maxHp * 0.035 + weapon.dmg * playerDmg(bike) * 0.25, bike, false, '#ff9a3c');
+      }
+    }
+    if (tm.volcanicAscent) {
+      calderaTimer += dt;
+      if (calderaTimer >= 2.5) {
+        calderaTimer = 0;
+        const live = liveInRoom(current);
+        if (live.length) {
+          addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.45, color: '#ff6b4a', r: 3.4 });
+          const dmg = weapon.dmg * playerDmg(bike) * 1.1;
+          for (const e of live) if (Math.hypot(e.x - P.x, e.y - P.y) < 3.4 + e.r) {
+            e.dotT = Math.max(e.dotT, 3); e.dotDps = Math.max(e.dotDps, dmg * 0.25);
+            damageEnemy(e, dmg, bike, false, '#ff6b4a');
+          }
+        }
+      }
+    }
 
     // --- player movement
     P.invuln = Math.max(0, P.invuln - dt);
     const tile = tileAt(world, Math.floor(P.x), Math.floor(P.y));
     P.onSwamp = tile === TILE.SWAMP;
-    P.speedMult = STANCES[stance].moveMult * sb('move') * speedCurve(bike.cadence3s) * (1 + gearSum('speed')) * mods.speedMult * (1 + pm.speed) * (P.onSwamp ? 0.75 : 1) * (cursed('mire') ? 0.85 : 1);
+    P.speedMult = ARCHETYPES[archetype].moveMult * speedCurve(bike.cadence3s) * (1 + gearSum('speed')) * mods.speedMult * (t < mountainKingUntil ? 1.2 : 1) * (P.onSwamp ? 0.75 : 1) * (cursed('mire') ? 0.85 : 1);
     P.moving = false;
     P.rollCd = Math.max(0, P.rollCd - dt);
     if (ctl.roll && P.rollT <= 0) {
@@ -1286,8 +1828,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       }
     }
 
-    // --- stairs
-    if (!boss.alive && tileAt(world, Math.floor(P.x), Math.floor(P.y)) === TILE.STAIRS) { descend(); return; }
+    // --- bike mount (Floor 7 finish) or stairs (floors 1..6)
+    if (!boss.alive && finishSeq?.stage === 'findBike') {
+      if (Math.hypot(P.x - finishSeq.bikeX, P.y - finishSeq.bikeY) < 0.9 || tileAt(world, Math.floor(P.x), Math.floor(P.y)) === TILE.STAIRS) {
+        finishSeq.stage = 'rideToLine'; finishSeq.progress = 0;
+        P.x = finishSeq.bikeX; P.y = finishSeq.bikeY;
+        cue('reward');
+        toast('Mounted up! Pedal across the finish line!', '#ffd84a');
+        addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#ffd84a', text: 'SPRINT FOR THE LINE!' });
+        return;
+      }
+    } else if (!boss.alive && tileAt(world, Math.floor(P.x), Math.floor(P.y)) === TILE.STAIRS) { descend(); return; }
 
     // --- aim
     const target = nearestEnemy();
@@ -1296,26 +1847,30 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       P.aim = Math.atan2(target.y + target.vy * lead - P.y, target.x + target.vx * lead - P.x);
     } else if (ctl.mx || ctl.my) P.aim = P.moveAng;
 
-    // --- firing (only with something to shoot at, so coins/corridors stay calm)
-    const revs = bike.crankRevs, per = revsPerShot() / weapon.rate / (P.rally > 0 ? rallyMult() : 1) / sb('fire') / (1 + pm.fireRate);
+    // --- firing
+    const btMult = t < bulletTimeUntil ? 1.8 : 1;
+    const revs = bike.crankRevs, per = revsPerShot() / weapon.rate / (P.rally > 0 ? rallyMult() : 1) / (1 + tm.fireRateAdd) / btMult;
     if (revs < P.lastShotRevs) P.lastShotRevs = revs;
     let shots = 0;
     while (revs - P.lastShotRevs >= per && shots < 6) {
       P.lastShotRevs += per; shots++;
-      if (target && swapT <= 0) { fire(bike); output += playerDmg(bike) / weapon.rate; } // weapon-independent: shots scale with rate
+      if (target) { fire(bike); output += playerDmg(bike) / weapon.rate; }
     }
-    if (target && swapT <= 0) fightT += dt;
+    if (target) fightT += dt;
     if (revs - P.lastShotRevs >= per) P.lastShotRevs = revs;
 
-    droneTick(dt, bike, target);
-
-    // --- orbiting blades (unique)
-    if (weapon.unique === 'orbit') {
-      const blades = orbitBlades();
+    // --- orbiting blades (Unique weapon OR Rouleur Drafting Blades skill)
+    const bladeCount = (weapon.unique === 'orbit' ? 3 : 0) + tm.orbitBlades;
+    if (bladeCount > 0) {
+      const blades = orbitBlades(bladeCount, bike.cadence3s);
       for (const e of liveInRoom(current)) {
         e.orbitCd -= dt;
         if (e.orbitCd > 0) continue;
-        if (blades.some((o) => Math.hypot(e.x - o.x, e.y - o.y) < e.r + 0.35)) { e.orbitCd = 0.3; damageEnemy(e, weapon.dmg * playerDmg(bike) * 0.8, bike, false, ELEMENT_COLORS[weapon.element]); }
+        if (blades.some((o) => Math.hypot(e.x - o.x, e.y - o.y) < e.r + 0.38)) {
+          e.orbitCd = tm.turbineShock ? 0.16 : 0.3;
+          damageEnemy(e, weapon.dmg * playerDmg(bike) * 0.75, bike, false, tm.blazingHalo ? '#ff9a3c' : '#5ad8ff');
+          if (tm.turbineShock) chainLightningFrom(e, weapon.dmg * playerDmg(bike) * 0.4, bike, 2);
+        }
       }
     }
 
@@ -1352,23 +1907,23 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
             if (b.pierce-- <= 0) { dead = true; break; }
           }
         }
-      } else if (!dead && !b.friendly && Math.hypot(P.x - b.x, P.y - b.y) < PLAYER_R + b.r) { hurtPlayer(b.dmg); dead = true; }
+      } else if (!dead && !b.friendly && Math.hypot(P.x - b.x, P.y - b.y) < PLAYER_R + b.r) { hurtPlayer(b.dmg, bike); dead = true; }
       if (dead) bullets.splice(i, 1);
     }
 
-    // --- hazards (volatile elites)
+    // --- hazards
     for (let i = hazards.length - 1; i >= 0; i--) {
       const h = hazards[i];
       h.left -= dt;
       if (h.left <= 0) {
         addFx({ kind: 'boom', x: h.x, y: h.y, life: 0.45, color: '#ff7a2a', r: h.r }); cue('explode');
-        if (Math.hypot(P.x - h.x, P.y - h.y) < h.r + PLAYER_R) hurtPlayer(h.dmg);
+        if (Math.hypot(P.x - h.x, P.y - h.y) < h.r + PLAYER_R) hurtPlayer(h.dmg, bike);
         hazards.splice(i, 1);
       }
     }
 
     // --- enemies
-    if (bossStarted && boss.alive) { bossT += dt; bossTick(dt); if (boss.variant === 2) flailTick(dt); }
+    if (bossStarted && boss.alive) { bossT += dt; bossTick(dt); if (boss.variant === 2) flailTick(dt, bike); }
     updateFlow();
     const live = liveInRoom(current);
     for (const e of live) updateEnemy(e, dt, bike);
@@ -1381,7 +1936,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       }
     }
 
-    // --- drops: magnet once the room is calm
+    // --- drops
     const cur = activeRoom();
     for (let i = drops.length - 1; i >= 0; i--) {
       const d = drops[i], dx = P.x - d.x, dy = P.y - d.y, dist = Math.hypot(dx, dy);
@@ -1392,11 +1947,15 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       }
     }
 
-    // --- room clear
+    // --- room clear (triggers Level-Up Auto-Popup cleanly if SP are banked!)
     if (cur.locked && liveCount(cur.id) === 0 && (!cur.boss || !boss.alive)) {
       cur.locked = false; cur.cleared = true; safeRoom = cur.id;
       roomsCleared++; cue('door');
       ctx.emit({ type: 'roomCleared', data: { room: cur.id, floor } });
+      if (tm.bottomlessMusette) {
+        musetteRooms++;
+        if (musetteRooms % 2 === 0 && P.potions < potionCap()) { P.potions++; toast('Bottomless Musette: +1 Potion', '#7dff8a'); }
+      }
       if (cur.chest && !cur.chest.opened) {
         cur.chest.opened = true; cue('reward');
         toast('Treasure chest!', '#ffd84a');
@@ -1409,6 +1968,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         sh.state = 'active'; sh.left = SHRINES[sh.kind].window; sh.s0 = bike.sprintCount; cue('shrine');
         toast(`${SHRINES[sh.kind].label} (optional)`, SHRINES[sh.kind].color);
       }
+      // Schedule non-disruptive room-clear Level-Up popup if skill points are banked
+      const isFinalCleared = cur.boss && planFor(floor).final && !boss.alive;
+      if (unspentSP > 0 && !isFinalCleared && opts?.skills !== 'none' && skillOfferDueT < 0) {
+        skillOfferDueT = t + skillDelayS();
+      }
       persist();
     }
     shrineUpdate(dt, bike);
@@ -1416,16 +1980,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
     // --- survival
     const inCombat = cur.locked && liveCount(cur.id) > 0;
-    const regen = gearSum('regen') + mods.regen * P.maxHp / 100 + pm.regen * P.maxHp + (bike.effortZone === 2 && !cursed('fragile') ? regenPerS() * (P.maxHp / 100) * (inCombat ? (floor === 1 ? 0.5 : regenCombat()) : 1) : 0);
-    if (P.hp < P.maxHp) P.hp = Math.min(P.maxHp, P.hp + regen * dt);
+    const z2Regen = bike.effortZone === 2 && !cursed('fragile') ? regenPerS() * (P.maxHp / 100) * tm.z2RegenMult * (inCombat ? (floor === 1 ? 0.5 : regenCombat()) : 1) : 0;
+    const regen = (gearSum('regen') + mods.regen * P.maxHp / 100 + z2Regen) * PACE_MODES[paceBias].regenMult;
+    if (regen > 0) healPlayer(regen * dt);
     if (P.hp <= 0) die();
 
-    // --- resistance
+    // --- resistance (strict ERG + Grade parity, shaped by Archetype + Pace Bias)
     const bsh = bossShield();
     const segT = dirCfg().targets[dir.seg];
     const actShrine = shrines.find((s) => s.state === 'active');
     const shrineErg = actShrine ? ({ fury: 0.85, sprint: 1.22, whirl: 0.6, endurance: 0.65 } as const)[actShrine.kind] : null;
-    if (erg) ergSync(bsh.shielded ? ergSurge() : shrineErg ?? segT.erg);
+    if (erg) ergSync(bsh.shielded ? clamp(ergSurge() + PACE_MODES[paceBias].ergDelta, 0.7, 1.45) : shrineErg ?? segT.erg);
     else resSync('terrain', terrainGrade() + segT.grade);
     if (!erg) resSync('swamp', P.onSwamp ? swampGrade() : null);
     if (!erg) resSync('wounded', P.hp < P.maxHp * woundedFrac() ? woundedGrade() : null);
@@ -1437,14 +2002,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     ctx.debug('floor', floor); ctx.debug('room', current); ctx.debug('hp', Math.round(P.hp)); ctx.debug('weapon', weapon.name);
   }
 
-  function orbitBlades() {
-    return [0, 1, 2].map((i) => { const a = t * 3 + (i * Math.PI * 2) / 3; return { x: P.x + Math.cos(a) * 1.6, y: P.y + Math.sin(a) * 1.6 }; });
+  function orbitBlades(count: number, cadence = 80) {
+    const spd = 3 * (tm.turbineShock ? 1.7 : clamp(cadence / 80, 0.8, 1.5));
+    return Array.from({ length: count }, (_, i) => {
+      const a = t * spd + (i * Math.PI * 2) / count;
+      return { x: P.x + Math.cos(a) * 1.65, y: P.y + Math.sin(a) * 1.65 };
+    });
   }
 
   function updateEnemy(e: Enemy, dt: number, bike: Readonly<BikeState>) {
     const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
     e.contactCd = Math.max(0, e.contactCd - dt);
     e.slowT = Math.max(0, e.slowT - dt);
+    e.condT = Math.max(0, e.condT - dt);
     if (e.dotT > 0) { e.dotT -= dt; damageEnemy(e, e.dotDps * dt, bike); if (!e.alive) return; }
     if (e.elite === 'undying' && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.025 * dt);
     if (e.elite === 'shielded' && t - e.hurtT > 4) e.shield = Math.min(e.shieldMax, e.shield + e.shieldMax * 0.25 * dt);
@@ -1481,8 +2051,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           e.tell += dt / 0.7;
           if (e.tell >= 1) {
             addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.45, color: '#ff7a2a', r: 2 }); cue('explode');
-            if (d < 2 + PLAYER_R) hurtPlayer(24 * dmgMul());
-            e.hp = 0; killEnemy(e); return;
+            if (d < 2 + PLAYER_R) hurtPlayer(24 * dmgMul(), bike);
+            e.hp = 0; killEnemy(e, bike); return;
           }
         }
         break;
@@ -1500,7 +2070,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const rm = world.rooms[e.room];
     e.x = clamp(e.x, rm.x0 + e.r + 0.02, rm.x0 + rm.w - e.r - 0.02); e.y = clamp(e.y, rm.y0 + e.r + 0.02, rm.y0 + rm.h - e.r - 0.02);
     if (e.state !== 1 || e.kind === 'bomber') { e.vx = (e.x - x0) / dt; e.vy = (e.y - y0) / dt; }
-    if (e.contact > 0 && d < e.r + PLAYER_R + 0.1 && e.contactCd <= 0) { hurtPlayer(e.contact); e.contactCd = e.kind === 'brute' ? 1 : 0.8; }
+    if (e.contact > 0 && d < e.r + PLAYER_R + 0.1 && e.contactCd <= 0) { hurtPlayer(e.contact, bike); e.contactCd = e.kind === 'brute' ? 1 : 0.8; }
   }
 
   function bossTick(dt: number) {
@@ -1509,10 +2079,23 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       if (ev === 'windup') { boss.tell = cfg.windupS; toast('Big attack coming! Ward it, then punish', '#ff7a2a'); cue('bossStart'); if (boss.variant === 2) flailWhirl(); }
       else if (ev === 'bigAttack') bigAttack(boss);
       else if (ev === 'exposed') {
-        if (stance === 'arcanist') bs.left += 1; // the shield-breaker keeps it open longer
-        bs.left += pm.exposedS; // Polka Dot Jersey
+        bs.left *= tm.horsExposedDurMult;
+        grantMountainKing();
         addFx({ kind: 'banner', x: boss.x, y: boss.y, life: 1.8, color: '#ffe08a', text: bs.parried ? 'PARRIED! EXPOSED' : 'EXPOSED ×2' });
-        if (bs.parried) toast(`Parried with Ward: exposed +${cfg.parryBonusS}s`, '#8fd8ff');
+        if (bs.parried) {
+          freeze(0.1);
+          addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.45, color: '#ffe08a', r: 3.4 });
+          addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.5, color: '#8fd8ff', r: 2.2 });
+          const ang = Math.atan2(boss.y - P.y, boss.x - P.x);
+          const parryDmg = weapon.dmg * playerDmg(ctx.bike()) * 0.9;
+          for (const da of [-0.16, 0, 0.16]) {
+            bullets.push({
+              x: P.x, y: P.y, vx: Math.cos(ang + da) * 15, vy: Math.sin(ang + da) * 15, r: 0.22,
+              dmg: parryDmg, life: 1.1, age: 0, friendly: true, w: weapon, pierce: 1, bounce: 0, hits: [], crit: true, child: true,
+            });
+          }
+          toast(`Parried with Ward: exposed +${cfg.parryBonusS}s`, '#8fd8ff');
+        }
         cue('crit'); expWindows++; expHit = false; ctx.emit({ type: 'bossExposed', data: { floor, parried: bs.parried } });
       } else if (ev === 'phase') {
         freeze(0.3); cue('bossStart'); if (boss.variant === 2 && fl.mode !== 'hand') flailReel();
@@ -1524,17 +2107,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       else if (ev === 'tide') { toast('The tide turns: the boss is tiring', '#7dff5a'); addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#7dff5a', text: 'TURNING TIDE' }); }
     }
   }
-  /** The telegraphed big attack: one per boss, a bit meaner each phase. */
+
   function bigAttack(e: Enemy) {
     const ph = bs.phase, spd = 4 + 0.5 * ph;
     e.spin += 0.4;
     switch (e.variant) {
       case 0: ring(e.x, e.y, 20 + 4 * ph, spd, 7, e.spin); for (let k = 0; k < ph; k++) spawnEnemy('chaser', e.x + (k - 1) * 1.2, e.y + 1.4, e.room).summoned = 1; break;
       case 1: for (let w = 0; w < 2; w++) ring(e.x, e.y, 14 + 2 * ph, spd - w, 7, e.spin + w * 0.2); break;
-      case 2: flailSlam(); return; // the ring and boom come from the impact point when the chainring lands
+      case 2: flailSlam(); return;
       case 3: ring(e.x, e.y, 24 + 4 * ph, spd, 7, e.spin); break;
-      case 4: for (let k = 0; k < 4; k++) for (let j = 0; j < 4 + ph; j++) enemyShot(e.x, e.y, e.spin + k * Math.PI / 2, 3 + j * 0.8, 7); break; // bone cross
-      case SWEEPER: { // the last sweep: two counter-turned rings, then lantern flares under the hero (telegraphed, step out)
+      case 4: for (let k = 0; k < 4; k++) for (let j = 0; j < 4 + ph; j++) enemyShot(e.x, e.y, e.spin + k * Math.PI / 2, 3 + j * 0.8, 7); break;
+      case SWEEPER: {
         ring(e.x, e.y, 18 + 4 * ph, spd - 0.5, 7, e.spin); ring(e.x, e.y, 18 + 4 * ph, spd - 1.8, 7, -e.spin + 0.13);
         const rm = world.rooms[e.room];
         for (let k = 0; k < ph; k++) {
@@ -1544,13 +2127,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         }
         break;
       }
-      default: for (let w = 0; w < 3; w++) ring(e.x, e.y, 10 + 2 * ph, 2.5 + w * 1.3, 7, e.spin + w * 0.3); // frost bloom
+      default: for (let w = 0; w < 3; w++) ring(e.x, e.y, 10 + 2 * ph, 2.5 + w * 1.3, 7, e.spin + w * 0.3);
     }
     addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.5, color: e.variant === 5 ? '#9fe8ff' : e.variant === SWEEPER ? '#9affd6' : '#ff7a2a', r: 3 });
     cue('explode'); freeze(0.1);
   }
   const flailHand = () => ({ x: boss.x + (P.x >= boss.x ? 0.7 : -0.7), y: boss.y - 0.4 });
-  /** Aim point: where the hero is heading, clipped to the chain's reach and the boss room. */
   function flailAim(lead: number) {
     const h = flailHand(), rm = world.rooms[boss.room];
     let ax = P.x + fl.pvx * lead, ay = P.y + fl.pvy * lead;
@@ -1566,9 +2148,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function flailWhirl() { Object.assign(fl, { mode: 'whirl', t: 0, x0: fl.x, y0: fl.y, ang: 0 }); }
   function flailSlam() { const a = flailAim(0); Object.assign(fl, { mode: 'slam', t: 0, x0: fl.x, y0: fl.y, tx: a.x, ty: a.y }); }
   function flailReel() { Object.assign(fl, { mode: 'back', t: 0, x0: fl.x, y0: fl.y }); }
-  function flailTick(dt: number) {
+  function flailTick(dt: number, bike: Readonly<BikeState>) {
     fl.hitCd -= dt; fl.t += dt;
-    if (dt > 0) { fl.pvx = clamp(fl.pvx * 0.8 + 0.2 * (P.x - fl.px) / dt, -8, 8); fl.pvy = clamp(fl.pvy * 0.8 + 0.2 * (P.y - fl.py) / dt, -8, 8); } fl.px = P.x; fl.py = P.y;   // hero velocity, smoothed, for leading throws
+    if (dt > 0) { fl.pvx = clamp(fl.pvx * 0.8 + 0.2 * (P.x - fl.px) / dt, -8, 8); fl.pvy = clamp(fl.pvy * 0.8 + 0.2 * (P.y - fl.py) / dt, -8, 8); }
+    fl.px = P.x; fl.py = P.y;
     const h = flailHand(), ease = (k: number) => 1 - (1 - k) * (1 - k);
     let lethal = true;
     switch (fl.mode) {
@@ -1582,18 +2165,15 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       case 'back': {
         const k = Math.min(1, fl.t / FLAIL_BACK), q = k * k;
         fl.x = fl.x0 + (h.x - fl.x0) * q; fl.y = fl.y0 + (h.y - fl.y0) * q;
-        if (k >= 1) {
-          fl.mode = 'hand';
-          if (bs.phase === 3 && !fl.second && bs.cycle === 'idle') flailThrow(true);   // phase 3: a quick second throw
-        }
+        if (k >= 1) { fl.mode = 'hand'; if (bs.phase === 3 && !fl.second && bs.cycle === 'idle') flailThrow(true); }
         break;
       }
-      case 'whirl': {   // round and round overhead, the circle widening: stay out of it
+      case 'whirl': {
         const r = 1.2 + Math.min(1, fl.t / 1.5) * 1.4;
         fl.ang += dt * (7 + fl.t * 3);
         fl.x = h.x + Math.cos(fl.ang) * r; fl.y = h.y + Math.sin(fl.ang) * r * 0.8;
-        if (fl.t < 0.25) { const k = fl.t / 0.25; fl.x = fl.x0 + (fl.x - fl.x0) * k; fl.y = fl.y0 + (fl.y - fl.y0) * k; }   // swung in from wherever it was
-        { const a = flailAim(0); fl.tx = a.x; fl.ty = a.y; }   // the slam lands where the hero stands when the wind-up ends
+        if (fl.t < 0.25) { const k = fl.t / 0.25; fl.x = fl.x0 + (fl.x - fl.x0) * k; fl.y = fl.y0 + (fl.y - fl.y0) * k; }
+        { const a = flailAim(0); fl.tx = a.x; fl.ty = a.y; }
         break;
       }
       case 'slam': {
@@ -1605,16 +2185,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           ring(fl.x, fl.y, 14 + 4 * ph, 4 + 0.5 * ph, 9, boss.spin);
           addFx({ kind: 'boom', x: fl.x, y: fl.y, life: 0.5, color: '#ff7a2a', r: 2.6 });
           cue('explode'); freeze(0.12);
-          if (Math.hypot(P.x - fl.x, P.y - fl.y) < 1.4 + PLAYER_R) hurtPlayer(18 * dmgMul());
+          if (Math.hypot(P.x - fl.x, P.y - fl.y) < 1.4 + PLAYER_R) hurtPlayer(18 * dmgMul(), bike);
         }
         break;
       }
-      case 'rest': lethal = false; break;   // lies on the floor while the boss is exposed
+      case 'rest': lethal = false; break;
     }
-    if (lethal && fl.hitCd <= 0 && Math.hypot(P.x - fl.x, P.y - fl.y) < FLAIL_HIT_R + PLAYER_R) { hurtPlayer(12 * dmgMul()); fl.hitCd = 0.7; }
+    if (lethal && fl.hitCd <= 0 && Math.hypot(P.x - fl.x, P.y - fl.y) < FLAIL_HIT_R + PLAYER_R) { hurtPlayer(12 * dmgMul(), bike); fl.hitCd = 0.7; }
   }
+
   function bossAct(e: Enemy, dt: number, d: number, ux: number, uy: number) {
-    if (bossStunned(bs) && e.state !== 1) return; // exposed or staggered: helpless
+    if (bossStunned(bs) && e.state !== 1) return;
     if (bs.cycle === 'windup') { if (d > 3) { const c = chaseDir(e); move(e, c.x * e.speed * 0.4 * dt, c.y * e.speed * 0.4 * dt, e.r); } return; }
     if (e.state === 1) {
       e.tell -= dt; move(e, e.vx * dt, e.vy * dt, e.r);
@@ -1636,8 +2217,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         case 2: if (d < FLAIL_REACH + 2 && fl.mode === 'hand') { flailThrow(false); e.fireCd2 = 2.4 * pace; } else e.fireCd2 = 0.3; break;
         case 3: if (liveCount(e.room) < 5) { const s = spawnEnemy(rng() < 0.5 ? 'bat' : 'bomber', e.x, e.y + 1.5, e.room); s.summoned = 1; } break;
         case 4: if (liveCount(e.room) < 3 + bs.phase) { const s = spawnEnemy('archer', e.x + (rng() - 0.5) * 3, e.y + 1.5, e.room); s.summoned = 1; } else for (const o of [-0.2, 0.2]) enemyShot(e.x, e.y, a + o, 6, 7); break;
-        case 5: for (let k = -3; k <= 3; k++) enemyShot(e.x, e.y, a + k * 0.12, 3.6, 6, 0.2); break; // frost breath
-        case SWEEPER: // broom sweep: a wide, slow fan; from phase 2 it also sweeps up the fallen (DNF riders rise to fight)
+        case 5: for (let k = -3; k <= 3; k++) enemyShot(e.x, e.y, a + k * 0.12, 3.6, 6, 0.2); break;
+        case SWEEPER:
           for (let k = -4; k <= 4; k++) enemyShot(e.x, e.y, a + k * 0.2, 3.2, 6, 0.22);
           if (bs.phase >= 2 && liveCount(e.room) < 2 + bs.phase) { const s = spawnEnemy(rng() < 0.5 ? 'chaser' : 'archer', e.x + (rng() - 0.5) * 3, e.y + 1.5, e.room); s.summoned = 1; }
           e.fireCd2 = 2.2 * pace; break;
@@ -1651,8 +2232,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     floorsCleared++; totals.floors++; cue('stairs');
     ctx.emit({ type: 'floorCleared', data: { floor, timeS: Math.round(t) } });
     if (planFor(floor).final) { winRun(); return; }
+    const hadGrimpeur = isArchetypeUnlocked('grimpeur', unlockProgress());
     floor++;
     bestFloor = Math.max(bestFloor, floor);
+    if (!hadGrimpeur && isArchetypeUnlocked('grimpeur', unlockProgress())) {
+      toast('NEW HERO UNLOCKED: The Grimpeur (Climber)!', '#ff6e5a');
+      addFx({ kind: 'banner', x: P.x, y: P.y, life: 3.5, color: '#ff6e5a', text: 'THE GRIMPEUR UNLOCKED!' });
+    }
     P.potions = potionCap();
     buildFloor(); dir = newFloor(false);
     recomputeHp(true);
@@ -1660,11 +2246,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     toast(fp.final ? `Floor ${floor} of ${FLOORS}: the Broom Wagon. The Grim Sweeper waits.` : `Floor ${floor} of ${FLOORS}: ${fp.name}. Potions refilled`, fp.final ? '#c77dff' : '#ffd84a');
     persist();
   }
-  function runResult(won: boolean, banked: number): RunResult {
-    return { won, floor, startFloor, tier: runTier, timeS: Math.round(t - runT0), kills: kills - runKills0, bosses: bossDefeated - runBosses0,
-      perks: Object.values(perkRanks).reduce((a, n) => a + (n ?? 0), 0), banked, level: P.level, weapon: weapon.name };
+
+  function buildRunResult(won: boolean, banked: number): RunResult {
+    const fc = chosenForksAndCapstones(archetype, skillRanks);
+    return {
+      won, floor, startFloor, tier: runTier, timeS: Math.round(t - runT0), kills: kills - runKills0, bosses: bossDefeated - runBosses0,
+      perks: totalSpentPoints(archetype, skillRanks), banked, level: P.level, weapon: weapon.name,
+      archetype: ARCHETYPES[archetype].name, buildTitle: deriveBuildTitle(archetype, skillRanks),
+      forks: fc.forks, capstones: fc.capstones, climbs: climbsTotal - runClimbs0,
+    };
   }
-  /** Through the finish behind the Grim Sweeper: the descent is won. Bank everything plus the finish bonus, unlock the next Category. */
+
   function winRun() {
     flushLootOffer();
     const bonus = Math.round(winBonus() * T().coins);
@@ -1673,28 +2265,26 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     wins[runTier]++; descentsWon++;
     tierUnlocked = unlockAfterWin(runTier, tierUnlocked);
     if (startFloor === 1) bestWinS = bestWinS ? Math.min(bestWinS, timeS) : timeS;
-    lastRun = runResult(true, banked);
+    lastRun = buildRunResult(true, banked);
     if (tierUnlocked > before) { lastRun.unlocked = tierOf(tierUnlocked).name; tier = tierUnlocked; }
     deepest = Math.max(deepest, floor); topLevel = Math.max(topLevel, P.level); earnedPrev += banked; lastDeath = undefined;
-    ctx.emit({ type: 'descentWon', data: { tier: runTier, startFloor, timeS, perks: lastRun.perks } });
+    ctx.emit({ type: 'descentWon', data: { tier: runTier, startFloor, timeS, archetype, perks: lastRun.perks } });
     bankStart += banked; totals.coins += banked; P.coinsEarned = 0; P.coins = 0;
-    bullets.length = 0; hazards.length = 0; navPath = []; curse = null; offer = null; perkDueT = -1;
+    bullets.length = 0; hazards.length = 0; navPath = []; curse = null; skillOffer = null; skillOfferDueT = -1; finishSeq = null;
     toast(`Descent complete in ${Math.floor(timeS / 60)}:${String(timeS % 60).padStart(2, '0')}! +${bonus} finish bonus.${lastRun.unlocked ? ` ${lastRun.unlocked} unlocked.` : ''}`, '#ffd84a');
     cue('unique');
     enterCamp();
     persist();
   }
 
-  /** Death ends the descent: back to camp with every coin banked; hero level and loot reset at the next start. */
   function die() {
     flushLootOffer();
-    deaths++; totals.deaths++; deepest = Math.max(deepest, floor); topLevel = Math.max(topLevel, P.level); // summary is per session, across runs
-    ctx.emit({ type: 'death', data: { room: current, floor } });
-    const banked = P.coinsEarned; earnedPrev += banked; lastDeath = { floor, banked }; lastRun = runResult(false, banked);
-    // no death spiral: dying on the floor you started on suggests the previous zone next time (still adjustable at camp)
+    deaths++; totals.deaths++; deepest = Math.max(deepest, floor); topLevel = Math.max(topLevel, P.level);
+    ctx.emit({ type: 'death', data: { room: current, floor, archetype } });
+    const banked = P.coinsEarned; earnedPrev += banked; lastDeath = { floor, banked }; lastRun = buildRunResult(false, banked);
     if (!opts?.floor && floor === startFloor && startFloor > 1) startFloor = stepStart(-1);
     bankStart += P.coinsEarned; totals.coins += P.coinsEarned; P.coinsEarned = 0; P.coins = 0;
-    P.hp = 0; bullets.length = 0; hazards.length = 0; navPath = []; curse = null; offer = null; perkDueT = -1;
+    P.hp = 0; P.shield = 0; bullets.length = 0; hazards.length = 0; navPath = []; curse = null; skillOffer = null; skillOfferDueT = -1; finishSeq = null;
     toast(`You fell on floor ${floor}. ${banked} coins banked. Back to camp.`, '#ff5a5a');
     cue('hurt');
     enterCamp(true);
@@ -1704,11 +2294,67 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     phase = 'camp'; campT = 0; campSel = 0; campLockT = fromDeath && !autopilot ? 2.1 : 0;
     clearCombatGrades();
   }
-  const strikeInReach = () => liveInRoom(current).some((e) => Math.hypot(e.x - P.x, e.y - P.y) < strikeRadius() + e.r);
+  const strikeInReach = () => liveInRoom(current).some((e) => Math.hypot(e.x - P.x, e.y - P.y) < effectiveStrikeRadius() + e.r);
+
+  function skillTreeView(): SkillTreeView {
+    const branches = SKILL_TREES[archetype];
+    const fc = chosenForksAndCapstones(archetype, skillRanks);
+    const rb = relicBonusBranches[0];
+    const cards = quickPickCards(archetype, skillRanks);
+    return {
+      unspentSP,
+      spentSP: totalSpentPoints(archetype, skillRanks),
+      buildTitle: deriveBuildTitle(archetype, skillRanks),
+      forks: fc.forks,
+      capstones: fc.capstones,
+      relicName: rb !== undefined ? ARCHETYPES[archetype].relicName : null,
+      relicBranchName: rb !== undefined ? branches[rb].name : null,
+      branches: branches.map((b, bi) => ({
+        id: b.id, name: b.name, theme: b.theme, color: b.color, points: branchPoints(b, skillRanks),
+        nodes: b.nodes.map((n) => ({
+          id: n.id, tier: n.tier, fork: n.fork, pair: n.pair, name: n.name, short: n.short, detail: n.detail, cycling: n.cycling,
+          rank: getNodeRank(skillRanks, n.id), maxRank: n.maxRank, state: nodeState(archetype, skillRanks, n.id),
+          relicBonus: relicBonusBranches.includes(bi) && n.tier <= 2 && getNodeRank(skillRanks, n.id) > 0,
+        })),
+      })),
+      offer: skillOffer ? {
+        mode: skillOffer.mode,
+        sel: Math.min(skillOffer.sel, Math.max(0, cards.length - 1)),
+        focusNodeId: skillOffer.focusNodeId,
+        age: skillOffer.age,
+        autoS: autopilot ? Math.min(1.5, skillAutoS()) : skillAutoS(),
+        manual: skillOffer.manual,
+        reason: skillOffer.reason,
+        cards: cards.map((c) => ({
+          nodeId: c.node.id, branchId: c.branch.id, branchName: c.branch.name, branchColor: c.branch.color,
+          tier: c.node.tier, fork: c.node.fork, name: c.node.name, short: c.node.short, detail: c.node.detail, cycling: c.node.cycling,
+          rank: c.rank, maxRank: c.node.maxRank, siblingForkName: c.siblingForkName,
+        })),
+      } : null,
+    };
+  }
 
   function campView(): CampView {
-    return { bank: Math.round(bankStart), sel: campSel, autoStartS: campAutoS(), autoStartLeft: campAutoS() - campT, startFloor, maxStartFloor: mods.maxStartFloor, autoInvest: autoInvestOn, rows: campRows(), bestFloor, runs, lastDeath,
-      ...(lastRun ? { lastRun } : {}), floors: FLOORS, tier: tierOf(tier).name, wins: wins.reduce((a, n) => a + n, 0) };
+    const up = unlockProgress();
+    const gp = grimpeurProgress(up);
+    const archetypes: CampArchetypeCard[] = ARCHETYPE_ORDER.map((id) => {
+      const a = ARCHETYPES[id];
+      const unlocked = isArchetypeUnlocked(id, up);
+      return {
+        id, name: a.name, shortName: a.shortName, subtitle: a.subtitle, jersey: a.jersey, chassis: a.chassis, kit: a.kit,
+        color: a.color, workoutTag: a.workoutTag, ergLabel: a.ergLabel, gradeLabel: a.gradeLabel, cadenceSweet: a.cadenceSweet,
+        pitch: a.pitch, unlocked, unlockReq: a.unlockReq, unlockPct: unlocked ? 1 : gp.pct,
+        branches: SKILL_TREES[id].map((b) => ({ name: b.name, color: b.color })),
+        profileErg: a.profileErg, profileGrade: a.profileGrade,
+      };
+    });
+    return {
+      bank: Math.round(bankStart), sel: campSel, autoStartS: campAutoS(), autoStartLeft: campAutoS() - campT,
+      startFloor, maxStartFloor: mods.maxStartFloor, autoInvest: autoInvestOn, erg,
+      selectedArchetype: archetype, archetypes, grimpeur: gp,
+      rows: campRows(), bestFloor, runs, lastDeath,
+      ...(lastRun ? { lastRun } : {}), floors: FLOORS, tier: tierOf(tier).name, wins: wins.reduce((a, n) => a + n, 0),
+    };
   }
 
   function snapshot(): DungeonSnapshot {
@@ -1721,59 +2367,79 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       variant: e.variant, elite: e.elite, shieldFrac: e.shieldMax > 0 ? e.shield / e.shieldMax : 0,
     });
     const bv: BulletView[] = bullets.map((b) => ({
-      x: b.x, y: b.y, r: b.r, friendly: b.friendly, style: b.w ? b.w.base : 'enemy', color: b.w ? ELEMENT_COLORS[b.w.element] : '#ff5a5a',
-      angle: Math.atan2(b.vy, b.vx), age: b.age, variant: b.w?.variant, ...(b.drone ? { drone: true } : {}),
+      x: b.x, y: b.y, r: b.r, friendly: b.friendly, style: b.orb ? 'orb' : b.w ? b.w.base : 'enemy',
+      color: b.orb ? '#64d8ff' : b.w ? ELEMENT_COLORS[b.w.element] : '#ff5a5a',
+      angle: Math.atan2(b.vy, b.vx), age: b.age, variant: b.w?.variant,
     }));
     const inReach = strikeInReach();
+    const arch = ARCHETYPES[archetype];
+    const pm = PACE_MODES[paceBias];
+    const bladeCount = (weapon.unique === 'orbit' ? 3 : 0) + tm.orbitBlades;
     return {
       t, phase, camp: phase === 'camp' ? campView() : null, world, floor,
       run: { floors: FLOORS, zone: planFor(floor).name, final: planFor(floor).final, tier: T().name, tierIndex: runTier },
       player: {
-        x: P.x, y: P.y, r: PLAYER_R, hp: P.hp, maxHp: P.maxHp, potions: P.potions, potionCap: potionCap(),
+        x: P.x, y: P.y, r: PLAYER_R, hp: P.hp, maxHp: P.maxHp, shield: P.shield, potions: P.potions, potionCap: potionCap(),
         invuln: P.invuln > 0, onSwamp: P.onSwamp, speedMult: P.speedMult, moving: P.moving, rolling: P.rollT > 0, warded: P.ward > 0, rallied: P.rally > 0, hurt: t - P.hurtT,
         secondWind: swCd.left <= 0 ? 1 : 1 - swCd.left / swCd.total, secondWindFlash: Math.max(0, 1 - (t - swUsedT) / 2.5),
         firedUpLeft: Math.max(0, firedUpUntil - t),
         level: P.level, xp: P.xp, xpNext: xpNext(P.level), coins: P.coins, bank: Math.round(bankStart + P.coinsEarned),
+        unspentSP,
+        blazingHalo: tm.blazingHalo, turbineShock: tm.turbineShock,
+        bulletTime: t < bulletTimeUntil, mountainKing: t < mountainKingUntil,
+        caldera: tm.volcanicAscent, phantom: tm.phantomCadence,
       },
       weapon, gear: { ...gear },
       aim: { angle: P.aim },
-      stance: {
-        id: stance, name: STANCES[stance].name, role: STANCES[stance].role, color: STANCES[stance].color, band: STANCES[stance].band,
-        styleOn, styleHidden: spinCalled(), swapping: pick ?? swapTo, ready: 1, suggest: suggestion,
-        list: stancesFor(mods.arcanist).map((id) => ({ id, name: STANCES[id].name, color: STANCES[id].color, weapon: slots[id]?.name ?? '', base: slots[id]?.base ?? '', level: slots[id]?.level ?? 0, rarity: slots[id]?.rarity ?? 0, element: slots[id]?.element, variant: slots[id]?.variant, unique: slots[id]?.unique, plus: slots[id]?.plus })),
+      archetype: {
+        id: arch.id, name: arch.name, shortName: arch.shortName, subtitle: arch.subtitle, color: arch.color,
+        chassis: arch.chassis, kit: arch.kit, overlays: tm.overlays, workoutTag: arch.workoutTag, cadenceSweet: arch.cadenceSweet,
       },
-      pace: { seg: dir.seg, label: DEFAULT_TARGETS[dir.seg].label, erg, segT: dir.segT },
+      paceBias: { bias: pm.bias, id: pm.id, label: pm.label, shortLabel: pm.shortLabel, color: pm.color, desc: pm.desc },
+      skillTree: skillTreeView(),
+      pace: { seg: dir.seg, label: dirCfg().targets[dir.seg].label, erg, segT: dir.segT },
       refill: { rate: lastRate, zone: Math.max(1, Math.min(5, ctx.bike().powerZone)) },
       ai: { path: phase === 'run' ? navPath.slice(0, 40) : [], targetId: P.targetId },
       actions: (['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id) => ({
-        id, button: ACTION_BUTTON[id], label: id === 'rally' && lootOffer ? (lootOffer.view.defaultChoice === 'equip' ? 'Drop' : 'Equip') : ACTION_LABEL[id],
+        id, button: ACTION_BUTTON[id],
+        label: id === 'rally' && lootOffer ? (lootOffer.view.defaultChoice === 'equip' ? 'Drop' : 'Equip') : ACTION_LABEL[id],
         ready: id === 'rally' && lootOffer ? 1 : readyFrac(cds[id]),
-        usable: (id === 'rally' && !!lootOffer) || (cds[id].left <= 0 && (id === 'strike' ? inReach : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true)),
+        usable: (id === 'rally' && !!lootOffer) || ((cds[id].left <= 0 || (id === 'strike' && t < bulletTimeUntil)) && (id === 'strike' ? inReach : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true)),
       })),
       enemies: ev, bullets: bv, drops: drops.map(({ item: _i, value: _v, ...d }) => d),
       hazards: hazards.map(({ dmg: _d, ...h }) => h),
-      orbit: weapon.unique === 'orbit' && phase === 'run' ? orbitBlades() : [],
+      orbit: bladeCount > 0 && phase === 'run' ? orbitBlades(bladeCount, ctx.bike().cadence3s) : [],
       shrines: shrines.map((s) => ({ kind: s.kind, label: SHRINES[s.kind].label, progress: s.progress, leftS: Math.max(0, s.left), state: s.state, x: s.x, y: s.y, room: s.room })),
       curse: curse ? { kind: curse.kind, ...CURSES[curse.kind], left: Math.max(0, curse.left), total: curse.total } satisfies CurseView : null,
       fx: fx.slice(), toasts: toasts.filter((x) => t - x.t0 < 6), cues: cues.slice(),
       room: current, stairsOpen: !boss.alive, frozen: hitT > 0,
       flail: bossStarted && boss.alive && boss.variant === 2 ? { x: fl.x, y: fl.y, mode: fl.mode, t: fl.t, ang: fl.ang, tx: fl.tx, ty: fl.ty } : null,
       boss: bossStarted ? { active: boss.alive, name: BOSS_NAMES[boss.variant], hp: Math.max(0, boss.hp), maxHp: boss.maxHp, phase: bs.phase, cycle: bs.cycle, left: bs.left, fightT: bs.fightT, tide: tideBonus(bs.fightT, bossCfg()), splits: bossCfg().phaseSplits } : null,
-      perks: perkView(),
       lootOffer: lootOffer ? { ...lootOffer.view, leftS: Math.max(0, lootOffer.leftS) } : null,
-      stats: { roomsCleared, kills, deaths, damageDealt, output, fireT: fightT, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived },
-      hooks: { boss: bossStarted && boss.alive, shielded: sh.shielded, swamp: P.onSwamp, seg: dir.seg, cadence: dir.seg === 'spinup' ? dirCfg().spinRpm + 6 : 90,
-        powerFtp: phase === 'camp' ? DEFAULT_TARGETS.cooldown.erg : sh.shielded && erg ? ergSurge() : dirCfg().targets[dir.seg].erg },
+      finishSeq: finishSeq ? { ...finishSeq } : null,
+      stats: { roomsCleared, kills, deaths, damageDealt, output, fireT: fightT, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived, climbs: climbsTotal, skillPoints: totalSpentPoints(archetype, skillRanks) },
+      hooks: {
+        boss: bossStarted && boss.alive, shielded: sh.shielded, swamp: P.onSwamp, seg: dir.seg,
+        cadence: dir.seg === 'spinup' ? dirCfg().spinRpm + 6 : Math.round((arch.cadenceSweet[0] + arch.cadenceSweet[1]) / 2),
+        powerFtp: phase === 'camp' ? dirCfg().targets.cooldown.erg : sh.shielded && erg ? ergSurge() : dirCfg().targets[dir.seg].erg,
+      },
     };
   }
 
-  // Only the pre-descent Camp (before any run has started this session) is a pre-game menu.
+  // Only pre-descent Camp (before any run starts) is a pre-game menu.
   const inMenu = () => phase === 'camp' && sessionRuns === 0;
 
   function paceZone(): NonNullable<GameHud['targetZone']> {
-    const T = DEFAULT_TARGETS[dir.seg];
-    return { min: T.zone[0], max: T.zone[1], label: `${curse && dir.seg === 'explore' ? 'Cursed: ride it out' : T.label}${erg ? ` · ERG ${Math.round(dirCfg().targets[dir.seg].erg * 100)}%` : ''}`, ...(T.source ? { source: T.source } : {}) };
+    const Tseg = dirCfg().targets[dir.seg];
+    const pm = PACE_MODES[paceBias];
+    const biasTag = paceBias !== 0 ? ` [${pm.shortLabel}]` : '';
+    return {
+      min: Tseg.zone[0], max: Tseg.zone[1],
+      label: `${curse && dir.seg === 'explore' ? 'Cursed: ride it out' : Tseg.label}${biasTag}${erg ? ` · ERG ${Math.round(Tseg.erg * 100)}%` : ''}`,
+      ...(Tseg.source ? { source: Tseg.source } : {}),
+    };
   }
+
   function runControls(): ControlHint[] {
     const inReach = strikeInReach();
     return [
@@ -1782,62 +2448,87 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           const dropAlt = lootOffer.view.defaultChoice === 'equip';
           return { button: 'y', label: dropAlt ? `Drop +${lootOffer.view.sellCoins}c` : 'Equip loot', shortLabel: dropAlt ? 'Drop' : 'Equip', active: true };
         }
-        const usable = id === 'strike' ? inReach : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true, ready = cds[id].left <= 0;
-        return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
-          cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
+        const usable = id === 'strike' ? inReach : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true;
+        const ready = cds[id].left <= 0 || (id === 'strike' && t < bulletTimeUntil);
+        return {
+          button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
+          cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) },
+        };
       }),
-      { button: 'left', label: 'Previous stance', active: true }, { button: 'right', label: 'Next stance', active: true },
-      { button: 'paddles', label: 'Zoom in/out: either paddle direction or pinch', shortLabel: 'Zoom ±' },
+      { button: 'left', label: 'Cool off', active: paceBias > -1 },
+      { button: 'right', label: 'Push hard', active: paceBias < 1 },
+      { button: 'up', label: unspentSP > 0 ? `Skills (+${unspentSP})` : 'Skill Tree', active: unspentSP > 0 },
+      { button: 'paddles', label: 'Zoom in/out: paddles or pinch', shortLabel: 'Zoom ±' },
       { button: 'shiftersL', label: 'Gear' },
       { button: 'shiftersR', label: 'Gear' },
     ];
   }
+
   function hud(): GameHud {
     if (phase === 'camp') return {
-      controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / select', shortLabel: 'Select' }, { button: 'b', label: 'Begin descent', shortLabel: 'Start' }],
+      controls: [{ button: 'dpad', label: 'Choose Hero / Upgrades' }, { button: 'a', label: 'Buy / select', shortLabel: 'Select' }, { button: 'b', label: 'Begin descent', shortLabel: 'Start' }],
       playControls: runControls(),
       touchControls: [],
       gears: !erg, targetZone: { min: 1, max: 2, label: deaths ? 'Cool down' : 'Warm up' },
     };
-    if (offer) return {
-      controls: [{ button: 'dpad', label: 'Choose a perk', shortLabel: 'Choose' }, { button: 'a', label: 'Take perk', shortLabel: 'Take' }],
+    if (skillOffer) return {
+      controls: skillOffer.mode === 'quick'
+        ? [{ button: 'dpad', label: 'Choose upgrade', shortLabel: 'Choose' }, { button: 'a', label: 'Invest SP', shortLabel: 'Invest' }, { button: 'y', label: 'Full Tree' }, { button: 'b', label: 'Bank SP' }]
+        : [{ button: 'dpad', label: 'Navigate tree', shortLabel: 'Move' }, { button: 'a', label: 'Invest SP', shortLabel: 'Invest' }, { button: 'y', label: 'Quick-Pick' }, { button: 'b', label: 'Resume' }],
       touchControls: [],
-      gears: !erg, targetZone: { min: 1, max: 2, label: 'Pick a perk' },
+      gears: !erg, targetZone: { min: 1, max: 2, label: 'Level Up · Flat recovery' },
     };
     const sh = bossShield();
     const act = shrines.find((s) => s.state === 'active');
-    // shields and shrines are short efforts, judged on power (sprint detection is power-based too)
     const target: GameHud['targetZone'] = sh.shielded ? { min: 4, max: 5, label: bs.cycle === 'exposed' ? 'Exposed! Sprint now' : 'Big attack: get ready', source: 'power' }
       : act?.kind === 'fury' ? { min: 3, max: 5, label: 'Shrine: Z3+', source: 'power' }
       : act?.kind === 'sprint' ? { min: 5, max: 5, label: 'Shrine: sprint!', source: 'power' }
       : act ? { min: 2, max: 2, label: 'Shrine: hold Z2' }
       : paceZone();
+    const arch = ARCHETYPES[archetype];
     return {
       controls: runControls(),
       touchControls: ['left', 'right', 'a', 'b', 'y', 'z'],
       gears: !erg, targetZone: target,
-      targetCadence: dir.seg === 'spinup' ? { min: dirCfg().spinRpm, label: 'Spin up!' } : act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' }
-        : phase === 'run' ? { min: STANCES[stance].band[0], max: STANCES[stance].band[1], label: `${STANCES[stance].name} style` } : undefined, // called targets win
+      targetCadence: dir.seg === 'spinup' ? { min: dirCfg().spinRpm, label: 'Spin up!' }
+        : act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' }
+        : { min: arch.cadenceSweet[0], max: arch.cadenceSweet[1], label: `${arch.shortName} cadence` },
     };
   }
 
+  function menuActions(): GameMenuAction[] {
+    if (phase !== 'run') return [];
+    return [{
+      id: 'build-tree',
+      label: unspentSP > 0 ? `Build & Skill Tree (${unspentSP} SP ready)` : `Inspect Build (${deriveBuildTitle(archetype, skillRanks)})`,
+      action: { type: 'openSkillTree' },
+    }];
+  }
+
   const api: GameSim & { navStats?: () => Record<string, number> } = {
-    update, hud, inMenu, snapshot, isOver: () => false,
+    update, hud, inMenu, menuActions, snapshot, isOver: () => false,
     receive(a: unknown) {
-      const act = a as { type?: string; row?: number; id?: string; choice?: string };
+      const act = a as { type?: string; row?: number; id?: string; i?: number; mode?: 'quick' | 'full'; nodeId?: string; confirm?: boolean; bias?: number; choice?: string };
       if (act?.type === 'lootChoice' && lootOffer && (act.choice === 'equip' || act.choice === 'drop')) { lootTap = act.choice; return; }
       if (act?.type === 'action' && phase === 'run' && typeof act.id === 'string' && act.id in ACTION_BUTTON && tapped.length < 4) tapped.push(act.id as ActionId);
-      if (act?.type === 'perk' && offer && typeof (act as { i?: number }).i === 'number') perkTap = (act as { i: number }).i;
-      if (act?.type === 'campRow' && typeof act.row === 'number' && pending.length < 8) pending.push({ type: 'campRow', row: act.row });
+      if (act?.type === 'openSkillTree' && phase === 'run') pendingActions.push({ type: 'openSkillTree' });
+      if (act?.type === 'paceBias' && phase === 'run' && (act.bias === -1 || act.bias === 0 || act.bias === 1)) pendingActions.push({ type: 'paceBias', bias: act.bias });
+      if (act?.type === 'skillCard' && skillOffer && typeof act.i === 'number') pendingActions.push({ type: 'skillCard', i: act.i });
+      if (act?.type === 'skillPick' && skillOffer && typeof act.nodeId === 'string') pendingActions.push({ type: 'skillPick', nodeId: act.nodeId, confirm: !!act.confirm });
+      if (act?.type === 'skillMode' && skillOffer && (act.mode === 'quick' || act.mode === 'full')) pendingActions.push({ type: 'skillMode', mode: act.mode });
+      if (act?.type === 'skillClose' && skillOffer) pendingActions.push({ type: 'skillClose' });
+      if (act?.type === 'selectArchetype' && phase === 'camp' && typeof act.id === 'string' && act.id in ARCHETYPES) pendingActions.push({ type: 'selectArchetype', id: act.id as ArchetypeId });
+      if (act?.type === 'campRow' && typeof act.row === 'number' && pendingActions.length < 8) pendingActions.push({ type: 'campRow', row: act.row });
     },
     summary: () => ({
       'Deepest floor': Math.max(deepest, floor), 'Hero level': Math.max(topLevel, P.level), 'Rooms cleared': roomsCleared, Kills: kills, 'Elites slain': elitesSlain,
       'Bosses slain': bossDefeated, Deaths: deaths, 'Coins earned': Math.round(earnedPrev + P.coinsEarned), 'Coins banked': Math.round(bankStart + P.coinsEarned),
       'Descents won': descentsWon, Category: tierOf(phase === 'run' ? runTier : tier).name,
-      'Best find': phase === 'run' ? bestFind.name : '-', 'Uniques found': uniquesFound, 'Curses survived': cursesSurvived, 'Final weapon': weapon.name, 'Second Winds': secondWinds, Stance: STANCES[stance].name, Perks: perksTaken,
+      'Best find': phase === 'run' ? bestFind.name : '-', 'Uniques found': uniquesFound, 'Curses survived': cursesSurvived, 'Final weapon': weapon.name,
+      'Second Winds': secondWinds, Archetype: ARCHETYPES[archetype].name, Build: deriveBuildTitle(archetype, skillRanks), 'Skill Points': totalSpentPoints(archetype, skillRanks),
     }),
     dispose() { if (phase === 'run') persist(); ctx.resistance.clearAll(); ctx.resistance.useVirtualGears(false); },
   };
-  api.navStats = () => ({ ...fstat, fallbacks: stuckStats }); // headless-only movement metrics
+  api.navStats = () => ({ ...fstat, fallbacks: stuckStats });
   return api;
 }

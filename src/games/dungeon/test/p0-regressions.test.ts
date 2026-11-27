@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, SCRIPTS, testProfile, TuningRegistry } from '../../../core';
 import type { Button, InputState } from '../../../contracts';
 import { module } from '../index';
-import { STANCES } from '../sim/stances';
+import { ARCHETYPES } from '../sim/archetypes';
 import { loadArt } from '../render/art32';
 
 class TriggerInput {
@@ -18,7 +18,7 @@ class TriggerInput {
 
 describe('Purgatour P0 regressions', () => {
   afterEach(() => {
-    for (const k of ['test-erg-spin105', 'test-erg-soft', 'test-erg-surge']) delete SCRIPTS[k];
+    for (const k of ['test-erg-spin105', 'test-erg-exposed']) delete SCRIPTS[k];
   });
   it('treats only initial pre-run Camp as inMenu and locks post-death Camp inputs during the DNF banner', () => {
     const reg = new TuningRegistry({ profileId: 'p0-camp' });
@@ -69,7 +69,7 @@ describe('Purgatour P0 regressions', () => {
     reg.set('dungeon.enemyDamageScale', 3);
     reg.scoped('dungeon').num('playerHp', 100, 20, 500, 10);
     reg.set('dungeon.playerHp', 20);
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true }, tuningRegistry: reg });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true, skills: 'none' }, tuningRegistry: reg });
     const snap = () => s.sim.snapshot() as any;
     let banners = -1;
     for (let i = 0; i < 30 * 60 * 15 && banners < 0; i++) {
@@ -82,21 +82,21 @@ describe('Purgatour P0 regressions', () => {
     expect(banners).toBe(1);
   });
 
-  it('clears combat resistance grades and hides touch controls when the post-boss perk offer opens', () => {
-    const reg = new TuningRegistry({ profileId: 'p0-perk-grade' });
+  it('clears combat resistance grades and hides touch controls when the room-clear Level-Up skill offer opens', () => {
+    const reg = new TuningRegistry({ profileId: 'p0-skill-grade' });
     reg.scoped('dungeon').num('baseDamage', 10, 1, 200, 1);
     reg.set('dungeon.baseDamage', 120);
     reg.scoped('dungeon').num('playerHp', 100, 20, 500, 10);
     reg.set('dungeon.playerHp', 500);
-    reg.scoped('dungeon').num('perkOfferDelayS', 2.5, 0.1, 10, 0.1);
-    reg.set('dungeon.perkOfferDelayS', 0.2);
+    reg.scoped('dungeon').num('skillOfferDelayS', 0.55, 0, 5, 0.1);
+    reg.set('dungeon.skillOfferDelayS', 0.2);
 
     const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 7, simOpts: { skipCamp: true, erg: false }, tuningRegistry: reg });
     let opened = false;
     for (let i = 0; i < 30 * 60 * 15 && !opened; i++) {
       s.step(1);
       const snap = s.sim.snapshot() as any;
-      if (snap.perks?.offer) {
+      if (snap.skillTree?.offer) {
         opened = true;
         s.step(30); // allow ResistanceMixer's 750 ms command rate limit to flush
         expect(s.sim.hud!().touchControls).toEqual([]);
@@ -124,6 +124,7 @@ describe('Purgatour P0 regressions', () => {
     for (let i = 0; i < 30 * 120 && !sawInReach; i++) {
       s.step(1);
       const snap = s.sim.snapshot() as any;
+      if (snap.skillTree?.offer) continue;
       const act = snap.actions.find((a: any) => a.id === 'strike');
       const hudA = s.sim.hud!().controls!.find((c) => c.button === 'a')!;
       expect(hudA.active).toBe(act.usable);
@@ -137,7 +138,7 @@ describe('Purgatour P0 regressions', () => {
     const reg = new TuningRegistry({ profileId: 'p0-erg-curse' });
     reg.scoped('dungeon').num('curseChance', 0.08, 0, 1, 0.01);
     reg.set('dungeon.curseChance', 1);
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'test-erg-spin105' }, seed: 5, simOpts: { skipCamp: true, erg: true, invulnerable: true }, tuningRegistry: reg });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'test-erg-spin105' }, seed: 5, simOpts: { skipCamp: true, erg: true, invulnerable: true, skills: 'none' }, tuningRegistry: reg });
 
     let sawCurseToast = false, shattered = false, curseStartTick = -1;
     for (let i = 0; i < 30 * 60 * 4 && !shattered; i++) {
@@ -149,7 +150,6 @@ describe('Purgatour P0 regressions', () => {
       }
       if (curseStartTick >= 0 && !snap.curse && snap.toasts.some((t: any) => /shattered/i.test(t.text))) {
         shattered = true;
-        // Must shatter well before the 40-50 s natural expiry
         expect(i - curseStartTick).toBeLessThan(30 * 10);
       }
     }
@@ -162,21 +162,20 @@ describe('Purgatour P0 regressions', () => {
     const ftp = profile.ftp;
     const shrineErg: Record<string, number> = { fury: 0.85, sprint: 1.22, whirl: 0.6, endurance: 0.65 };
 
-    // 1. Active shrines set the ERG target wattage when not in boss surge
     const reg = new TuningRegistry({ profileId: 'p0-erg-shrine' });
     reg.scoped('dungeon').num('baseDamage', 10, 1, 200, 1);
     reg.set('dungeon.baseDamage', 80);
-    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 11, simOpts: { skipCamp: true, erg: true, invulnerable: true }, tuningRegistry: reg });
+    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 11, simOpts: { skipCamp: true, erg: true, invulnerable: true, skills: 'none' }, tuningRegistry: reg });
     let checkedShrine = false;
     for (let i = 0; i < 30 * 60 * 10 && !checkedShrine; i++) {
       s.step(1);
       const snap = s.sim.snapshot() as any;
       const act = snap.shrines.find((sh: any) => sh.state === 'active');
-      if (act && !snap.hooks.bossShield) {
-        s.step(30); // allow ResistanceMixer's 750 ms command rate limit to flush
+      if (act && !snap.hooks.shielded) {
+        s.step(30);
         const snap2 = s.sim.snapshot() as any;
         const still = snap2.shrines.find((sh: any) => sh.state === 'active');
-        if (still && !snap2.hooks.bossShield) {
+        if (still && !snap2.hooks.shielded) {
           const cmd = s.mixer.debug().lastCommand as { watts?: number } | null | undefined;
           expect(cmd?.watts).toBeCloseTo(shrineErg[still.kind] * ftp, 0);
           checkedShrine = true;
@@ -185,35 +184,50 @@ describe('Purgatour P0 regressions', () => {
     }
     expect(checkedShrine).toBe(true);
 
-    // 2. Soft-pedaling in ERG mode does NOT get the Exposed x2 surge bonus; hitting ERG surge power DOES
-    const r = new TuningRegistry({ profileId: 'p0-erg-exposed' });
-    r.scoped('dungeon').num('bossBigEveryS', 20, 6, 60, 1);
-    r.set('dungeon.bossBigEveryS', 6);
-    const sess = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true, erg: true, invulnerable: true }, tuningRegistry: r });
-    let lowPerDmg = 0, highPerDmg = 0;
-    for (let i = 0; i < 30 * 60 * 10 && (!lowPerDmg || !highPerDmg); i++) {
-      const prevHp = (sess.sim.snapshot() as any).boss?.hp ?? 0;
-      sess.step(1);
-      const cur = sess.sim.snapshot() as any;
-      if (cur.boss && cur.boss.cycle === 'exposed' && prevHp > cur.boss.hp) {
-        const hit = prevHp - cur.boss.hp;
-        const perDmg = hit / Math.max(0.5, cur.weapon.dmg);
-        if (perDmg < 3) continue; // ignore small 1-tick DoT ticks
-        const ftpNow = sess.ctx.bike().ftpFraction;
-        if (ftpNow < 0.88 && !lowPerDmg) lowPerDmg = perDmg / ftpNow;
-        if (ftpNow >= 1.0 && !highPerDmg) highPerDmg = perDmg / ftpNow;
+    const measureExposedDmg = (exposedFtp: number) => {
+      const r = new TuningRegistry({ profileId: `p0-exp-${exposedFtp}` });
+      r.scoped('dungeon').num('bossBigEveryS', 20, 6, 60, 1);
+      r.set('dungeon.bossBigEveryS', 6);
+      const sess = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true, erg: true, invulnerable: true, skills: 'none' }, tuningRegistry: r });
+      // Advance identically until the boss enters its first Exposed window
+      for (let i = 0; i < 30 * 60 * 10; i++) {
+        sess.step(1);
+        if ((sess.sim.snapshot() as any).boss?.cycle === 'exposed') break;
       }
-    }
-    expect(lowPerDmg).toBeGreaterThan(0);
-    expect(highPerDmg).toBeGreaterThan(0);
-    // After dividing out linear ftpFraction, crossing the ERG surge threshold still doubles Exposed damage (~2x)
-    expect(highPerDmg / lowPerDmg).toBeGreaterThan(1.7);
+      expect((sess.sim.snapshot() as any).boss?.cycle).toBe('exposed');
+      // Now drive sim.update in ERG mode at exposedFtp (0.45 soft vs 1.15 surge) without FakeTrainer clamping power
+      const baseBike = sess.bikeStore.get();
+      let revs = baseBike.crankRevs, dmg = 0;
+      const startHp = (sess.sim.snapshot() as any).boss.hp;
+      (sess.ctx as { bike: () => typeof baseBike }).bike = () => ({
+        ...baseBike,
+        cadence: 85, cadence3s: 85,
+        power: exposedFtp * profile.ftp,
+        ftpFraction: exposedFtp,
+        powerZone: exposedFtp >= 1.05 ? 5 : 1,
+        sprinting: false,
+        crankRevs: revs,
+      });
+      for (let k = 0; k < 60; k++) {
+        revs += (85 / 60) / 30;
+        sess.sim.update(1 / 30);
+        const cur = sess.sim.snapshot() as any;
+        if (cur.boss?.cycle !== 'exposed') break;
+        dmg = startHp - cur.boss.hp;
+      }
+      return dmg;
+    };
+    const softDmg = measureExposedDmg(0.45);
+    const surgeDmg = measureExposedDmg(1.15);
+    expect(softDmg).toBeGreaterThan(0);
+    expect(surgeDmg).toBeGreaterThan(0);
+    expect(surgeDmg / softDmg).toBeGreaterThan(3.8);
   });
 
-  it('fixes stale shield metadata/roles and exposes an async renderer.ready() backed by art32 loadArt()', async () => {
+  it('keeps clean metadata, defines 3 launch archetypes, and exposes async renderer.ready() backed by art32 loadArt()', async () => {
     expect(module.blurb.toLowerCase()).not.toContain('shield');
     expect(module.tags).toEqual(expect.arrayContaining(['zone2', 'intervals', 'sprint', 'erg']));
-    expect(STANCES.arcanist.role).toBe('expose-extender');
+    expect(Object.keys(ARCHETYPES)).toEqual(['rouleur', 'puncheur', 'grimpeur']);
     await expect(loadArt()).resolves.toBeUndefined();
     const renderer = await module.loadRenderer();
     expect(typeof renderer.ready).toBe('function');

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ART } from '../render/art';
 import { BOSS_ART, WEAPON_ART, anim, artChars, frameRows } from '../render/sprites';
-import { STANCES } from '../sim/stances';
+import { ARCHETYPES } from '../sim/archetypes';
 
 describe('sprites v2', () => {
   it('every art is square (16 px actors, 32 px own-art bosses) and every frame row matches its width', () => {
@@ -29,7 +29,7 @@ describe('sprites v2', () => {
     expect(seen.size).toBe(2);
     expect(anim('archer', 'hurt', 0).state).toBe('idle');
   });
-  it('every stance weapon style has held-weapon art', () => {
-    for (const s of Object.values(STANCES)) for (const st of s.styles) expect(WEAPON_ART[st], st).toBeTruthy();
+  it('every archetype weapon style has held-weapon art', () => {
+    for (const a of Object.values(ARCHETYPES)) for (const st of a.weaponStyles) expect(WEAPON_ART[st], st).toBeTruthy();
   });
 });

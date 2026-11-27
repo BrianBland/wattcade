@@ -5,7 +5,7 @@ import { projectileArt } from '../render/effects';
 import { BOSS_ART, frameRows } from '../render/sprites';
 import { ART } from '../render/art';
 import { makeWeapon, pickWeaponStyle, weaponElement, weaponScore, type Rarity } from '../sim/loot';
-import { stanceOfStyle, stylesFor } from '../sim/stances';
+import { ARCHETYPES, ARCHETYPE_ORDER } from '../sim/archetypes';
 import { makeRng } from '../../../core';
 describe('shared native pixel grid', () => {
   it('centers long projectile masks before rotation to keep their pivot at the hit position', () => {
@@ -179,10 +179,9 @@ describe('weapon art and modifier identity', () => {
   });
 });
 describe('thrown weapon loot', () => {
-  it('knives, axes and spears belong to their intended stances and produce usable, deterministic loot', () => {
-    for (const [base, stance] of [['knife', 'skirmisher'], ['axe', 'vanguard'], ['spear', 'ranger']] as const) {
-      expect(stanceOfStyle(base, false)).toBe(stance);
-      expect(stylesFor(stance, false)).toContain(base);
+  it('knives, axes and spears belong to archetype weapon families and produce usable, deterministic loot', () => {
+    for (const [base, archId] of [['knife', 'puncheur'], ['axe', 'rouleur'], ['spear', 'grimpeur']] as const) {
+      expect(ARCHETYPES[archId].weaponStyles).toContain(base);
       for (const rarity of [0, 2, 4] as const) {
         const w = makeWeapon(makeRng(19), 3, rarity, base);
         expect(w).toEqual(makeWeapon(makeRng(19), 3, rarity, base));
@@ -195,9 +194,9 @@ describe('thrown weapon loot', () => {
       }
     }
   });
-  it('new alternatives share existing family drop weights and every stance style is reachable', () => {
-    for (const stance of ['vanguard', 'ranger', 'skirmisher', 'arcanist'] as const) {
-      const pool = stylesFor(stance, true),
+  it('every archetype weapon style pool is reachable', () => {
+    for (const archId of ARCHETYPE_ORDER) {
+      const pool = ARCHETYPES[archId].weaponStyles,
         seen = new Set(Array.from({
           length: 1000
         }, (_, i) => pickWeaponStyle(pool, i / 1000)));

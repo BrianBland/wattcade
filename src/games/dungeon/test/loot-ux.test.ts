@@ -36,12 +36,12 @@ describe('lootOffer (pure)', () => {
     const junk = makeWeapon(makeRng(11), 1, 0, 'bolt');
     const uniq = makeUnique(makeRng(12), 4);
 
-    const upgOffer = evaluateLootOffer(upg, cur, 50, 'ranger');
+    const upgOffer = evaluateLootOffer(upg, cur, 50, 'rouleur');
     expect(upgOffer?.defaultChoice).toBe('equip');
 
-    expect(evaluateLootOffer(junk, cur, 10, 'ranger')).toBeNull();
+    expect(evaluateLootOffer(junk, cur, 10, 'rouleur')).toBeNull();
 
-    const uniqOffer = evaluateLootOffer(uniq, upg, 80, 'ranger');
+    const uniqOffer = evaluateLootOffer(uniq, upg, 80, 'rouleur');
     expect(uniqOffer).not.toBeNull();
     expect(uniqOffer!.deltas.length).toBeGreaterThan(0);
   });

@@ -2,13 +2,14 @@
 import { describe, expect, it } from 'vitest';
 import { createGameSession, testProfile, NullInput } from '../../../core';
 import { module } from '../index';
-import { DEFAULT_TARGETS, type Seg } from '../sim/director';
+import { DEFAULT_CFG, type Seg } from '../sim/director';
+import { archetypeDirectorCfg } from '../sim/archetypes';
 
 describe('#89 interval pacing', () => {
   it('ERG holds the segment target for every segment it visits', () => {
     const profile = testProfile(), ftp = profile.ftp;
     const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'target-follow' }, seed: 12, simOpts: { autopilot: true, erg: true, skipCamp: true } });
-    // seed 12 reaches a spinup segment early; whether a 25 min run sees one at all depends on the rng path (13 stopped after the perk rebalance)
+    const expectedTargets = archetypeDirectorCfg(DEFAULT_CFG, 'rouleur', 0).targets;
     const seen = new Map<Seg, Set<number>>();
     for (let sec = 0; sec < 25 * 60; sec++) {
       s.step(30);
@@ -18,7 +19,7 @@ describe('#89 interval pacing', () => {
     }
     for (const seg of ['warmup', 'explore', 'ambush', 'recover', 'spinup', 'boss'] as Seg[]) {
       expect(seen.has(seg), `segment ${seg} visited`).toBe(true);
-      expect([...seen.get(seg)!], `ERG target in ${seg}`).toContain(Math.round(ftp * DEFAULT_TARGETS[seg].erg));
+      expect([...seen.get(seg)!], `ERG target in ${seg}`).toContain(Math.round(ftp * expectedTargets[seg].erg));
     }
     // never left in grade mode once ERG is on
     const firstErg = s.commands.findIndex((c) => (c as { mode?: string }).mode === 'erg');

@@ -146,6 +146,12 @@ export interface FullSendSnapshot {
   /** What this tour trains (shown on the setup screen, at the start, between sets and on the end card), and, on the weekly
    *  tour, your score on last week's (0 = none) to race. */
   intent: TourIntent; lastWeekScore: number;
+  /** Cadence now (rpm, 3 s), for the spin-up cue before a sprint. */
+  cadence: number;
+  /** First ride (no saved zones yet): this sprint sets your zones, and the later ones in the ride use them. */
+  calibrating: boolean;
+  /** The next sprint is waiting for your heart rate to come down (heart-rate strap only; never on short-rest tours). */
+  hrWait: { hr: number; target: number } | null;
   /** Your best run on this tour at this point of the ride (metres ridden), or null with no best run saved. */
   ghostX: number | null;
   /** When the charge you built in a sprint fired at the lip (sim time), and how much faster it threw you than you were going. */
@@ -249,6 +255,9 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     moonGravity: T.num('moonGravity', 0.35, 0.1, 1, 0.05, 'Hop gravity on the moon, as a fraction of normal (floaty hops)'),
     seaGravity: T.num('seaGravity', 0.6, 0.1, 1, 0.05, 'Hop gravity underwater, as a fraction of normal'),
     plungeM: T.num('plungeM', 45, 10, 200, 5, 'How far you fall off a sky island or the moon before splashing into the sea (m, each half)'),
+    hrReady: T.num('hrReady', 0.8, 0, 0.95, 0.01, 'Heart-rate strap: the next sprint waits until you are under this × max HR (0 = never wait; short-rest tours never wait)'),
+    hrHoldS: T.num('hrHoldS', 10, 3, 30, 1, 'Seconds before the next sprint at which the recovery clock holds for your heart rate'),
+    hrWaitMaxS: T.num('hrWaitMaxS', 60, 0, 180, 5, 'Longest the clock holds for your heart rate (s)'),
     moonRings: T.num('moonRings', 4, 0, 12, 1, 'Rings you must fly through on one sky-island visit (jet + lean) before a full lift meter opens the moon shot'),
     glideLean: T.num('glideLean', 0.4, 0.1, 1, 0.05, 'Falling off a sky island or the moon: lean back this hard (left paddle / ◀) to pull out into a glide'),
     glideHoldS: T.num('glideHoldS', 0.5, 0.1, 2, 0.1, 'Seconds of leaning back to commit to the glide (then you glide down to the road, not the sea)'),
@@ -376,6 +385,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   // zones come from what you have sustained; a save from before sustained scoring guesses it from the best mean
   const sus: Record<string, number> = { ...(save.sus ?? Object.fromEntries(Object.entries(pbs).map(([k, v]) => [k, +(v * 0.9).toFixed(3)]))) };
   const rideSus: Record<string, number> = {};
+  const firstRide = Object.keys(sus).length === 0; // no zones yet: the first sprint calibrates them, live
+  let hrExtra = 0, hrWait: { hr: number; target: number } | null = null;
   const holdSamples: number[] = [];
   const difficulty = () => clamp(Number(ctx.profile.settings?.difficulty) || 1, 0.5, 1.5);
   /** Your best mean (FTP fraction) for a sprint this long: the saved one, else a guess from the nearest length you have. */
@@ -505,12 +516,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       case 'warmup': return tour.warmupS * scale();
       case 'approach': return tun.approachS();
       case 'effort': return s?.effortS ?? 0;
-      case 'recovery': return (s?.recoveryS ?? 0) * scale();
+      case 'recovery': return (s?.recoveryS ?? 0) * scale() + hrExtra;
       case 'cooldown': return tour.cooldownS * scale();
       default: return 0;
     }
   };
-  const go = (p: Phase) => { phase = p; phaseT = 0; };
+  const go = (p: Phase) => { phase = p; phaseT = 0; hrExtra = 0; hrWait = null; };
   const ridden = () => rideS > 0 && pedalS >= tun.riddenFrac() * rideS;
   const setMode = (m: Mode) => { mode = m; modeT = 0; };
   /** Features reached at the end of the sprint ride toward you at your own speed, so the sprint lasts exactly `effortS`. */
@@ -590,6 +601,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     // the power you held for `holdFrac` of it (after the jump): the next zones are built on this
     const held = holdSamples.length >= 3 ? holdSamples.slice().sort((a, b) => a - b)[Math.floor((1 - tun.holdFrac()) * (holdSamples.length - 1))] : mean;
     rideSus[key] = Math.max(rideSus[key] ?? 0, held);
+    // first ride: the rest of the ride already uses what you just did (a faded sprint still shows what you can do: 0.9 × its mean)
+    if (firstRide) sus[key] = Math.max(sus[key] ?? 0, held, +(mean * 0.9).toFixed(3));
     const ftp = ctx.profile.ftp || 0;
     const r: SetResult = { kind: piece.kind, biome: piece.biome, title: piece.title, medal, detail,
       effortS, avgW: Math.round(mean * ftp), peakW: Math.round(peak * ftp), pb: prev > 0 && mean > prev };
@@ -897,6 +910,11 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           if (k >= 1) { x = end; piece.surfaced = true; finishPiece(0, 'turtle tow'); setMode('road'); v = targetSpeed(0.5, speedPerFtp()); }
         } else payoff(dt, now);
       } else if (phase === 'recovery') {
+        // a full rest means a full rest: with a heart-rate strap, the clock holds near the end until you've come down
+        const hr = bike.connected.hr ? bike.hr5s : null, maxHr = ctx.profile.maxHr || 0, target = Math.round(maxHr * tun.hrReady());
+        const high = !tour.intent.shortRest && tun.hrReady() > 0 && hr !== null && maxHr > 0 && hr > target;
+        if (high && phaseS() - phaseT <= tun.hrHoldS() && hrExtra < tun.hrWaitMaxS()) { hrExtra += dt; hrWait = { hr: Math.round(hr!), target }; }
+        else hrWait = null;
         if (phaseT >= phaseS()) startSet(setIndex + 1);
       } else if (phase === 'cooldown') {
         if (phaseT >= phaseS()) { // a tour only counts (achievements, bests, the ghost) if you actually rode it
@@ -1166,7 +1184,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         flip: flip ? { name: flip.name, age: now - flip.at } : null, spun,
         hazards: phase === 'payoff' && piece?.kind === 'leap' && (mode === 'air' || mode === 'fall') ? hazards.map((z) => ({ x: z.x, y: hazardY(z, leapT), vy: z.vy - z.g * (leapT - z.t0), hit: z.hit })) : [],
         scorchAt, leapSlow: phase === 'payoff' && piece?.kind === 'leap' && mode === 'air' ? 1 - (1 - tun.leapSlowMo()) * Math.sin(Math.PI * clamp((x - launchX) / Math.max(1, piece.x0 + piece.len - launchX), 0, 1)) ** 1.5 : 1,
-        score: scoreNow(), bestScore: save.best?.[keyOf(tour)]?.score ?? 0, intent: tour.intent, lastWeekScore: tour.id === 'weekly' ? lastWeek()?.score ?? 0 : 0, ghostX: ghostAt(), chargeAt, chargeGain, ridden: ridden(),
+        score: scoreNow(), bestScore: save.best?.[keyOf(tour)]?.score ?? 0, cadence: Math.round(ctx.bike().cadence3s || 0), calibrating: firstRide && setIndex === 0 && (phase === 'approach' || phase === 'effort' || phase === 'warmup'), hrWait, intent: tour.intent, lastWeekScore: tour.id === 'weekly' ? lastWeek()?.score ?? 0 : 0, ghostX: ghostAt(), chargeAt, chargeGain, ridden: ridden(),
         hooks: { shielded: phase === 'effort', seg: phase, lobbyBiome: cur, ...(wantCad !== undefined ? { cadence: wantCad } : {}) },
       };
     },

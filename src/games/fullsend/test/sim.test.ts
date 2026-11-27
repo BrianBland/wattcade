@@ -354,7 +354,7 @@ describe('sprint scoring: the whole interval counts', () => {
   });
   it('holding the gold zone steadily for the whole sprint wins gold, even with the mean only just over the line', () => {
     const m = medalsOf(shaped('fs-steady', () => 1.75));
-    expect(m.filter((x) => x === 3).length).toBeGreaterThanOrEqual(4);
+    expect(m.filter((x) => x === 3).length).toBeGreaterThanOrEqual(3); // (a 20 s piece guessed from a 25 s best asks a little more)
   });
 });
 
@@ -430,6 +430,34 @@ describe('tours with a purpose, and the weekly tour', () => {
     const save = store.data as { weeks: Array<{ week: number }>; best: Record<string, unknown> };
     expect(save.weeks.map((w) => w.week)).toEqual([2970, 2971]);
     expect(Object.keys(save.best)).toEqual(['weekly-2971']); // only this week's weekly best is kept
+  });
+});
+
+describe('coaching: heart-rate paced rests and a first-ride calibration', () => {
+  const run = (tour: string, hr: number | null) => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour, forks: 'main' }, seed: 3 });
+    if (hr !== null) { s.bikeStore.setConnected({ hr: true }); s.fakeBike!.manual.hr = hr; }
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    let waited = false;
+    for (let i = 0; i < 30 * 60 * 30 && !(snap().phase === 'approach' && snap().setIndex === 1); i++) { s.step(1); if (snap().hrWait) waited = true; }
+    return { t: snap().t, waited };
+  };
+  it('with a heart-rate strap, the next sprint waits (a while) for your heart rate to come down', () => {
+    const calm = run('quick', 120), high = run('quick', 175);
+    expect(calm.waited).toBe(false); expect(high.waited).toBe(true);
+    expect(high.t - calm.t).toBeGreaterThan(30); expect(high.t - calm.t).toBeLessThan(75); // capped
+  });
+  it('short-rest tours never wait: the short rest is the workout', () => {
+    expect(run('repeat', 175).waited).toBe(false);
+  });
+  it('on a first ride the first sprint sets the zones for the rest of the ride', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'quick', forks: 'main' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 10 && !(snap().phase === 'approach'); i++) s.step(1);
+    expect(snap().calibrating).toBe(true);
+    for (let i = 0; i < 30 * 60 * 10 && !(snap().phase === 'approach' && snap().setIndex === 1); i++) s.step(1);
+    expect(snap().calibrating).toBe(false);
+    expect(snap().piece!.th).not.toEqual([1.1, 1.25, 1.5]); // the leap's default zones are replaced by your own
   });
 });
 

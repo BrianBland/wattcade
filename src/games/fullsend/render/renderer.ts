@@ -401,12 +401,20 @@ export class FullSendRenderer implements GameRenderer {
 
     // ---- the rider and the rocket ----
     const look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
-    if (s.ghostX != null && s.phase !== 'done' && s.tier === 'ground' && !s.toTier) { // the ghost of your best run on this tour
+    if (s.ghostX != null && s.phase !== 'done' && !s.toTier) { // the ghost of your best run on this tour (on whatever layer you're on)
       const gx = sx(s.ghostX);
       if (gx > -30 && gx < W + 30 && Math.abs(gx - sx(s.x)) > 6) {
-        g.save(); g.globalAlpha = 0.32; g.translate(Math.round(gx), Math.round(roadY(s.ghostX))); g.rotate(-Math.atan((roadH(s.ghostX + 0.5) - roadH(s.ghostX - 0.5))));
+        const gy = Math.round(roadY(s.ghostX));
+        g.save(); g.globalAlpha = 0.4; g.translate(Math.round(gx), gy); g.rotate(-Math.atan((roadH(s.ghostX + 0.5) - roadH(s.ghostX - 0.5))));
         drawRider(g, look, bike.crankRevs + 0.37, s.ghostX, { t, speed: 14, gear: null });
-        g.restore(); g.globalAlpha = 1;
+        g.restore();
+        g.globalAlpha = 0.85; g.fillStyle = '#7af0ff'; g.fillRect(Math.round(gx) - 10, gy - 40, 20, 7); // a 'BEST' plate over its head
+        g.fillStyle = '#0a1a2a'; g.fillRect(Math.round(gx) - 8, gy - 38, 16, 3); g.globalAlpha = 1;
+      } else if (Math.abs(gx - sx(s.x)) > 6) { // off screen: a marker on the edge it's beyond
+        const ex = gx < 0 ? 4 : W - 10, ey = Math.round(roadY(s.x)) - 30;
+        g.globalAlpha = 0.85; g.fillStyle = '#7af0ff'; g.beginPath();
+        if (gx < 0) { g.moveTo(ex, ey); g.lineTo(ex + 6, ey - 5); g.lineTo(ex + 6, ey + 5); } else { g.moveTo(ex + 6, ey); g.lineTo(ex, ey - 5); g.lineTo(ex, ey + 5); }
+        g.fill(); g.globalAlpha = 1;
       }
     }
     const air = s.mode === 'air' || s.mode === 'fall' || s.mode === 'rescue';
@@ -650,6 +658,10 @@ export class FullSendRenderer implements GameRenderer {
     const mmss = (sec: number) => { const v = Math.max(0, Math.ceil(sec)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
     // (what's coming and how far is on the distant sign; up here only the sprint clock, the meter and 3-2-1-GO)
     if (s.phase === 'approach' && p && c) {
+      if (s.calibrating && c.s > 3.2) { // first ride: no zones yet, this sprint sets them
+        txt('FIRST RIDE · THIS SPRINT SETS YOUR ZONES', cxm, B.y + 18, 18, '#7af0ff', 'center', 900, true, 4);
+        txt('Go as hard as you can hold all the way to the end', cxm, B.y + 40, 13, '#e8f4ff', 'center', 700, false, 3);
+      } else if (c.s > 3.2 && c.s < 9 && s.cadence < 85) txt(`SPIN UP · 90+ RPM (${s.cadence})`, cxm, B.y + 18, 18, '#ffd23b', 'center', 900, true, 4);
       if (c.s <= 3.2) {
         const n = c.s > 0.2 ? String(Math.ceil(c.s)) : 'GO!', k2 = s.reducedFlash ? 0 : 1 - (c.s % 1);
         txt(n, this.cssW / 2, L.UH * 0.5, 110 + 30 * k2, n === 'GO!' ? '#6dff8a' : '#ff4d6d', 'center', 900, true, 8);
@@ -675,7 +687,8 @@ export class FullSendRenderer implements GameRenderer {
       txt('KEEP PEDALLING!', cxm, B.y + 26, 34, s.reducedFlash ? '#ffd23b' : (Math.sin(s.t * 10) > 0 ? '#ffd23b' : '#ffffff'));
       this.meter(s, p);
     } else if (s.phase === 'recovery' || s.phase === 'warmup') {
-      txt(s.phase === 'warmup' ? `TODAY: ${s.intent.focus.toUpperCase()} · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : `RECOVER · ${s.intent.rest.toUpperCase()}`, cxm, B.y + 18, 18, '#ffffff', 'center', 900, true, 4);
+      txt(s.phase === 'warmup' ? `TODAY: ${s.intent.focus.toUpperCase()} · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : s.hrWait ? `RECOVER · HEART RATE ${s.hrWait.hr} → ${s.hrWait.target}` : `RECOVER · ${s.intent.rest.toUpperCase()}`, cxm, B.y + 18, 18, s.hrWait ? '#ff9ab0' : '#ffffff', 'center', 900, true, 4);
+      if (s.hrWait) txt('Next sprint when your heart rate is down: keep spinning easy', cxm, B.y + 40, 13, '#e8f4ff', 'center', 700, false, 3);
       if (s.phase === 'warmup' && s.phaseT < 25) txt(s.intent.why, cxm, B.y + 40, 13, '#e8f4ff', 'center', 700, false, 3);
     } else if (s.phase === 'done' || s.phase === 'cooldown') {
       const msg = s.phase === 'done' ? (s.ridden ? 'TOUR COMPLETE!' : 'RIDE OVER') : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`;

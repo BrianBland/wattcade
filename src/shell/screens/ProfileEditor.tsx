@@ -8,6 +8,7 @@ import { Choice, Field, Stepper, Toggle } from '../components/ui';
 import { exportBackup, importBackup } from '../services';
 import { COLORS, editorFields, activateField, adjustField, type FieldDef } from '../editorFields';
 import { useMenuNav } from '../useMenuNav';
+import { durationLabel, powerCurve } from '../../progression/powerProfile';
 import { onMenuPress } from '../menuInput';
 
 const COLOR_NAMES = ['Cyan', 'Pink', 'Lime', 'Amber', 'Purple', 'Rose', 'Mint', 'White'];
@@ -39,6 +40,8 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
     ...(onDelete ? [{ label: armDelete ? 'Really delete?' : 'Delete', run: del }] : []),
     { label: 'Export backup', run: () => void doExport() }, { label: 'Import backup', run: () => fileRef.current?.click() },
   ];
+  const curve = powerCurve(p);
+  if (curve.ftpEstimate && curve.ftpEstimate !== p.ftp) actions.push({ label: `Use FTP ${curve.ftpEstimate} W`, run: () => { setP({ ...p, ftp: curve.ftpEstimate! }); setMsg(`FTP set to ${curve.ftpEstimate} W. Save to keep it.`); } });
   const fields = editorFields(p);
   const nF = fields.length;
   const rows = [...fields.map(() => 1), 2, actions.length - 2];
@@ -77,6 +80,7 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
       <div class="editor" ref={listRef}>
         <div class="fields editor-fields">
           {fields.map((f, i) => <div key={f.id} class={`editor-row editor-${f.kind}`}><Field label={f.label} focused={idx === i} hint={'hint' in f ? f.hint : undefined} onClick={() => setIdx(i)}>{control(f, i)}</Field></div>)}
+          <PowerTable curve={curve} />
         </div>
         <div class="actions editor-actions">
           <div class="row editor-primary">{actions.slice(0, 2).map((a, j) => <Btn key={a.label} primary={a.primary} focused={idx === nF + j} onClick={a.run}>{a.label}</Btn>)}</div>
@@ -86,6 +90,18 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
         {msg && <div class="warn editor-message" role="status">{msg}</div>}
       </div>
       <ChromeHints hints={[['dpad', 'Move'], ['lr', 'Change'], ['a', 'Toggle / type'], ['b', 'Cancel']]} />
+    </div>
+  );
+}
+
+/** The shared power profile (read-only): best mean power per duration for your current form, from every game. */
+function PowerTable({ curve }: { curve: ReturnType<typeof powerCurve> }) {
+  const rows = curve.table();
+  if (!rows.some((r) => r.best)) return <div class="power-profile dim small">Power profile: ride any game on your trainer and your best 5 s to 20 min efforts appear here. Games set personal targets from them.</div>;
+  return (
+    <div class="power-profile" aria-label="Power profile">
+      <div class="power-profile-head"><b>Power profile</b><span class="dim small">best for your current form, from every game</span></div>
+      <div class="power-profile-grid">{rows.map(({ durationS, best }) => <div class={`power-cell${best?.hard ? ' hard' : ''}`} title={best ? `${best.allTimeW} W best ever` : 'No ride yet'}><small>{durationLabel(durationS)}</small><b>{best ? `${best.formW} W` : '--'}</b>{best && <small class="dim">{(best.formW / curve.ftp).toFixed(2)}× FTP</small>}</div>)}</div>
     </div>
   );
 }

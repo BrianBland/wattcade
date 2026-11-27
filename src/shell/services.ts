@@ -10,7 +10,7 @@ import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, S
 import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loadOnlineAudio, ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, analyzeWindowInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
-import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress, MIN_AWARD_ACTIVE_S } from '../progression';
+import { ProfileStore, SessionStore, awardSession, updatePowerProfile, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress, MIN_AWARD_ACTIVE_S } from '../progression';
 import { lobbyBiomeOf, startBiomeFor, type LobbyExit } from './lobbyHandoff';
 import { getGame, lobbyGame } from '../games/registry';
 import { choosePick, equip, newUnlocks, pendingPicks, unlockHint } from '../cosmetics/unlocks';
@@ -417,8 +417,9 @@ export function unlockMedia(): void { try { mediaEngine().unlock(); } catch { /*
 export async function finishSession(profile: Profile): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
   try { adoptLobbyBiome(active.sim.snapshot()); } catch { /* best effort */ }
   const record: SessionRecord = active.finish();
+  const real = !active.fakeBike && debugState.timeScale === 1; // only real, real-time riding feeds the power profile
   active.mixer?.panic?.(true); active = null;
-  return creditRecord(profile, record);
+  return creditRecord(profile, record, real);
 }
 /** Drop the running game session without saving (left from its intro, before riding). */
 export function abandonSession(): void {
@@ -439,13 +440,16 @@ export function previewAward(profile: Profile): { xp: number; level: number; ach
   };
 }
 /** Save a finished record and apply XP / achievements to `profile`. */
-async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
+async function creditRecord(profile: Profile, record: SessionRecord, real: boolean): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
   await sessionStore.save(record);
   // A checkpoint may have committed after this snapshot. Award against the stored game slots.
   const stored = await profileStore.get(profile.id);
   const current = stored ? { ...profile, gameData: stored.gameData } : profile;
   const r: any = awardSession(current, record);
-  const next: Profile = r.profile ?? current;
+  let next: Profile = r.profile ?? current;
+  // Every real ride, however short, updates the shared power profile (a 1 min ride can still hold your best 5 s).
+  const power = real ? updatePowerProfile(stored?.power ?? current.power, record) : null;
+  if (power) next = { ...next, power: power.power };
   const saved = await awardProfile(next);
   const award: AwardView = {
     xpGained: r.xpGained ?? 0,
@@ -453,6 +457,7 @@ async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ 
     newAchievements: (r.newAchievements ?? []).map((a: any) => (typeof a === 'string' ? { id: a, name: achievementName(a) } : { id: a.id, name: a.name ?? a.id })),
     newItems: newUnlocks(profile, next).map((it) => ({ slot: it.slot, id: it.id, name: it.name })),
     picks: pendingPicks(next).length,
+    powerBests: power?.improved ?? [],
   };
   return { record, award, profile: saved };
 }
@@ -555,7 +560,7 @@ export const lobbyActiveSeconds = (): number => {
 export async function creditRide(record: SessionRecord, latest?: Profile | null): Promise<{ record: SessionRecord; award: AwardView; profile: Profile } | null> {
   const p: Profile | undefined = latest?.id === record.profileId ? latest : await profileStore.get(record.profileId);
   if (!p) return null;
-  return creditRecord(p, record);
+  return creditRecord(p, record, true); // warm-up records exist only for real devices (lobbyRecord)
 }
 /** Checkpoint the running warm-up so a closed tab still gets credit next launch. */
 export function checkpointLobby(): void {

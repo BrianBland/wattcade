@@ -14,6 +14,7 @@ import { Btn, Stat, ZoneBar } from '../components/Bits';
 import { CountUp } from '../components/ui';
 import { downsample, formatDuration, rideMetricValue, rideMetricLabel } from '../format';
 import { levelView } from '../services';
+import { durationLabel, powerCurve } from '../../progression/powerProfile';
 import { getGame } from '../../games/registry';
 import { ZONE_COLORS } from '../hud/zoneMath';
 import { play } from '../../audio/sfx';
@@ -65,6 +66,8 @@ export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { reco
     ];
     return () => ts.forEach((t) => t && clearTimeout(t));
   }, []);
+  const est = profile ? powerCurve(profile).ftpEstimate : null;
+  const ftpHint = profile && est && est > profile.ftp ? `Your 20 min best suggests an FTP of ${est} W (you have ${profile.ftp} W). Update it in Rider settings.` : '';
   const stats: Array<[string, number, (n: number) => string]> = [
     ['Duration', record.durationS, formatDuration], ['Avg power', s.avgPower, (n) => `${Math.round(n)} W`],
     ['Max power', s.maxPower, (n) => `${Math.round(n)} W`], ['Energy', s.kj, (n) => `${Math.round(n)} kJ`],
@@ -82,6 +85,11 @@ export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { reco
           <div class="stats">{stats.map(([l, v, f], i) => <Stat label={l} value={<CountUp to={v} format={f} delayMs={i * 80} />} delayMs={i * 80} />)}</div>
           <h2 class="gap-top">Your ride</h2>
           <div class="reveal" style={{ animationDelay: '500ms' }}><RideChart record={record} ftp={ftp} /><ZoneBar zoneSeconds={s.zoneSeconds} /></div>
+          {(award.powerBests?.length ?? 0) > 0 && <>
+            <h2 class="gap-top">New power bests</h2>
+            <div class="stats compact power-bests">{award.powerBests!.map((b, i) => <Stat label={`${b.allTime ? 'Best ever' : 'Best lately'} · ${durationLabel(b.durationS)}`} value={b.prevW > 0 ? `${b.w} W (+${b.w - b.prevW})` : `${b.w} W`} delayMs={650 + i * 60} />)}</div>
+            {ftpHint && <div class="dim small">{ftpHint}</div>}
+          </>}
           {Object.keys(record.gameSummary).length > 0 && <>
             <h2 class="gap-top">{warm ? 'Route' : 'Game'}</h2>
             <div class="stats compact">{Object.entries(record.gameSummary).map(([k, v], i) => <Stat label={summaryLabel(k)} value={summaryValue(k, v)} delayMs={700 + i * 60} />)}</div>

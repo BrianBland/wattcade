@@ -3,6 +3,7 @@ import { BIOMES, makeTerrain, type BiomeId, type Terrain } from '../../warmup/si
 import { CHASER_REACH, chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, weekOf, weeklyTour, type ChaserKind, type PieceKind, type Tour, type TourIntent, type TourSet } from './tour';
 import { AIR_CELL, airItemAt, kickerLip, bumpH, MEGA, megaSlope, takesOff, windAt, type AirKind } from './track';
 import { landingGrade, type Landing } from './physics';
+import { powerCurve } from '../../../progression/powerProfile';
 import { leapRange, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
 
 export interface FullSendOpts {
@@ -291,6 +292,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     holdSmoothS: T.num('holdSmoothS', 1, 0.2, 3, 0.1, 'Smoothing on power (s) when checking the zone, so one soft pedal stroke is not a drop'),
     medalFloor: T.num('medalFloor', 0.9, 0.5, 1.5, 0.05, 'No medal below this FTP fraction, however low your bests (silver/gold floors are +0.05 / +0.1)'),
     pbFade: T.num('pbFade', 0.985, 0.9, 1, 0.005, 'A best you rode under (but tried, ≥ 70 % of it) fades by this each ride, so targets follow your form'),
+    profileHold: T.num('profileHold', 0.9, 0.6, 1, 0.01, 'Medal zones from the shared power profile: your best mean power for a sprint length × this ≈ what you hold for holdFrac of it'),
+    profileReach: T.num('profileReach', 3, 1, 6, 0.5, 'Use the power profile for a sprint length only with a hard effort within this factor of it (else this game\'s own bests, then the calibration sprint)'),
     pbExp: T.num('pbExp', 0.15, 0, 0.4, 0.01, 'Guessing a best for a new sprint length from another: power × (known s / new s)^this'),
     liftMedal: T.num('liftMedal', 0.1, 0, 0.5, 0.01, 'Lift per medal step on a sprint (gold = 3×); it still drains unless you land clean'),
     liftMedalFill: T.num('liftMedalFill', 0.4, 0, 2, 0.05, 'Clean landings fill lift faster in the recovery after a medal: +this per medal step'),
@@ -385,12 +388,27 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   // zones come from what you have sustained; a save from before sustained scoring guesses it from the best mean
   const sus: Record<string, number> = { ...(save.sus ?? Object.fromEntries(Object.entries(pbs).map(([k, v]) => [k, +(v * 0.9).toFixed(3)]))) };
   const rideSus: Record<string, number> = {};
-  const firstRide = Object.keys(sus).length === 0; // no zones yet: the first sprint calibrates them, live
+  /** The shared Wattcade power profile (every game's rides). Zones come from it once it has a hard short effort. */
+  const curve = powerCurve(ctx.profile);
+  /** What you can hold for a sprint this long (FTP fraction), from the power profile, or 0 without a hard effort near it. */
+  function profileBest(effortS: number): number {
+    const ftp = ctx.profile.ftp || 0, reach = tun.profileReach();
+    if (!(ftp > 0) || !curve.hasHard(effortS / reach, effortS * reach)) return 0;
+    const e = curve.at(effortS);
+    return e.hard ? (e.w / ftp) * tun.profileHold() : 0;
+  }
+  // no zones anywhere (power profile or past Full Send rides): the first sprint calibrates them, live
+  const firstRide = Object.keys(sus).length === 0 && !curve.hasHard(5, 60);
   let hrExtra = 0, hrWait: { hr: number; target: number } | null = null;
   const holdSamples: number[] = [];
   const difficulty = () => clamp(Number(ctx.profile.settings?.difficulty) || 1, 0.5, 1.5);
-  /** Your best mean (FTP fraction) for a sprint this long: the saved one, else a guess from the nearest length you have. */
+  /**
+   * What you can sustain (FTP fraction) for a sprint this long: from the shared power profile when it has a hard effort
+   * near this length; else this game's own record for the length; else a guess from the nearest length you have.
+   */
   function bestFor(effortS: number): number {
+    const shared = profileBest(effortS);
+    if (shared > 0) return shared;
     const own = sus[String(effortS)];
     if (own > 0) return own;
     let best = 0, near = Infinity;

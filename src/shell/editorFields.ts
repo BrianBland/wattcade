@@ -1,5 +1,6 @@
 import { LB_PER_KG, unitsFor } from '../units';
 import type { Profile, ProfileSettings, ZoneSource } from '../contracts';
+import { powerCurve } from '../progression/powerProfile';
 
 export const COLORS = ['#00f0ff', '#ff2bd6', '#b6ff3b', '#ffb020', '#7a5cff', '#ff4d6d', '#2de2a6', '#ffffff'];
 
@@ -50,7 +51,8 @@ export function activateField(f: FieldDef, p: Profile): Profile | null {
 
 /** Resolve measurement controls in the rider's selected units; storage stays metric. */
 export function editorFields(p: Profile): FieldDef[] {
-  return EDITOR_FIELDS.map((f) => f.id === 'weightKg' && unitsFor(p) === 'imperial' ? {
+  const est = powerCurve(p).ftpEstimate;
+  return EDITOR_FIELDS.map((f) => f.id === 'ftp' && f.kind === 'num' && est && est !== p.ftp ? { ...f, hint: `Your power profile estimates ${est} W (95 % of your best hard 20 min)` } : f.id === 'weightKg' && unitsFor(p) === 'imperial' ? {
     ...f, kind: 'num', step: 1, min: 30 * LB_PER_KG, max: 200 * LB_PER_KG, unit: 'lb', digits: 1,
     get: (p: Profile) => p.weightKg * LB_PER_KG,
     set: (p: Profile, v: number) => ({ ...p, weightKg: Math.min(200, Math.max(30, v / LB_PER_KG)) }),

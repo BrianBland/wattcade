@@ -37,3 +37,4 @@ scenario (mixerCommands/events as counts, plus ok/failures), exits 1 on failure.
 No DataHub unit tests with real device mocks beyond fake; ControllerDevice adapter untested. No FIT export.
 - `cooldown.ts` (pure, sim-safe): effort-scaled cooldowns — `refillRate(powerZone)` (Z1 = 1x up to Z5 = 3.2x), `startCooldown`/`tickCooldown`/`completeCooldown` (e.g. on a sprint)/`readyFrac`. Draw with `games/kit/actionButton.ts`.
 - Native shifts send ratios independent of gradient; capability/connection revision restores gearing on reconnect. Panic selects native gear 1; ERG remains watts-only.
+- Sprint threshold (`BikeStateStore.sprintThreshold`, published as `BikeState.sprintFtp`): `core.sprintProfileShare` 0.62 × best 15 s from the power profile, clamped to `core.sprintProfileMinFtp`/`MaxFtp` 1.1–1.6, when it holds a hard 5 s–1 min; else flat `core.sprintFtp` 1.2. `core.sprintFromProfile` off = flat. A typical curve lands ≈ 1.18.

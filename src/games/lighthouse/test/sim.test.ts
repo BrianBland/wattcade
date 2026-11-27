@@ -399,3 +399,18 @@ describe('beach plots are kept for the docks', () => {
     expect(snap(s).districts.find((d: any) => d.id === 'hillside').open).toBe(true); // 1 building left, still open
   });
 });
+
+describe('lightning surge from the shared power profile', () => {
+  it('asks a rider with a hard 15 s on record for their own watts', () => {
+    const effort = (w: number) => ({ allTime: { w, at: 1, gameId: 'x' }, recent: [{ w, at: 1, gameId: 'x' }] });
+    const profile = testProfile({ power: { v: 1, rides: 1, lastRideAt: 1, bests: { '15': effort(480) } } }); // 2.4 FTP
+    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'storm-ready' }, seed: 1 });
+    let label: string | undefined;
+    for (let i = 0; i < 60 * 30 && !label; i++) { s.step(30); const tz = s.sim.hud!().targetZone; if (tz?.label?.startsWith('Lightning surge')) label = tz.label; }
+    expect(label).toBe(`Lightning surge ${Math.round(0.55 * 480)} W+`); // 0.55 × best 15 s
+    const plain = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'storm-ready' }, seed: 1 });
+    let plainLabel: string | undefined;
+    for (let i = 0; i < 60 * 30 && !plainLabel; i++) { plain.step(30); const tz = plain.sim.hud!().targetZone; if (tz?.label?.startsWith('Lightning surge')) plainLabel = tz.label; }
+    expect(plainLabel).toBe('Lightning surge');
+  });
+});

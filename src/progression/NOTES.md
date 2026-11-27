@@ -29,6 +29,7 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 - Storage per duration: `allTime` (kept forever) + `recent`, a frontier (oldest first, each higher than every newer one; dropped after `keepDays`). Form fade: a best keeps full value `graceDays`, then `fadePerDay` to `fadeFloor`, measured from `lastRideAt` so sims stay deterministic.
 - Reading (games): `powerCurve(ctx.profile)` → `at(s)` (measured / log-log interpolated / extrapolated by `TYPICAL_SHAPE` / FTP-only), `fraction(s)`, `best(d)`, `hasHard(min,max)`, `ftpEstimate`. Only set targets from **hard** efforts (`HARD_FTP` × FTP): an easy ride's "best 5 s" is a lower bound, not a sprint. Keep game-side scaling in the game's tunables (see Full Send `profileHold`/`profileReach`).
 - `ftpEstimate` = 95 % of a hard 20 min; never lowers FTP, never applied without the rider.
+- Helpers for games: `personalFtp(curve, ftpW, durS, {share, minFtp, maxFtp, reach})` (share × your best for the length, clamped; null without a hard effort near it) and `shapeRatio(curve, ftpW, durS)` (your best ÷ the typical curve × FTP; 1 = typical). Users: core sprint detection, Seaside, Cadenza, Purgatour, Hamstergrid, Lighthouse, Full Send.
 - Not backfilled from `SessionStore` (old records don't say if they were fake).
 
 ## Conventions games must follow

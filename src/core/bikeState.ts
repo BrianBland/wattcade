@@ -52,7 +52,7 @@ export class BikeStateStore {
       t: 0, connected: { trainer: false, hr: false, controller: false, fake: false },
       raw: { power: 0, cadence: 0, speedKph: 0, hr: null, resistanceLevel: null, lastPacketAgeS: Infinity },
       power3s: 0, power10s: 0, cadence3s: 0, hr5s: null, crankRevs: 0,
-      powerZone: 1, hrZone: null, effortZone: 1, ftpFraction: 0, sprinting: false, sprintCount: 0,
+      powerZone: 1, hrZone: null, effortZone: 1, ftpFraction: 0, sprinting: false, sprintFtp: 1.2, sprintCount: 0,
       kj: 0, activeSeconds: 0, gear: 6, trainerMode: 'none',
     };
   }
@@ -127,7 +127,8 @@ export class BikeStateStore {
     const src = profile.settings.zoneSource;
     s.effortZone = src === 'power' ? pz : src === 'hr' ? (s.hrZone ?? pz) : (hrFresh && s.hrZone !== null ? s.hrZone : pz);
 
-    if (s.ftpFraction >= this.sprintThreshold(profile)) {
+    s.sprintFtp = this.sprintThreshold(profile);
+    if (s.ftpFraction >= s.sprintFtp) {
       this.sprintT += dt;
       if (!s.sprinting && this.sprintT >= 2) { s.sprinting = true; s.sprintCount++; }
     } else { this.sprintT = 0; s.sprinting = false; }

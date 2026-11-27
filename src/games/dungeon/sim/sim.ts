@@ -21,6 +21,7 @@ import { DELVE_MAX, RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgra
 import { BOSS_NAMES, FLOORS, SWEEPER, TIERS, floorRoomCount, planFor, tierOf, unlockAfterWin, type RunResult } from './descent';
 import { ARCHETYPE_STRIKE, arcanePulseProc, onKillElementProc, stormChainTargets } from './elementProcs';
 import { evaluateLootOffer } from './lootOffer';
+import { dmgPower, sprintDamageScale } from './personal';
 import type {
   BulletView, CampArchetypeCard, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, FinishSeqView, Fx, Hazard,
   LootOfferView, ShrineView, SkillTreeView, Toast,
@@ -130,7 +131,18 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const spd90 = tn.num('speedAt90rpm', 1.0, 0, 2, 0.05);
   const spd110 = tn.num('speedAt110rpm', 1.15, 0, 2, 0.05);
   const revsPerShot = tn.num('revsPerShot', 0.5, 0.1, 4, 0.05, 'crank revs per shot at weapon rate 1');
-  const baseDamage = tn.num('baseDamage', 10, 1, 100, 1, 'x weapon dmg x clamp(ftpFraction,0.3,2.5)');
+  const baseDamage = tn.num('baseDamage', 10, 1, 100, 1, 'x weapon dmg x clamp(power,0.3,2.5) (power = ftpFraction, the part above FTP evened out by the power profile)');
+  const profileDmg = tn.bool('profileSprintDamage', true, 'Even out sprint damage: your own best 10 s hits as hard as a typical rider\'s (shared power profile; riding at or under FTP is unchanged)');
+  const profileDmgMinK = tn.num('profileSprintDmgMinK', 0.5, 0.2, 1, 0.05, 'Power profile: big sprinters keep at least this share of the damage above FTP');
+  const profileDmgMaxK = tn.num('profileSprintDmgMaxK', 1.8, 1, 3, 0.05, 'Power profile: modest sprinters get at most this many times the damage above FTP');
+  let dmgK: { key: string; k: number } | null = null;
+  /** Scale for damage from power above FTP (only changes between rides, or when its tunables move). */
+  const sprintDmgK = () => {
+    if (!profileDmg()) return 1;
+    const lo = profileDmgMinK(), hi = profileDmgMaxK(), key = `${lo}|${hi}`;
+    if (dmgK?.key !== key) dmgK = { key, k: sprintDamageScale(ctx.profile, 10, lo, Math.max(lo, hi)) };
+    return dmgK.k;
+  };
   const regenPerS = tn.num('regenPerS', 2, 0, 20, 0.5, 'HP/s per 100 max HP in zone 2 out of combat');
   const regenCombat = tn.num('regenInCombatFrac', 0, 0, 1, 0.05, 'zone-2 regen multiplier while enemies are awake (floor 1 always 0.5)');
   const enemyDmgGrowth = tn.num('enemyDamageGrowth', 1.52, 1, 2, 0.01, 'enemy damage multiplier per floor');
@@ -897,7 +909,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   const cadNorm = (bike: Readonly<BikeState>) => (cadRef() > 0 ? clamp(cadRef() / Math.max(30, bike.cadence3s), 0.8, 1.5) : 1);
   const playerDmg = (bike: Readonly<BikeState>) =>
-    cadNorm(bike) * PACE_MODES[paceBias].dmgMult * baseDamage() * clamp(bike.ftpFraction, 0.3, 2.5)
+    cadNorm(bike) * PACE_MODES[paceBias].dmgMult * baseDamage() * clamp(dmgPower(bike.ftpFraction, sprintDmgK()), 0.3, 2.5)
     * (1 + 0.06 * weapon.plus) * (1 + 0.04 * (P.level - 1) + gearSum('dmgPct')) * mods.dmgMult
     * (1 + momentumStacks * 0.05) * (t < mountainKingUntil ? 1.35 : 1)
     * (bike.sprinting || t < firedUpUntil ? fireMult() : 1);
@@ -2480,9 +2492,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     };
     const sh = bossShield();
     const act = shrines.find((s) => s.state === 'active');
-    const target: GameHud['targetZone'] = sh.shielded ? { min: 4, max: 5, label: bs.cycle === 'exposed' ? 'Exposed! Sprint now' : 'Big attack: get ready', source: 'power' }
+    const sprintW = `${Math.max(5, Math.round(((ctx.bike().sprintFtp ?? 1.2) * (ctx.profile.ftp || 200)) / 5) * 5)} W+`;
+    const target: GameHud['targetZone'] = sh.shielded ? { min: 4, max: 5, label: bs.cycle === 'exposed' ? (erg ? 'Exposed! Sprint now' : `Exposed! Sprint ${sprintW}`) : 'Big attack: get ready', source: 'power' }
       : act?.kind === 'fury' ? { min: 3, max: 5, label: 'Shrine: Z3+', source: 'power' }
-      : act?.kind === 'sprint' ? { min: 5, max: 5, label: 'Shrine: sprint!', source: 'power' }
+      : act?.kind === 'sprint' ? { min: 5, max: 5, label: erg ? 'Shrine: sprint!' : `Shrine: sprint ${sprintW}`, source: 'power' }
       : act ? { min: 2, max: 2, label: 'Shrine: hold Z2' }
       : paceZone();
     const arch = ARCHETYPES[archetype];

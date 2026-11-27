@@ -38,3 +38,4 @@ Touch HUD uses Z Left / A Right; duplicate arrows remain in help. Nearby road/ci
 
 ## Achievement correctness
 Overdrive requires `setDone`. Unbroken uses `maxCleanChain`, reset by misses, gray hits or dropouts; catches during dropout do not build it. Scoring combo stays unchanged. Sharpshooter also requires zero dropouts. Existing rewards and block-count gates stay; automated accuracy is not evidence for raising human thresholds.
+- Power profile (`sim/personal.ts`): sprint-phase `floorFtp` (Overdrive, launches) × `shapeRatio` at `sprintS`, between 1 and `profileSprintMaxK` 1.5. Only raises it: typical or weaker sprinters keep the zone floor. `profileSprints` off = zone floor.

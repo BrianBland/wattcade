@@ -44,3 +44,4 @@ Foundations rewards opening the Hillside (five standing buildings) with 30 XP an
 an Island workshirt. It also recognizes already-established islands on their next
 eligible ride. Existing achievements, thresholds and rewards remain unchanged.
 A fresh steady 35-minute autopilot ride earns this one game-specific reward.
+- Power profile: the lightning surge holds while `ftpFraction ≥ profileSurgeShare` 0.55 × best for `surgeS`, clamped 1.06–1.6 FTP (HUD shows the watts); else `surgeZone` as before.

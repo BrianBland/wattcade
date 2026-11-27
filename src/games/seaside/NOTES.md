@@ -38,3 +38,4 @@
 ## Verification (no media committed): typecheck, test, `npm run sim -- --game seaside --script z2 --minutes 150`
 - `scripts/seaside-{morning,belly,island,cavern,flight,ending,shop,sound}-review.ts`, `seaside-{bench,hitch,pops}.ts`, `/dev/seaside-play.html`. Frames are
   fill-bound (view capped at 1.5 px/CSS px). Swiftshader ms/frame: coast ≈ 250, belly ≈ 100, island 110–1100, cave ≈ 430, hall ≈ 290. iPad fps unmeasured.
+- Power profile: fish and set-piece sprint targets = `personalShare(size)` (`profileShareMin/Max` 0.49–0.9) × your best for the pull length, clamped `profileFloorFtp`/`CeilFtp` 1.0–2.2, when there's a hard effort within `profileReach` 3×; else the 110–150 % FTP band. A typical curve gets the band back. `profileTargets` off = band.

@@ -1,7 +1,8 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
 import { desaturate } from '../../kit/actionButton';
-import { runLayout, bossHudLayout } from './layout';
+import { runLayout, bossHudLayout, playerHudLayout } from './layout';
+import { createPlayerHudState, drawPlayerHud } from './playerHud';
 import { DungeonSound } from './sound';
 import { JuiceEngine, activeBuffs } from './juice';
 import { TILE, type World } from '../sim/world';
@@ -176,7 +177,7 @@ export function createRenderer(): GameRenderer {
   let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
   let lightC: HTMLCanvasElement | null = null;
   let campSnap: HTMLCanvasElement | null = null;
-  const sound = new DungeonSound(), juice = new JuiceEngine();
+  const sound = new DungeonSound(), juice = new JuiceEngine(), playerHud = createPlayerHudState();
   let juiceT = 0, bossCycle = '';
   let send: ((a: unknown) => void) | undefined;
   let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
@@ -1008,40 +1009,21 @@ export function createRenderer(): GameRenderer {
     const gg = g!, p = s.player, u = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr;
     const L = 14 * u, fs = Math.round(13 * u);
     gg.textAlign = 'left';
-    // compact status panel (top-left): thin HP + XP bars, then Lv/floor, coins, potions and the Second Wind pip on one line.
-    // `hu` scales from CSS pixels, so the iPad's large device scale doesn't double it (and it clears the boss bar).
-    const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, PW = 172 * hu;
+    // boxless player HUD (top-left): ornate Level Crest anchoring beveled HP/XP bars, floating stage/gold header,
+    // full-scale Bidon potions, and a sculpted Second Wind wing emblem.
+    const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr;
+    const buffs = activeBuffs(s);
+    const PH = playerHudLayout(W, H, hu, !!(s.perks?.ranks.length), buffs.length > 0);
     {
-      const x = L, y = L, hpLow = p.hp < p.maxHp * 0.4;
-      const perkRow = s.perks?.ranks.length ? 17 * hu : 0;
-      pixelPanel(gg,x-3*hu,y-3*hu,PW+6*hu,38*hu+perkRow,'#746481','#15111fee',dpr); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu + perkRow);
-      if (perkRow && s.perks) drawPerkBadges(gg, s.perks, x, y + 34 * hu, PW, hu, s.t);
-      pixelMeter(gg,x,y,PW,11*hu,p.hp/p.maxHp,hpLow?'#e96d75':'#68ba78',dpr);
-      gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(9 * hu));
-      fillTextShadow(gg, `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
-      pixelMeter(gg,x,y+13*hu,PW,3*hu,p.xp/p.xpNext,'#b58ad9',dpr);
-      const ly = y + 28 * hu; gg.font = pixelFont(Math.round(10 * hu));
-      gg.fillStyle = '#fff'; const lvTxt = `Lv${p.level} F${s.floor}${s.run ? `/${s.run.floors}` : ''}`; fillTextShadow(gg, lvTxt, x, ly); const coinX = Math.max(x + 44 * hu, x + textW(gg, lvTxt) + 6 * hu);
-      const cp = Math.max(0, 1 - (s.t - coinPulseT) / 0.25);
-      if (cp > 0) { gg.save(); gg.font = pixelFont(Math.round(10 * hu * (1 + 0.35 * cp))); }
-      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillTextShadow(gg, `● ${p.coins}`, coinX, ly); const coinEnd = coinX + textW(gg, `● ${p.coins}`);
-      if (cp > 0) gg.restore();
-      const tx = coinX + 3 * hu, ty = ly - 3.5 * hu;
+      const phRes = drawPlayerHud(gg, s, PH, hu, dpr, coinPulseT, playerHud);
+      for (const b of phRes.boxes) hudBox(b.x, b.y, b.w, b.h);
+      const tx = phRes.coinX, ty = phRes.coinY;
       for (let i = flyers.length - 1; i >= 0; i--) {
         const f = flyers[i], k = (s.t - f.t0) / 0.45;
         if (k >= 1 || k < 0) { flyers.splice(i, 1); if (k >= 1) coinPulseT = s.t; continue; }
         const e = k * k * (3 - 2 * k), fx2 = f.x + (tx - f.x) * e, fy2 = f.y + (ty - f.y) * e - Math.sin(k * Math.PI) * 40 * hu;
         drawSprite('coin', fx2, fy2 + 3 * hu, (1.4 - 0.6 * k) * hu);
       }
-      const potX = Math.max(x + 86 * hu, coinEnd + 9 * hu), potStep = Math.min(9 * hu, (x + PW - 32 * hu - potX) / Math.max(1, p.potionCap - 1));
-      for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; if (!drawItem32(gg, 'potion', potX + k * potStep, ly + 4 * hu, Math.max(1, Math.round(hu * 0.6)))) drawSprite('potion', potX + k * potStep, ly - 3.5 * hu, 1.1 * hu); }
-      gg.globalAlpha = 1;
-      // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
-      const sw = p.secondWind, sx = x + PW - 26 * hu, sy = ly - 8 * hu, w = 26 * hu, h = 9 * hu, ready = sw >= 1;
-      gg.fillStyle = 'rgba(0,0,0,0.55)'; gg.fillRect(sx, sy, w, h);
-      gg.fillStyle = ready ? '#ffe08a' : desaturate('#ffe08a', 0.7, 0.35); gg.fillRect(sx, sy, w * Math.min(1, sw), h);
-      if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = Math.max(1, hu); gg.strokeRect(sx - 1, sy - 1, w + 2, h + 2); }
-      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = pixelFont(Math.round(7 * hu)); gg.textAlign = 'center'; fillText(gg, '2nd W', sx + w / 2, sy + h - 2 * hu); gg.textAlign = 'left';
     }
     // inventory row (bottom-left): the active stance card, chips for the other stances, then the gear sockets.
     // Actions and cooldowns live in the shell HUD; use its occupied shape to share the row.
@@ -1151,8 +1133,7 @@ export function createRenderer(): GameRenderer {
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
     // active workout & combat buff pills (Fired Up, In Rhythm, Ward, Rally)
-    const buffs = activeBuffs(s);
-    const buffY = L + (40 + (s.perks?.ranks.length ? 17 : 0)) * hu;
+    const buffY = PH.buffY;
     if (buffs.length) {
       let bx = L;
       gg.font = pixelFont(Math.round(8.5 * hu));
@@ -1170,10 +1151,9 @@ export function createRenderer(): GameRenderer {
     }
     // toasts
     gg.font = pixelFont(Math.round(11 * hu));
-    const buffOff = buffs.length ? 18 : 0;
     s.toasts.forEach((tt, i) => {
       const age = s.t - tt.t0; gg.globalAlpha = Math.max(0, Math.min(1, (6 - age) / 1.5));
-      gg.lineWidth = 3; gg.strokeStyle = '#000'; const ty0 = L + (52 + (s.perks?.ranks.length ? 17 : 0) + buffOff + i * 15) * hu; strokeText(gg, tt.text, L, ty0, W - 2 * L); gg.fillStyle = tt.color; fillText(gg, tt.text, L, ty0, W - 2 * L);
+      gg.lineWidth = 3; gg.strokeStyle = '#000'; const ty0 = PH.toastY + (10 + i * 15) * hu; strokeText(gg, tt.text, L, ty0, W - 2 * L); gg.fillStyle = tt.color; fillText(gg, tt.text, L, ty0, W - 2 * L);
     });
     gg.globalAlpha = 1;
 

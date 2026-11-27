@@ -19,6 +19,7 @@ import { landmarkNear, Soundscape, speedFactor, type SceneId } from './soundscap
 import { ambientDucked, play } from '../../../audio/sfx';
 import { makeRng } from '../../../core/rng';
 import { drawRoadStructure } from './biomesNew';
+import { CHIP_H, CHIP_HEADER, profileChipPlan } from './profileChip';
 import { RIDER_LIFETIME_S } from '../sim/traffic';
 
 export { mixColor } from './blend';
@@ -661,7 +662,13 @@ export class WarmupRenderer implements GameRenderer {
   /** Mini elevation profile of the next ~1.5 km (drawn as tall as on screen), bottom-right above the HUD. */
   private profile(s: WarmupSnapshot, UH: number, _t: number) {
     const m = this.g, dpr = this.dpr, terr = this.terr(s);
-    const w = 230 * dpr, h = 56 * dpr, x0 = this.canvas.width - w - 14 * dpr, y0 = UH * this.px - h - 12 * dpr;
+    const w = 230 * dpr, x0 = this.canvas.width - w - 14 * dpr;
+    const dist = `${formatDistance(s.rodeM / 1000, this.units)} · ▲${formatElevation(s.climbM, this.units)}`;
+    const next = `${BIOME_NAMES[s.nextBiome]} in ${formatUpcoming(s.toNextM, this.units)}`;
+    m.font = `700 ${Math.round(11 * dpr)}px system-ui, sans-serif`;
+    const plan = profileChipPlan(dist, next, 230, 8, (text) => m.measureText(text).width / dpr);
+    const h = plan.height * dpr, y0 = UH * this.px - h - 12 * dpr;
+    const header = (CHIP_HEADER + plan.height - CHIP_H) * dpr;
     const back = 150, ahead = 1500, n = 92;
     let cache = this.profileCache;
     // Terrain bars change slowly; keep the rider marker and labels live below.
@@ -676,7 +683,7 @@ export class WarmupRenderer implements GameRenderer {
       cache = this.profileCache = { terrain: terr, hill: s.hill, d: s.d, at: _t, es, grades, lo, span: Math.max(hi - lo, (s.maxGrade / 100) * 120) };
     }
     const { es, grades, lo, span } = cache;
-    const X = (i: number) => x0 + (w * i) / n, Y = (e: number) => y0 + h - 8 * dpr - ((e - lo) / span) * (h - 22 * dpr);
+    const X = (i: number) => x0 + (w * i) / n, Y = (e: number) => y0 + h - 8 * dpr - ((e - lo) / span) * (h - header);
     m.fillStyle = '#05040db0'; this.round(m, x0, y0, w, h, 10 * dpr); m.fill();
     for (let i = 0; i < n; i++) {
       const gr = grades[i];
@@ -688,10 +695,10 @@ export class WarmupRenderer implements GameRenderer {
     m.globalAlpha = 1;
     const ix = ((s.d - cache.d + back) / (back + ahead)) * n;
     m.fillStyle = this.color; m.beginPath(); m.arc(X(ix), Y(terr.elev(s.d) * s.hill) - 3 * dpr, 4 * dpr, 0, Math.PI * 2); m.fill();
-    m.font = `700 ${Math.round(11 * dpr)}px system-ui, sans-serif`; m.textAlign = 'left'; m.fillStyle = '#e9e6ff';
-    m.fillText(`${formatDistance(s.rodeM / 1000, this.units)} · ▲${formatElevation(s.climbM, this.units)}`, x0 + 8 * dpr, y0 + 9 * dpr);
-    m.textAlign = 'right'; m.fillStyle = '#bdb8e8';
-    m.fillText(`${BIOME_NAMES[s.nextBiome]} in ${formatUpcoming(s.toNextM, this.units)}`, x0 + w - 8 * dpr, y0 + 9 * dpr);
+    m.textAlign = plan.left.align; m.fillStyle = '#e9e6ff';
+    m.fillText(plan.left.text, x0 + plan.left.x * dpr, y0 + plan.left.y * dpr, plan.left.maxWidth == null ? undefined : plan.left.maxWidth * dpr);
+    m.textAlign = plan.right.align; m.fillStyle = '#bdb8e8';
+    m.fillText(plan.right.text, x0 + plan.right.x * dpr, y0 + plan.right.y * dpr, plan.right.maxWidth == null ? undefined : plan.right.maxWidth * dpr);
   }
 
   private round(m: G, x: number, y: number, w: number, h: number, r: number) {

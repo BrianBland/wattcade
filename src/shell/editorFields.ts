@@ -9,7 +9,7 @@ export type FieldDef =
   | { id: 'color'; label: string; kind: 'color' }
   | { id: string; label: string; kind: 'num'; step: number; min: number; max: number; unit?: string; digits?: number; hint?: string; get(p: Profile): number; set(p: Profile, v: number): Profile }
   | { id: string; label: string; kind: 'choice'; options: Opt<string>; hint?: string; get(p: Profile): string; set(p: Profile, v: string): Profile }
-  | { id: string; label: string; kind: 'bool'; get(p: Profile): boolean; set(p: Profile, v: boolean): Profile };
+  | { id: string; label: string; kind: 'bool'; hint?: string; get(p: Profile): boolean; set(p: Profile, v: boolean): Profile };
 
 const S = <K extends keyof ProfileSettings>(k: K) => ({
   get: (p: Profile) => p.settings[k], set: (p: Profile, v: ProfileSettings[K]) => ({ ...p, settings: { ...p.settings, [k]: v } }),
@@ -26,6 +26,7 @@ export const EDITOR_FIELDS: FieldDef[] = [
   { id: 'weightKg', label: 'Weight', kind: 'num', step: 0.5, min: 30, max: 200, unit: 'kg', digits: 1, get: (p) => p.weightKg, set: (p, v) => ({ ...p, weightKg: v }) },
   { id: 'zoneSource', label: 'Zones from', kind: 'choice', options: ZONE_OPTS, hint: 'For long holds; short sprints always use power (HR lags 30–60 s)', ...(S('zoneSource') as { get(p: Profile): string; set(p: Profile, v: string): Profile }) },
   { id: 'paddleDeadzone', label: 'Paddle deadzone', kind: 'num', step: 1, min: 0, max: 60, ...S('paddleDeadzone') },
+  { id: 'liveUpdates', label: 'Live updates', kind: 'bool', hint: 'Offer new game versions as they are pushed, mid-ride', get: p => p.settings.liveUpdates === true, set: (p, v) => ({ ...p, settings: { ...p.settings, liveUpdates: v } }) },
   { id: 'debugStats', label: 'Debug stats', kind: 'bool', get: p => p.settings.debugStats === true, set: (p, v) => ({ ...p, settings: { ...p.settings, debugStats: v } }) },
   { id: 'maxGradePct', label: 'Max grade', kind: 'num', step: 0.5, min: 0, max: 20, unit: '%', digits: 1, hint: 'Safety cap on any grade sent to the trainer', ...S('maxGradePct') },
 ];

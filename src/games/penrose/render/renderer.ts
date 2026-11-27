@@ -4,6 +4,10 @@ import type { Command, PenroseAction, PenroseSnapshot } from '../sim/sim';
 import { createPenroseEngine } from '../engine';
 import type { EngineDom, PenroseEngine } from './engineTypes';
 import { layout } from './layout';
+import { CAMPAIGN } from '../campaign';
+
+/** Campaign chapter index for a level's chapter name (-1 for previews). */
+const chapterIndex = (name: string | undefined) => CAMPAIGN.findIndex((c) => c.name === name);
 
 const CSS = `
 .pp-root { position: absolute; inset: 0; overflow: hidden; font-family: "Atkinson Hyperlegible", "Helvetica Neue", Arial, sans-serif; color: #23263A; -webkit-user-select: none; user-select: none }
@@ -45,6 +49,7 @@ export class PenroseRenderer implements GameRenderer {
   private lastT = 0;
   private loadSent = -1;
   private loadT = 0;
+  private tideSent = 0;
   private status: HTMLElement | null = null;
   private levelsReady = false;
 
@@ -70,12 +75,17 @@ export class PenroseRenderer implements GameRenderer {
         const ms = (level as { machines?: Array<{ key: string; name: string }> } | null)?.machines ?? [];
         // one button can drive a machine on each storey of a long level: list it once, with both names
         const byKey = new Map<string, string[]>(); for (const m of ms) byKey.set(m.key, [...(byKey.get(m.key) ?? []), m.name]);
-        this.send({ type: 'level', index, id: def.id, name: def.name, machines: [...byKey].map(([key, names]) => ({ key, name: names.join(' / ') })) });
+        this.send({ type: 'level', index, id: def.id, name: def.name, machines: [...byKey].map(([key, names]) => ({ key, name: names.join(' / ') })), chapter: chapterIndex(def.chapter) });
         this.status?.classList.remove('show');   // a level starts with nothing written over it; the pause menu shows its hint
       },
       onAutopilot: () => {},
     }, undefined, { sliced: true });
-    void this.engine.whenReady.then(() => { this.levelsReady = true; });
+    void this.engine.whenReady.then(() => {
+      this.levelsReady = true;
+      const chapters: string[][] = CAMPAIGN.map(() => []);
+      for (const lv of this.engine?.levels ?? []) chapters[chapterIndex(lv.chapter)]?.push(lv.id);
+      this.send({ type: 'catalog', chapters });
+    });
     stage.insertBefore(stage.lastChild as Node, badges); // the canvas goes under the tap targets
     if (typeof ResizeObserver === 'function') { this.ro = new ResizeObserver(() => this.applyLayout()); this.ro.observe(container); }
   }
@@ -107,6 +117,8 @@ export class PenroseRenderer implements GameRenderer {
     this.loadT += dt;
     const v = Math.round(e.load01() * 20) / 20;
     if (v !== this.loadSent && this.loadT > 0.5) { this.loadSent = v; this.loadT = 0; this.send({ type: 'load', v }); }
+    const tide = e.autopilot ? null : e.tide(), tv = tide == null ? 0 : Math.round(tide * 100) / 100;
+    if (tv !== this.tideSent) { this.tideSent = tv; this.send({ type: 'tide', v: tv }); }
   }
 
   private apply(c: Command) {

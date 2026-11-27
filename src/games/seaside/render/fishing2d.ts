@@ -6,6 +6,7 @@ import type { FishId } from '../sim/catalogue';
 import type { FishingView } from '../sim/fishing';
 import { fishPose } from './fishingPose';
 import type { Box, FishLayout } from './layout';
+import { FONT_H, HOT, PAPER, PAPER_DIM, pixelBar, pixelLabel, pixelPanel, pixelText, textCells, unitFor } from './pixelHud';
 
 const FISH_COLOR: Record<FishId, [string, string]> = {
   perch: ['#9fb8a8', '#5f7d6e'], greenling: ['#7d8f4a', '#c46a3a'], rockfish: ['#e8603c', '#f6c29a'], lingcod: ['#8a7f5a', '#4e5a3a'],
@@ -34,16 +35,12 @@ export function drawFishing(g: CanvasRenderingContext2D, f: FishingView, L: Fish
   }
 
   // spot markers: all of them while picking, the chosen one after
-  g.textAlign = 'center'; g.textBaseline = 'middle';
   f.spots.forEach((sp, i) => {
     const b = L.spots[i], on = i === f.spot;
     if (f.phase !== 'spot' && !on) return;
     g.globalAlpha = f.phase === 'spot' ? 1 : 0.45;
-    g.fillStyle = on ? 'rgba(255,255,255,.92)' : 'rgba(255,255,255,.45)';
-    g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 10); g.fill();
-    if (on && f.phase === 'spot') { g.strokeStyle = '#2b2b2b'; g.lineWidth = 3; g.stroke(); }
-    g.fillStyle = '#1b1b1b'; g.font = `600 ${Math.round(b.h * 0.34)}px system-ui, sans-serif`;
-    g.fillText(sp.name, b.x + b.w / 2, b.y + b.h / 2, b.w - 12);
+    const label = on && f.phase === 'spot' ? `▶ ${sp.name}` : sp.name, u = fit(label, b, 0.34);
+    pixelLabel(g, label, pixelPanel(g, b, Math.max(2, u), on ? PAPER : PAPER_DIM), u, PAPER.ink);
     g.globalAlpha = 1;
   });
 
@@ -87,35 +84,38 @@ function drawRod(g: CanvasRenderingContext2D, f: FishingView, L: FishLayout, sta
 }
 
 function drawHud(g: CanvasRenderingContext2D, f: FishingView, L: FishLayout): void {
-  // prompt + the fight meter
-  g.textAlign = 'center'; g.textBaseline = 'middle';
+  // prompt (sized to its words, centred where the layout puts it) + the fight meter
   const text = prompts(f);
   if (text) {
-    const b = L.prompt, hot = f.phase === 'bite' || f.phase === 'pull';
-    g.fillStyle = hot ? 'rgba(200,30,30,.88)' : 'rgba(255,255,255,.85)';
-    g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 12); g.fill();
-    g.fillStyle = hot ? '#fff' : '#1b1b1b'; g.font = `${hot ? 700 : 500} ${Math.round(b.h * 0.42)}px system-ui, sans-serif`;
-    g.fillText(text, b.x + b.w / 2, b.y + b.h / 2, b.w - 20);
+    const b = L.prompt, hot = f.phase === 'bite' || f.phase === 'pull', u = fit(text, b, 0.4), w = Math.min(b.w, (textCells(text) + 10) * u);
+    pixelLabel(g, text, pixelPanel(g, { x: b.x + (b.w - w) / 2, y: b.y, w, h: b.h }, Math.max(2, u), hot ? HOT : PAPER), u, hot ? '#fff6ec' : PAPER.ink);
   }
   if (f.phase === 'pull') {
-    const m = L.meter;
-    g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(m.x, m.y, m.w, m.h);
-    g.fillStyle = '#7ad36a'; g.fillRect(m.x, m.y, m.w * (1 - f.stamina), m.h);
-    g.fillStyle = `rgba(255,${Math.round(220 - 180 * f.tension)},60,.95)`; g.fillRect(m.x + m.w * f.tension - 2, m.y - 4, 4, m.h + 8);
+    const m = L.meter, u = Math.max(2, Math.floor(m.h / 4));
+    const bar = pixelBar(g, { x: m.x, y: m.y - u, w: m.w, h: m.h + 2 * u }, u, 1 - f.stamina, '#7ad36a');
+    const x = Math.round((bar.x + bar.w * f.tension) / u) * u;
+    g.fillStyle = PAPER.ink; g.fillRect(x - 2 * u, bar.y - 2 * u, 4 * u, bar.h + 4 * u);
+    g.fillStyle = `rgb(255,${Math.round(220 - 180 * f.tension)},60)`; g.fillRect(x - u, bar.y - u, 2 * u, bar.h + 2 * u);
   }
 
   // catch card
   if (f.phase === 'card' && f.fish) {
     const c = L.card, k = Math.min(1, f.phaseT / 0.25), fish = f.fish;
-    g.globalAlpha = k; g.fillStyle = '#fbf6ea'; g.strokeStyle = '#2b2b2b'; g.lineWidth = 3;
-    g.beginPath(); g.roundRect(c.x, c.y, c.w, c.h, 14); g.fill(); g.stroke();
-    g.fillStyle = '#1b1b1b'; g.font = `600 ${Math.round(c.h * 0.15)}px Georgia, serif`;
-    g.fillText(fish.name, c.x + c.w / 2, c.y + c.h * 0.24, c.w - 24);
-    g.font = `${Math.round(c.h * 0.12)}px system-ui, sans-serif`;
-    g.fillText(`${fish.kg} kg · ${Math.round(fish.lenM * 100)} cm`, c.x + c.w / 2, c.y + c.h * 0.48);
-    g.font = `700 ${Math.round(c.h * 0.16)}px system-ui, sans-serif`;
-    g.fillText(money(saleCents(fish)), c.x + c.w / 2, c.y + c.h * 0.7);
-    if (fish.credit < 1) { g.font = `italic ${Math.round(c.h * 0.08)}px Georgia, serif`; g.fillText('late strike: half price', c.x + c.w / 2, c.y + c.h * 0.88); }
+    g.globalAlpha = k;
+    const b = pixelPanel(g, c, Math.max(2, Math.floor(c.h / 60)), PAPER), mid = b.x + b.w / 2, ink = PAPER.ink;
+    const line = (t: string, at: number, size: number, color = ink) => {
+      const u = Math.max(1, Math.min(Math.floor((b.h * size) / FONT_H), Math.floor((b.w - 24) / Math.max(1, textCells(t)))));
+      pixelText(g, t, mid, b.y + b.h * at - (FONT_H * u) / 2, u, color, 'center');
+    };
+    line(fish.name, 0.24, 0.15);
+    line(`${fish.kg} kg · ${Math.round(fish.lenM * 100)} cm`, 0.48, 0.1);
+    line(money(saleCents(fish)), 0.7, 0.15, '#b43c2b');
+    if (fish.credit < 1) line('late strike: half price', 0.88, 0.07);
     g.globalAlpha = 1;
   }
+}
+
+/** The font pixel for a label in a box: about `k` of its height, shrunk to fit its width. */
+function fit(text: string, b: Box, k: number): number {
+  return Math.max(1, Math.min(unitFor(b.h, k), Math.floor((b.w - 16) / (textCells(text) + 6))));
 }

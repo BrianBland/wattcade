@@ -48,13 +48,14 @@ describe('shared native pixel grid', () => {
         expect(portrait.width * portrait.height).toBe(landscape.width * landscape.height);
       }
     }
-    expect(pixelViewport(390, 844).scale).toBe(2);
-    expect(pixelViewport(844, 326).scale).toBe(2); // landscape with the preview toolbar taking vertical space
+    // device pixels: 32 px tiles need a DPR 2 phone canvas for the same view as the old 16 px tiles at DPR 1
+    expect(pixelViewport(780, 1688).scale).toBe(2);
+    expect(pixelViewport(1688, 652).scale).toBe(2); // landscape with the preview toolbar taking vertical space
   });
   it('either paddle zooms both ways, latches through jitter and stops at the limits', () => {
     for (const side of [0, 1]) {
       let zoom: ZoomState = { steps: 0, held: 0 };
-      const input = (value: number) => { zoom = paddleZoom(zoom, 390, 844, side === 0 ? value : 0, side === 1 ? value : 0); };
+      const input = (value: number) => { zoom = paddleZoom(zoom, 780, 1688, side === 0 ? value : 0, side === 1 ? value : 0); };
       input(1); expect(zoom.steps).toBe(1);
       for (const value of [1, .61, .4, .59, .9]) input(value);
       expect(zoom.steps).toBe(1);
@@ -65,18 +66,18 @@ describe('shared native pixel grid', () => {
       input(0); input(-1); expect(zoom.steps).toBe(-1); // min
       input(1); expect(zoom.steps).toBe(0);
     }
-    const together = paddleZoom({ steps: 0, held: 0 }, 390, 844, 1, 1);
+    const together = paddleZoom({ steps: 0, held: 0 }, 780, 1688, 1, 1);
     expect(together.steps).toBe(1); // same direction is one step, not two
-    expect(paddleZoom(together, 390, 844, 1, -1).steps).toBe(1); // opposing inputs cancel, never reset
-    expect(paddleZoom({ steps: 1, held: 0 }, 844, 326, 0, 0).steps).toBe(1); // retain resize preference
+    expect(paddleZoom(together, 780, 1688, 1, -1).steps).toBe(1); // opposing inputs cancel, never reset
+    expect(paddleZoom({ steps: 1, held: 0 }, 1688, 652, 0, 0).steps).toBe(1); // retain resize preference
   });
   it('pinch spread and contraction change zoom relative to the gesture start without exceeding limits', () => {
-    expect(pinchZoom(390, 844, 2, 1.5)).toBe(1);
-    expect(pinchZoom(390, 844, 2, .5)).toBe(-1);
-    expect(pinchZoom(390, 844, 2, 1)).toBe(0);
-    expect(pinchZoom(390, 844, 2, 100)).toBe(1);
-    expect(pinchZoom(390, 844, 2, 0)).toBe(-1);
-    expect(pinchZoom(390, 844, 2, NaN)).toBe(0);
+    expect(pinchZoom(780, 1688, 2, 1.5)).toBe(1);
+    expect(pinchZoom(780, 1688, 2, .5)).toBe(-1);
+    expect(pinchZoom(780, 1688, 2, 1)).toBe(0);
+    expect(pinchZoom(780, 1688, 2, 100)).toBe(1);
+    expect(pinchZoom(780, 1688, 2, 0)).toBe(-1);
+    expect(pinchZoom(780, 1688, 2, NaN)).toBe(0);
   });
 });
 describe('weapon art and modifier identity', () => {

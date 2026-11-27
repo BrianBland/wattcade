@@ -25,7 +25,8 @@ const profile = testProfile({
     seed: Number(q.get('seed') ?? 11),
     simOpts: {
       autopilot: true,
-      invulnerable: true
+      invulnerable: true,
+      ...(q.has('floor') ? { floor: Number(q.get('floor')), skipCamp: true } : {})
     }
   });
 session.step(Number(q.get('sec') ?? 150) * 30);
@@ -133,7 +134,7 @@ function gallery() {
 function typeGallery(g: CanvasRenderingContext2D, W: number, H: number) {
   const pad = 32, width = Math.min(W - pad * 2, 1100), x = Math.round((W - width) / 2);
   g.font = pixelFont(40); g.fillStyle = '#ffd84a';
-  fillText(g, 'CRANK CRAWLER', x, 28, width);
+  fillText(g, 'PURGATOUR', x, 28, width);
   g.font = pixelFont(20); g.fillStyle = '#eee5d3';
   fillText(g, 'Pixel lettering, from combat to camp.', x, 80, width);
   const panel = (y: number, height: number, label: string) => {

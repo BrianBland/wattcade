@@ -3,6 +3,7 @@ export function loadImage(src: string, image = new Image()): Promise<HTMLImageEl
   return new Promise((resolve, reject) => {
     image.onload = () => { Promise.resolve().then(() => image.decode?.()).then(() => resolve(image), reject); };
     image.onerror = () => reject(new Error(`Unable to load battlefield image: ${src}`));
+    image.crossOrigin = 'anonymous'; // live updates load art from a version's own origin
     image.src = src;
   });
 }

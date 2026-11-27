@@ -1,5 +1,5 @@
 import type { AchievementDef, Profile, SessionRecord } from '../contracts';
-import { allGames, games } from '../games/registry';
+import { allGames, games, isWip } from '../games/registry';
 import { activeSeconds, localDay, localHour, longestRun, peakAvg, popcount, variabilityIndex, virtualRide, weekday, weekOf, weekStreak } from './rideStats';
 
 /** Kept for existing imports: the achievement shape lives in contracts. */
@@ -101,12 +101,15 @@ const FINALE: AchievementDef[] = [
   { id: 'overachiever', name: 'Overachiever', desc: 'Unlock 5 achievements in one ride', bonusXp: 50, secret: true, check: (_p, _r, earned) => earned.length >= 5 },
 ];
 
+/** Games whose achievements are live: under-construction games (`wipGames`) keep theirs off until they ship. */
+const AWARDING = allGames.filter((g) => !isWip(g.id));
+
 /** Every achievement, in display/check order: core, then each game's (arcade order, warm-up last), then the finale. */
-export const ACHIEVEMENTS: AchievementDef[] = [...CORE_ACHIEVEMENTS, ...allGames.flatMap((g) => g.achievements ?? []), ...FINALE];
+export const ACHIEVEMENTS: AchievementDef[] = [...CORE_ACHIEVEMENTS, ...AWARDING.flatMap((g) => g.achievements ?? []), ...FINALE];
 
 /** Which game an achievement belongs to (undefined = rides anywhere). */
 export const ACHIEVEMENT_GAME: Readonly<Record<string, string>> = Object.fromEntries(
-  allGames.flatMap((g) => (g.achievements ?? []).map((a) => [a.id, g.id] as const)),
+  AWARDING.flatMap((g) => (g.achievements ?? []).map((a) => [a.id, g.id] as const)),
 );
 
 /** Current value of a goal achievement for `p` (0 for feats). */

@@ -24,7 +24,7 @@ export interface LevelView { level: number; progress: number; xp: number; nextXp
 /** Minimal view of core's GameSession used by the shell. */
 export interface SessionLike {
   loop?: Pick<import('../core/loop').GameLoop, 'frameFraction'>;
-  tuning?: Pick<import('../core/tuning').TuningRegistry, 'get' | 'list' | 'set'>;
+  tuning?: Pick<import('../core/tuning').TuningRegistry, 'get' | 'list' | 'set' | 'applyDefaults'>;
   frame(realDtS: number): void;
   /** Advance bike/devices/mixer without the sim (intros); returns presses. */
   idle(realDtS: number): ReadonlySet<Button>;

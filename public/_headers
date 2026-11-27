@@ -1,0 +1,7 @@
+# Workers static assets headers. Live updates (src/live): the prod page import()s game chunks and reads the feed and
+# manifests from version URLs on another origin, so everything is CORS-readable (it's all public static files anyway).
+/*
+  Access-Control-Allow-Origin: *
+
+/live/*
+  Cache-Control: no-cache

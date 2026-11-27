@@ -8,7 +8,7 @@ import { STORY } from '../sim/story';
 import type { FlightView, SeasideSnapshot } from '../sim/types';
 import { coastRoute, edgeD, SEA_LEVEL, zOfS } from '../world/coastLayout';
 import { groundAt } from '../world/coast';
-import type { V3 } from './morningShots';
+import { rideCam, type V3 } from './rideCam';
 
 const WINGS = STORY.find((s) => s.id === 'wings')!, REENTRY_SCENE = STORY.find((s) => s.id === 'reentry')!, SUNSET = STORY.find((s) => s.id === 'sunset')!;
 /** Route metres where you touch down: the Sunset ride from here (over the gorge bridge, past Lou's) ends just as the
@@ -77,8 +77,7 @@ export function glideAt(p: number, x = 0): V3 {
 
 /** The Morning's riding camera at the landing (the Sunset ride starts on it). */
 function landedCam(): { eye: V3; target: V3 } {
-  const r = coastRoute(), e = r.offset(LAND_S, LANE), g = r.offset(LAND_S + 74, -16);
-  return { eye: v(e.x, e.y + 1.5, e.z), target: v(g.x, g.y - 5.5, g.z) };
+  return rideCam(LAND_S);
 }
 
 /** The glide camera: on the line, looking ahead along it and a little down; the last few metres settle onto the

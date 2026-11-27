@@ -91,7 +91,8 @@ interface Enemy {
   /** sim time it spawned (groups it into a radar blip) */ born: number;
   /** seconds of Mortar concussion left (slowed by mortarDazeSlow) */ dazed: number;
 }
-interface Tower { pad: number; kind: TowerKind; level: number; cd: number; angle: number; firedAt: number }
+/** `burstAt`/`burstLeft`: a Flamethrower fires in bursts (aim locked) and cools off between them. */
+interface Tower { pad: number; kind: TowerKind; level: number; cd: number; angle: number; firedAt: number; burstAt?: number; burstLeft?: number }
 /**
  * A lobbed shell. The turret's fireball bursts for `dmg`, then the ground burns at `burnDps` for burnS. A Mortar
  * round (`tower` = its pad) bursts neutral and concusses: everything it hits on the road is slowed briefly.
@@ -247,6 +248,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const mortarSplashT = T.num('mortarSplashMult', 1, 0.2, 3, 0.05, 'Mortar blast radius x');
   const mortarDazeS = T.num('mortarDazeS', 1, 0, 5, 0.1, 'seconds a Mortar blast concusses the ground aliens it hits (not the boss)');
   const mortarDazeSlow = T.num('mortarDazeSlow', 0.3, 0, 0.9, 0.05, 'speed fraction a concussed alien loses');
+  const flamerBurstS = T.num('flamerBurstS', 1.6, 0.3, 5, 0.1, 'seconds a Flamethrower burst lasts (its aim is locked while it fires)');
+  const flamerCoolS = T.num('flamerCoolS', 0.7, 0, 5, 0.1, 'seconds a Flamethrower cools off between bursts (at rated power)');
   const teslaChain = T.num('teslaChain', 3, 1, 10, 1, 'Tesla chain targets at Lv 1');
   const teslaChainPerLv = T.num('teslaChainPerLevel', 0.5, 0, 2, 0.25, 'extra Tesla chain targets per level (floored)');
   const towerCostT = T.num('towerCostMult', 1, 0.2, 5, 0.05, 'all tower build/upgrade costs x');
@@ -853,18 +856,31 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (!tw) continue;
       const w = TOWER_WEAPON[tw.kind], covers = brood != null && (w ? match[w][brood]() : 1) >= 1;
       const rate = (covers ? fed : 1) * boost;
-      const def = TOWERS[tw.kind], p = PADS[tw.pad], dmg = def.dmg * LEVEL_DMG[tw.level - 1] * towerDmgT();
+      const def = TOWERS[tw.kind], p = PADS[tw.pad];
+      let dmg = def.dmg * LEVEL_DMG[tw.level - 1] * towerDmgT();
       tw.cd = Math.max(-0.01, tw.cd - dt * rate);
+      if (tw.kind === 'flamer') {
+        // Bursts: pulses only while a burst runs, aimed where it started; the cool-off rides on cd. Each pulse hits
+        // harder by the duty cycle, so the tower's damage over time matches a continuous cone.
+        const burst = flamerBurstS(), cool = flamerCoolS();
+        dmg *= (burst + cool) / burst;
+        if ((tw.burstLeft ?? 0) > 0) {
+          tw.burstLeft = Math.max(0, tw.burstLeft! - dt);
+          if (tw.burstLeft === 0) { tw.cd = Math.max(tw.cd, cool); continue; }
+        }
+      }
       if (tw.cd > 0 || rate <= 0) continue;
       let target: Enemy | null = null;
       for (const e of enemies) {
         if (e.dead || !inRange(tw, e)) continue;
         if (tw.kind === 'lens' ? !target || e.hp > target.hp : !target || e.dist < target.dist) target = e;
       }
-      if (!target) continue;
+      const bursting = tw.kind === 'flamer' && (tw.burstLeft ?? 0) > 0;
+      if (!target && !bursting) continue;
       tw.cd += def.period;
       tw.firedAt = t;
-      tw.angle = Math.atan2(target.x - p.x, p.y - target.y);
+      if (tw.kind === 'flamer' && !bursting) { tw.burstAt = t; tw.burstLeft = flamerBurstS(); }
+      if (!bursting) tw.angle = Math.atan2(target!.x - p.x, p.y - target!.y);
       if (tw.kind === 'tesla') {
         const pts = [{ x: p.x, y: p.y - 3 }];
         const hitSet = new Set<number>();
@@ -883,7 +899,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         addFx({ kind: 'zap', life: 0.22, pts, pad: tw.pad });
         cue('zap');
       } else if (tw.kind === 'flamer') {
-        // A continuous cone: every pulse burns every ground alien inside it.
+        // A cone, locked for the burst: every pulse burns every ground alien inside it.
         const half = def.cone ?? 0.5;
         for (const e of enemies) {
           if (e.dead || !inRange(tw, e)) continue;
@@ -894,12 +910,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         cue('flameTower');
       } else if (tw.kind === 'mortar') {
         // Lead the target along its road; the shell bursts where it lands and spares fliers.
-        const flight = mortarFlight(), ahead = geo.lanes[target.lane].at(target.d + travelSpeed(target) * flight);
+        const tg = target!, flight = mortarFlight(), ahead = geo.lanes[tg.lane].at(tg.d + travelSpeed(tg) * flight);
         shells.push({ x0: p.x, y0: p.y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg, r: (def.splash ?? 6) * mortarSplashT(), burnS: 0, burnDps: 0, tower: tw.pad });
         cue('mortar');
       } else {
-        addFx({ kind: 'lens', life: 0.35, x0: p.x, y0: p.y - 3, x1: target.x, y1: target.y, pad: tw.pad });
-        hit(target, dmg, 'purple', 'tower');
+        const tg = target!; // only a Flamethrower burst fires without a target
+        addFx({ kind: 'lens', life: 0.35, x0: p.x, y0: p.y - 3, x1: tg.x, y1: tg.y, pad: tw.pad });
+        hit(tg, dmg, 'purple', 'tower');
         cue('lens');
       }
     }
@@ -909,8 +926,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     for (const s of shells) {
       s.t += dt;
       if (s.t < s.flight) continue;
-      addFx({ kind: 'boom', life: 0.5, x: s.x1, y: s.y1, r: s.r });
-      const mortar = s.tower != null, el = mortar ? null : 'red', src = mortar ? 'tower' : 'player';
+      const mortar = s.tower != null;
+      addFx({ kind: 'boom', life: 0.5, x: s.x1, y: s.y1, r: s.r, ...(mortar ? { mortar } : {}) });
+      const el = mortar ? null : 'red', src = mortar ? 'tower' : 'player';
       for (const e of enemies) if (!e.dead && e.route < 0 && Math.hypot(e.x - s.x1, e.y - s.y1) <= s.r + radiusOf(e)) {
         hit(e, s.dmg, el, src);
         if (mortar && !e.boss) e.dazed = Math.max(e.dazed, mortarDazeS()); // the Tyrant shrugs it off
@@ -1709,7 +1727,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         grid, overdrive, stalled: stalled(),
         scrap,
         padCursor: phase === 'run' && !workshop ? cursorPad() : -1, inputEpoch,
-        towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
+        towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt,
+          ...(x.burstAt != null ? { burstAt: x.burstAt, burstS: flamerBurstS() } : {}) })),
         shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight, r: s.r, ...(s.tower != null ? { tower: true } : {}) })),
         burns: burns.map((b): BurnView => ({ x: b.x, y: b.y, r: b.r, k: b.left / b.total })),
         workshop: workshopView(),

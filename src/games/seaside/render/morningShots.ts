@@ -5,15 +5,18 @@
 import { FISHING_DEFAULTS, type FishingView } from '../sim/fishing';
 import { STORY } from '../sim/story';
 import type { SeasideSnapshot } from '../sim/types';
-import { CH1, coastRoute, edgeD, pierGeom, roadX, SEA_LEVEL, win, zOfS, bridge } from '../world/coastLayout';
-import { PIER_FISH_BACK } from '../world/coastBuild';
+import { CH1, coastRoute, pierGeom, roadX, SEA_LEVEL, win, zOfS, bridge } from '../world/coastLayout';
 import { LAND_S } from './flightShots';
+import { easeArrive, easeArriveD, easeDepart, easeDepartD, legAt, morningLegs, onRoad, pointAhead, rideCam, STOPS, type Leg, type V3 } from './rideCam';
 
-export interface V3 { x: number; y: number; z: number }
+export type { V3 } from './rideCam';
+export { rideCam } from './rideCam';
 
 export interface MorningFx {
   /** Title card: marine-layer fog, 1 = thick. */ fog: number;
-  /** Highway 1: the big white bird's glide 0..1 (null = not in the sky). */ bird: number | null;
+  /** Title card: eyelids, 0 shut .. 1 open; the world out of focus, 0 sharp .. 1 blurred. */ lids: number; blur: number;
+  /** Highway 1: the big white bird's glide 0..1 (null = not in the sky), where it is and which way it flies. */ bird: number | null;
+  birdAt?: V3; birdDir?: V3;
   /** The sea going glassy 0..1. */ calm: number;
   /** Gulls on the pier's end posts: 0 sitting .. 1 gone (null = none in shot). */ gulls: number | null;
   /** The Big One's shadow sliding in under the pier 0..1 (null = none). */ shadow: number | null;
@@ -24,55 +27,89 @@ export interface MorningFx {
 export interface MorningShot {
   /** Route metres (streaming anchor) and speed along the route (m/s). */ s: number; speed: number;
   eye: V3; target: V3;
+  /** The bike's direction of travel (horizontal unit): the bars point here, wherever the eyes are. */ heading: V3;
   bars: boolean;
   /** The rod in hand: the fishing stop's rig, or the Big One's. */ rod: 'fish' | 'bigOne' | null;
   /** Where the fishing rig puts the water. */ place: { waterY: number; near?: number; reach?: number; spread?: number } | null;
   fx: MorningFx;
 }
 
-const NO_FX: MorningFx = { fog: 0, bird: null, calm: 0, gulls: null, shadow: null, yank: 0, splash: null, under: 0, dark: 0, mouth: 0, black: 0 };
+const NO_FX: MorningFx = { fog: 0, lids: 1, blur: 0, bird: null, calm: 0, gulls: null, shadow: null, yank: 0, splash: null, under: 0, dark: 0, mouth: 0, black: 0 };
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const smooth = (a: number, b: number, x: number) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const v = (x: number, y: number, z: number): V3 => ({ x, y, z });
 const add = (a: V3, b: V3, k = 1): V3 => v(a.x + b.x * k, a.y + b.y * k, a.z + b.z * k);
+const lerpV = (a: V3, b: V3, k: number): V3 => v(lerp(a.x, b.x, k), lerp(a.y, b.y, k), lerp(a.z, b.z, k));
 
-/** Route metres each ride scene runs between. */
-export function rideSpan(id: string): [number, number] | null {
+/** Metres the title rolls you along the road from a standstill while your eyes open. */
+export const TITLE_ROLL = 200;
+
+/** How a ride scene lies on the coast: its rail (route metres its progress runs between: the scene's rail length), a leg
+ *  riding off a stop at its start and/or one riding to a stop at its end, and where the eyes are at those stops. */
+interface RidePlan { rail: [number, number]; depart?: Leg; arrive?: Leg; from?: V3; to?: V3 }
+
+function ridePlan(id: string): RidePlan | null {
+  const L = morningLegs();
   switch (id) {
-    case 'highway': return [CH1.start, CH1.turnout - 25];
-    case 'rollers': return [CH1.turnout + 28, CH1.shop - 28];
-    case 'toPier': return [CH1.shop + 28, pierGeom().end - PIER_FISH_BACK];
+    case 'highway': return { rail: [CH1.start + TITLE_ROLL, L.inTurnout.p[0][0] + L.inTurnout.len], arrive: L.inTurnout, to: stopTarget('turnout') };
+    case 'rollers': { // after the leg back out the road runs on from where it left off
+      const D = L.outTurnout, shift = D.len - (D.p[3][0] - D.p[0][0]);
+      return { rail: [D.p[0][0], CH1.shop - 28 + shift], depart: D, from: stopTarget('turnout') };
+    }
+    case 'toPier': return { rail: [CH1.shop + 28, L.inPier.p[0][0] + L.inPier.len], arrive: L.inPier, to: stopTarget('pier') };
     // the Evening's ride home: the wings land at its start (#194); it ends at the cliff's lift-off (#195)
-    case 'sunset': { const sc = STORY.find((x) => x.id === 'sunset')!; return [LAND_S, LAND_S + ('m' in sc.length ? sc.length.m : 1350)]; }
+    case 'sunset': { const sc = STORY.find((x) => x.id === 'sunset')!; return { rail: [LAND_S, LAND_S + ('m' in sc.length ? sc.length.m : 1350)] }; }
     default: return null;
   }
+}
+
+/** Route metres each ride scene's rail runs between. */
+export function rideSpan(id: string): [number, number] | null {
+  return ridePlan(id)?.rail ?? null;
+}
+
+/** Where the eyes rest at a fishing stop: Turnout 1 out and down at the water, the pier south and down past the rail. */
+function stopTarget(stop: 'turnout' | 'pier'): V3 {
+  const [s, lat] = STOPS[stop]();
+  if (stop === 'turnout') { const tz = zOfS(s); return v(roadX(tz) + lat - 30, SEA_LEVEL + 6, tz - 4); }
+  const g = coastRoute().offset(s - 6, -40);
+  return v(g.x, SEA_LEVEL + 2, g.z);
+}
+
+/** The ride at rail metres `r`: route metres (streaming), the camera, the bike's heading, and the speed factor (route
+ *  metres per rail metre: legs start and end at rest). */
+function rideAt(P: RidePlan, r: number): { s: number; eye: V3; target: V3; heading: V3; k: number } {
+  const { depart: D, arrive: A } = P;
+  if (D && r < P.rail[0] + D.len) {
+    const u = (r - P.rail[0]) / D.len, q = legAt(D, D.len * easeDepart(u)), o = onRoad(q.s, q.lat, q.ts, q.tl);
+    const ahead = rideCam(q.s).target, w = smooth(0.05, 0.6, u);
+    return { s: q.s, eye: o.eye, heading: o.heading, target: P.from ? lerpV(P.from, ahead, w) : ahead, k: easeDepartD(u) };
+  }
+  const a0 = A ? A.p[0][0] : Infinity;
+  if (A && r > a0) {
+    const u = Math.min(1, (r - a0) / A.len), q = legAt(A, A.len * easeArrive(u)), o = onRoad(q.s, q.lat, q.ts, q.tl);
+    const along = add(v(o.eye.x, o.eye.y - 2.2, o.eye.z), o.heading, 26);
+    const look = lerpV(rideCam(q.s).target, along, smooth(0, 0.45, u));
+    return { s: q.s, eye: o.eye, heading: o.heading, target: P.to ? lerpV(look, P.to, smooth(0.55, 1, u)) : look, k: easeArriveD(u) };
+  }
+  const s = D ? r - (D.len - (D.p[3][0] - D.p[0][0])) : r, cam = rideCam(s);
+  return { s, ...cam, k: 1 };
+}
+
+/** The bike at a stop: where the leg in ends (standing there, facing the way it rode in). */
+function atStop(stop: 'turnout' | 'pier'): { eye: V3; heading: V3; target: V3 } {
+  const L = morningLegs(), leg = stop === 'turnout' ? L.inTurnout : L.inPier, q = legAt(leg, leg.len);
+  return { ...onRoad(q.s, q.lat, q.ts, q.tl), target: stopTarget(stop) };
 }
 
 /** The Morning scenes this director shoots (the shops are the counter dioramas), and the Sunset highway after the wings land. */
 export const MORNING_WORLD = new Set(['title', 'highway', 'turnout1', 'rollers', 'toPier', 'pier', 'bigOne', 'under', 'sunset']);
 
-/** A point on the route `ahead` metres past s (straight on past the end of the pier). */
-function pointAhead(s: number, d: number): V3 {
-  const r = coastRoute(), L = r.length;
-  const p = r.offset(Math.min(s, L), d);
-  if (s <= L) return p;
-  const t = r.tangent(L);
-  return v(p.x + t.x * (s - L), p.y, p.z + t.z * (s - L));
-}
-
 /** The middle of Lou's shop door (where the GONE FISHING sign hangs in the evening). */
 export function shopDoor(): V3 {
   const q = coastRoute().offset(CH1.shop, -16.85);
   return v(q.x, q.y + 1.45, q.z);
-}
-
-/** The riding camera at route metres s: right lane, eyes drifting to the sea; centred and level on the pier. */
-export function rideCam(s: number): { eye: V3; target: V3 } {
-  const P = pierGeom(), k = smooth(P.junction - 40, P.street + 6, s);
-  const lane = lerp(4.2, 1.4, k), gd = lerp(-16, 0, k), dy = lerp(-5.5, -1.2, k), ahead = lerp(74, 50, k);
-  const p = coastRoute().offset(s, lane), g = pointAhead(s + ahead, gd);
-  return { eye: v(p.x, p.y + 1.5, p.z), target: v(g.x, g.y + dy, g.z) };
 }
 
 /** Where the rollers' crest looks: out over the coast opening up ahead (the creek mouth, the far point). */
@@ -85,6 +122,15 @@ export function crestView(at: number): V3 {
 export function gorgeView(at: number): V3 {
   const p = coastRoute().offset(at + 45, 55);
   return v(p.x, p.y - 6, p.z);
+}
+
+/** The title's eyelids at t seconds: shut, a slit, shut again, half open, a long blink, then open (a quick blink later). */
+export function titleLids(t: number): number {
+  const keys: Array<[number, number]> = [[0, 0], [2.5, 0], [6, 0.32], [7.6, 0.04], [9, 0.04], [13.5, 0.62], [15.2, 0.12], [16, 0.12], [22, 1], [31, 1], [31.15, 0.05], [31.45, 1]];
+  let i = 0;
+  while (i < keys.length - 2 && keys[i + 1][0] <= t) i++;
+  const [t0, a] = keys[i], [t1, b] = keys[i + 1];
+  return lerp(a, b, smooth(t0, t1, t));
 }
 
 // ---- the Big One --------------------------------------------------------------------------------------------------
@@ -136,50 +182,55 @@ export function morningShot(s: Pick<SeasideSnapshot, 'sceneId' | 'sceneT' | 'spe
   if (!MORNING_WORLD.has(id)) return null;
   // timed scenes run on plan seconds (= scene time, and right after resuming mid-scene too)
   const t = p * (STORY.find((x) => x.id === id)?.planS ?? 0);
-  const span = rideSpan(id);
-  if (span) {
-    const sc = STORY.find((x) => x.id === id)!, len = 'm' in sc.length ? sc.length.m : span[1] - span[0];
-    const at = lerp(span[0], span[1], p), cam = rideCam(at);
+  const plan = ridePlan(id);
+  if (plan) {
+    const sc = STORY.find((x) => x.id === id)!, [r0, r1] = plan.rail, len = 'm' in sc.length ? sc.length.m : r1 - r0;
+    const R = rideAt(plan, lerp(r0, r1, p)), at = R.s, cam = { eye: R.eye, target: R.target };
     if (id === 'rollers') { // a short rest at the top: the camera drifts toward the view on its own; then the gorge
-      const b = bridge(), pb0 = (b.s0 - span[0]) / (span[1] - span[0]), pb1 = (b.s1 - span[0]) / (span[1] - span[0]);
+      const b = bridge(), pb0 = (b.s0 - r0) / (r1 - r0), pb1 = (b.s1 - r0) / (r1 - r0);
       const w = win(p, 0.62, 0.72, 0.04) * 0.7, wg = win(p, pb0 + 0.004, pb1 - 0.006, 0.006) * 0.6;
       const look = w > 0 ? crestView(at) : gorgeView(at), k = Math.max(w, wg);
-      cam.target = v(lerp(cam.target.x, look.x, k), lerp(cam.target.y, look.y, k), lerp(cam.target.z, look.z, k));
+      cam.target = lerpV(cam.target, look, k);
     }
     if (id === 'sunset') { // riding past Lou's in the evening, the eyes go to the door: dark, GONE FISHING
-      const w = win(at, CH1.shop - 40, CH1.shop + 6, 14) * 0.85, d = shopDoor();
-      cam.target = v(lerp(cam.target.x, d.x, w), lerp(cam.target.y, d.y, w), lerp(cam.target.z, d.z, w));
+      const w = win(at, CH1.shop - 40, CH1.shop + 6, 14) * 0.85;
+      cam.target = lerpV(cam.target, shopDoor(), w);
     }
     const bird = id === 'highway' && p > 0.7 && p < 0.96 ? (p - 0.7) / 0.26 : null;
-    return { s: at, speed: s.speed * ((span[1] - span[0]) / len), ...cam, bars: true, rod: null, place: null, fx: { ...NO_FX, bird } };
+    const fx: MorningFx = { ...NO_FX, bird };
+    if (bird !== null) { // high ahead, gliding in toward you on a long bank; the eyes follow it
+      const e = cam.eye, f = R.heading, left = v(f.z, 0, -f.x);
+      // coming in toward you (wings broadside), drifting out to the sea side as it passes over
+      fx.birdAt = add(add(v(e.x, e.y + 32 + 10 * bird, e.z), f, 230 - 120 * bird), left, -10 + 50 * bird);
+      fx.birdDir = add(add(v(0, 0, 0), left, 0.38), f, -0.92);
+      cam.target = lerpV(cam.target, fx.birdAt, 0.4 * Math.sin(Math.PI * bird) ** 0.6);
+    }
+    return { s: at, speed: s.speed * ((r1 - r0) / len) * R.k, ...cam, heading: R.heading, bars: true, rod: null, place: null, fx };
   }
   switch (id) {
-    case 'title': {
-      const cam = rideCam(CH1.start);
-      return { s: CH1.start, speed: 0, ...cam, bars: true, rod: null, place: null, fx: { ...NO_FX, fog: 1 - smooth(0.12, 0.92, p) } };
+    case 'title': { // rolling off from a standstill, eyes opening (a few slow blinks), the world coming into focus
+      const at = CH1.start + TITLE_ROLL * p * p, cam = rideCam(at), T = t;
+      return { s: at, speed: (2 * TITLE_ROLL * p) / Math.max(1, STORY[0].planS), ...cam, bars: true, rod: null, place: null,
+        fx: { ...NO_FX, fog: 0.6 * (1 - smooth(0.1, 0.75, p)), lids: titleLids(T), blur: 1 - smooth(0.05, 0.7, p) } };
     }
-    case 'turnout1': { // at the sea edge of the turnout, looking out and down at the water (the #187 prototype's shot)
-      const tz = zOfS(CH1.turnout), lateral = edgeD(tz) + 1.5, e = r.offset(CH1.turnout, lateral);
-      return { s: CH1.turnout, speed: 0, eye: v(e.x, e.y + 1.5, e.z), target: v(roadX(tz) + lateral - 30, SEA_LEVEL + 6, tz - 4),
-        bars: false, rod: 'fish', place: { waterY: SEA_LEVEL }, fx: NO_FX };
+    case 'turnout1': { // standing at the sea edge of the turnout, looking out and down at the water (the #187 prototype's shot)
+      return { s: CH1.turnout, speed: 0, ...atStop('turnout'), bars: false, rod: 'fish', place: { waterY: SEA_LEVEL }, fx: NO_FX };
     }
     case 'pier': { // by the left rail, looking south and down at the water; gulls on the end posts
-      const at = P.end - PIER_FISH_BACK, e = r.offset(at, -4.4), g = r.offset(at - 6, -40);
-      return { s: at, speed: 0, eye: v(e.x, e.y + 1.5, e.z), target: v(g.x, SEA_LEVEL + 2, g.z),
-        bars: false, rod: 'fish', place: { waterY: SEA_LEVEL, near: 5, reach: 22, spread: 9 }, fx: { ...NO_FX, gulls: 0 } };
+      return { s: STOPS.pier()[0], speed: 0, ...atStop('pier'), bars: false, rod: 'fish', place: { waterY: SEA_LEVEL, near: 5, reach: 22, spread: 9 }, fx: { ...NO_FX, gulls: 0 } };
     }
     case 'bigOne': {
       const B = BIG_ONE, c = bigOneCam(t);
       const fx: MorningFx = { ...NO_FX, calm: smooth(B.calmAt, B.calmAt + 12, t), gulls: smooth(B.gullsAt, B.gullsAt + 7, t),
         shadow: t > B.shadowAt ? smooth(B.shadowAt, B.biteAt, t) : null, yank: c.yank, splash: c.splash, under: c.under };
-      return { s: P.end, speed: 0, eye: c.eye, target: c.target, bars: false, rod: c.yank < 0.9 ? 'bigOne' : null,
+      return { s: P.end, speed: 0, eye: c.eye, target: c.target, heading: pierEnd().fwd, bars: false, rod: c.yank < 0.9 ? 'bigOne' : null,
         place: { waterY: SEA_LEVEL, near: 9, reach: 34, spread: 6 }, fx };
     }
     case 'under': { // the rush down through the blue, then the mouth closes
       const start = bigOneCam(BIG.planS), { fwd } = pierEnd(), sink = 55 * smooth(0, 50, t);
       const eye = add(v(start.eye.x, start.eye.y - sink, start.eye.z), fwd, t * 1.6);
       const target = add(v(eye.x, eye.y - 4 - 4 * smooth(0, 20, t), eye.z), fwd, 8);
-      return { s: P.end, speed: 0, eye, target, bars: false, rod: null, place: null,
+      return { s: P.end, speed: 0, eye, target, heading: fwd, bars: false, rod: null, place: null,
         fx: { ...NO_FX, calm: 1, under: 1, dark: smooth(4, 46, t), mouth: smooth(46, 76, t), black: smooth(78, 87, t) } };
     }
   }

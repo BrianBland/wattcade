@@ -46,11 +46,12 @@ function pickKind(rng: () => number, floor: number): EnemyKind {
   return pool[Math.floor(rng() * pool.length)];
 }
 
-export function generateWorld(rng: () => number, floor = 1): World {
+/** `theme` = zone (default: cycles by floor); `rooms` = room count (default 9 + floor, at most 18). */
+export function generateWorld(rng: () => number, floor = 1, opts?: { theme?: number; rooms?: number }): World {
   const w = MARGIN * 2 + GRID_W * CELL_W, h = MARGIN * 2 + GRID_H * CELL_H;
   const tiles = new Array<number>(w * h).fill(TILE.WALL);
   const set = (x: number, y: number, t: number) => { tiles[y * w + x] = t; };
-  const roomCount = Math.min(GRID_W * GRID_H - 2, 9 + floor);
+  const roomCount = Math.max(2, Math.min(GRID_W * GRID_H - 2, opts?.rooms ?? 9 + floor));
 
   // --- grow a random spanning tree over grid cells
   const cellOf = new Map<number, number>(); // cell index -> room id
@@ -89,7 +90,7 @@ export function generateWorld(rng: () => number, floor = 1): World {
 
   const world: World = {
     floor, w, h, tiles, rooms: [], adj, doorRoom: {}, spawn: { x: 0, y: 0 }, stairs: { x: 0, y: 0 },
-    theme: (floor - 1) % 4,
+    theme: opts?.theme ?? (floor - 1) % 4,
   };
 
   cells.forEach(([cx, cy], id) => {

@@ -381,6 +381,28 @@ describe('workshop', () => {
     expect(run('idle')).toEqual({ towers: 1, kills: 0, fired: false });
     expect(run('z2').fired).toBe(true); // early waves the turret takes most kills; the tower still fires
   });
+  it('the Flamethrower fires in bursts: aim locked while it fires, then a cool-off before it can turn and fire again', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 4, simOpts: { stars: 99, skipGarage: true } });
+    s.tuning.set('towerdefense.baseHp', 1000);
+    s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.railDamageMult', 0); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02);
+    s.tuning.set('towerdefense.towerDamageMult', 0.1); // aliens linger in the cone so bursts follow each other
+    s.tuning.set('towerdefense.towerCostMult', 0.5); // affordable from the start
+    s.sim.receive!({ type: 'pad', pad: 3 }); s.step(1); s.sim.receive!({ type: 'row', row: 1 }); s.step(1);
+    expect(snap(s).towers[0]?.kind).toBe('flamer');
+    const bursts = new Map<number, Set<number>>(); let dur = 0;
+    for (let i = 0; i < 30 * 240; i++) {
+      s.step(1);
+      const tw = snap(s).towers[0], t = snap(s).t;
+      if (tw.burstAt == null || tw.burstS == null) continue;
+      dur = tw.burstS;
+      if (t - tw.burstAt <= tw.burstS) (bursts.get(tw.burstAt) ?? bursts.set(tw.burstAt, new Set()).get(tw.burstAt)!).add(tw.angle);
+    }
+    const starts = [...bursts.keys()].sort((a, b) => a - b);
+    expect(starts.length).toBeGreaterThan(3);
+    for (const angles of bursts.values()) expect(angles.size).toBe(1); // no turning mid-burst
+    // each burst runs its length, then the tower cools off (at most 1.6× rated speed) before the next
+    for (let i = 1; i < starts.length; i++) expect(starts[i] - starts[i - 1]).toBeGreaterThanOrEqual(dur + 0.7 / 1.6 - 0.05);
+  });
   it('tower stats are sane', () => {
     for (const t of Object.values(TOWERS)) { expect(t.range).toBeGreaterThanOrEqual(12); expect(t.cost).toBeGreaterThan(0); }
     expect(TOWERS.flamer.air).toBe(false); expect(TOWERS.tesla.air && TOWERS.lens.air).toBe(true);

@@ -9,21 +9,32 @@ export interface StanceDef {
   styles: WeaponStyle[]; starter: WeaponStyle;
   band: [number, number];          // rpm (cadence3s) for the style bonus
   bonus: StyleBonus;               // what the in-band bonus boosts
+  cdRefillBonus: number;           // extra cooldown refill speed while In Rhythm (+0.2 = +20%)
   dmgTaken: number; moveMult: number;
+  strikeRadiusMult: number;        // Vanguard wider Strike AoE
+  rollCdMult: number;              // Skirmisher quicker dodge-roll recovery
+  projSpeedMult: number;           // Ranger faster/longer shots
+  critBonus: number;               // Ranger flat crit bonus
+  exposeBonusS: number;            // Arcanist extra Exposed seconds on bosses
+  statusDurMult: number;           // Arcanist longer slow/DoT duration
   /** stand-off distance from the AI's default (tiles) */
   standoff(base: number): number;
   strafe: number;                  // 0..1 how much the AI circles at range
 }
 
 export const STANCES: Record<StanceId, StanceDef> = {
-  vanguard: { id: 'vanguard', name: 'Vanguard', role: 'tank melee', color: '#ff8c5a', styles: ['flame', 'pellet', 'axe'], starter: 'pellet',
-    band: [70, 82], bonus: 'armor', dmgTaken: 0.6, moveMult: 0.95, standoff: (b) => Math.min(b, 2.2), strafe: 0.3 },
-  ranger: { id: 'ranger', name: 'Ranger', role: 'ranged', color: '#7dff5a', styles: ['arrow', 'bolt', 'spear'], starter: 'bolt',
-    band: [92, 100], bonus: 'fire', dmgTaken: 1, moveMult: 1, standoff: (b) => Math.max(b, 4.5), strafe: 0.6 },
-  skirmisher: { id: 'skirmisher', name: 'Skirmisher', role: 'kite', color: '#8fd8ff', styles: ['star', 'spark', 'knife'], starter: 'star',
-    band: [88, 98], bonus: 'move', dmgTaken: 1, moveMult: 1.1, standoff: (b) => Math.max(3.5, Math.min(b, 5)), strafe: 1 },
+  vanguard: { id: 'vanguard', name: 'Vanguard', role: 'tank grinder', color: '#ff8c5a', styles: ['flame', 'pellet', 'axe'], starter: 'pellet',
+    band: [70, 82], bonus: 'armor', cdRefillBonus: 0.2, dmgTaken: 0.58, moveMult: 0.94, strikeRadiusMult: 1.25, rollCdMult: 1, projSpeedMult: 1, critBonus: 0, exposeBonusS: 0, statusDurMult: 1,
+    standoff: (b) => Math.min(b, 2.1), strafe: 0.28 },
   arcanist: { id: 'arcanist', name: 'Arcanist', role: 'expose-extender', color: '#c77dff', styles: ['orb'], starter: 'orb',
-    band: [85, 95], bonus: 'dmg', dmgTaken: 1, moveMult: 1, standoff: (b) => Math.max(b, 4), strafe: 0.5 },
+    band: [78, 88], bonus: 'dmg', cdRefillBonus: 0.25, dmgTaken: 1, moveMult: 1, strikeRadiusMult: 1, rollCdMult: 1, projSpeedMult: 1, critBonus: 0, exposeBonusS: 1.5, statusDurMult: 1.25,
+    standoff: (b) => Math.max(b, 4.2), strafe: 0.5 },
+  skirmisher: { id: 'skirmisher', name: 'Skirmisher', role: 'agile kiter', color: '#8fd8ff', styles: ['star', 'spark', 'knife'], starter: 'star',
+    band: [84, 94], bonus: 'move', cdRefillBonus: 0.2, dmgTaken: 1, moveMult: 1.12, strikeRadiusMult: 1, rollCdMult: 0.75, projSpeedMult: 1, critBonus: 0, exposeBonusS: 0, statusDurMult: 1,
+    standoff: (b) => Math.max(3.5, Math.min(b, 5.2)), strafe: 1 },
+  ranger: { id: 'ranger', name: 'Ranger', role: 'sniper spinner', color: '#7dff5a', styles: ['arrow', 'bolt', 'spear'], starter: 'bolt',
+    band: [90, 100], bonus: 'fire', cdRefillBonus: 0.2, dmgTaken: 1, moveMult: 1, strikeRadiusMult: 1, rollCdMult: 1, projSpeedMult: 1.15, critBonus: 0.04, exposeBonusS: 0, statusDurMult: 1,
+    standoff: (b) => Math.max(b, 4.8), strafe: 0.6 },
 };
 export const STANCE_ORDER: StanceId[] = ['vanguard', 'ranger', 'skirmisher', 'arcanist'];
 

@@ -39,6 +39,13 @@ export interface CampView {
   /** optional (older sim chunks omit them): how the last descent ended, the descent length, the chosen Category, total wins */
   lastRun?: RunResult; floors?: number; tier?: string; wins?: number;
 }
+export interface FinishSeqView {
+  stage: 'findBike' | 'rideToLine' | 'celebrate';
+  bikeX: number; bikeY: number;
+  lineX: number; lineY: number;
+  progress: number;   // 0..1 riding from bike to finish line
+  celebrateT: number; // seconds elapsed in celebration
+}
 export interface DungeonSnapshot {
   t: number;
   phase: 'camp' | 'run';
@@ -86,6 +93,8 @@ export interface DungeonSnapshot {
   boss: { active: boolean; name: string; hp: number; maxHp: number; phase: 1 | 2 | 3; cycle: 'idle' | 'windup' | 'exposed' | 'stagger'; left: number; fightT: number; tide: number; splits: [number, number] } | null;
   /** optional: an older sim chunk may not send it */
   perks?: PerkView;
+  /** optional: Floor 7 victory sequence (find your bike -> pedal across finish line -> celebrate) */
+  finishSeq?: FinishSeqView | null;
   stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; /** hero damage output while firing, normalised per weapon (sum of per-shot damage / weapon rate), and seconds spent firing */ output: number; fireT: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number };
   hooks: { boss: boolean; shielded: boolean; swamp: boolean; seg: string; cadence: number; powerFtp: number };
 }

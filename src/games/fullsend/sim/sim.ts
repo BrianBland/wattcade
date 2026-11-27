@@ -1,6 +1,6 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 import { BIOMES, makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
-import { CHASER_REACH, chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
+import { CHASER_REACH, chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, weekOf, weeklyTour, type ChaserKind, type PieceKind, type Tour, type TourIntent, type TourSet } from './tour';
 import { AIR_CELL, airItemAt, kickerLip, bumpH, MEGA, megaSlope, takesOff, windAt, type AirKind } from './track';
 import { landingGrade, type Landing } from './physics';
 import { leapRange, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
@@ -15,6 +15,10 @@ export interface FullSendOpts {
   forks?: 'main' | 'alt' | 'alternate';
   /** Test/demo pilot: holds the jet (and asks for the power via hooks.powerFtp) when a ring is ahead and above. */
   autojet?: boolean;
+  /** Test/demo pilot: leans back on every fall off a sky island or the moon, so you glide down to the road instead of the sea. */
+  glide?: boolean;
+  /** Today as whole days since 1970-01-01 (the shell passes it), which picks this week's tour; `week` overrides it (tests). */
+  day?: number; week?: number;
   /** Arriving from the overworld (warm-up lobby): start in its biome at its speed, so the hand-off doesn't cut. */
   lobby?: { biome?: string; v?: number };
 }
@@ -57,6 +61,8 @@ export interface FullSendSave {
   ver: 1; lastTour?: string; reducedFlash?: boolean; rides?: number; tipsSeen?: string[];
   best?: Record<string, { golds: number; medals: string; topKph: number; longestChain: number; rings: number; score?: number }>;
   moonVisits?: number; maxAltM?: number;
+  /** Your best ride of each recent weekly tour (newest last, the last 8 weeks): what this week's ride is raced against. */
+  weeks?: Array<{ week: number; focus: string; score: number; golds: number }>;
   /** Personal bests: best mean power (FTP fraction) for a sprint of each length (seconds), which sets your medal targets. */
   pb?: Record<string, number>;
   /** Best sustained power per sprint length (FTP fraction held for `holdFrac` of the sprint): the medal zones come from these. */
@@ -112,12 +118,16 @@ export interface FullSendSnapshot {
   fromTier: Tier | null; splashAt: number; jet: 'on' | 'weak' | null; jetRpm: number;
   airH: [number, number] | null; got: Array<{ id: number; kind: AirKind; at: number }>;
   rings: number; stars: number; chain: number;
+  /** Rings caught on this sky-island visit, and how many open the moon shot (a full lift meter alone isn't enough). */
+  skyRings: number; moonRings: number;
+  /** Falling off a sky island or the moon with the bike pulled back: gliding down to the road instead of splashing into the sea. */
+  gliding: boolean;
   /** A fork in the road before the next set: two branches (same sprint length), the one you're on, and seconds left to choose. */
   fork: { set: number; options: [ForkOption, ForkOption]; pick: 0 | 1; closesInS: number } | null;
   /** Biomes you've been through this ride, in order. */
   visited: BiomeId[];
   /** The setup screen (before the ride), or null once riding. */
-  menu: { row: number; tour: string; tours: Array<{ id: string; name: string; minutes: number; best: string | null }>; reducedFlash: boolean; left: number } | null;
+  menu: { row: number; tour: string; tours: Array<{ id: string; name: string; minutes: number; best: string | null; focus: string; why: string }>; reducedFlash: boolean; left: number } | null;
   reducedFlash: boolean;
   /** A one-time tip (first ride only), and how long it's been up. */
   tip: { id: string; text: string; age: number } | null;
@@ -133,6 +143,9 @@ export interface FullSendSnapshot {
   loopV: number;
   /** Ride score so far, and the best score on this tour before this ride (0 = none). */
   score: number; bestScore: number;
+  /** What this tour trains (shown on the setup screen, at the start, between sets and on the end card), and, on the weekly
+   *  tour, your score on last week's (0 = none) to race. */
+  intent: TourIntent; lastWeekScore: number;
   /** Your best run on this tour at this point of the ride (metres ridden), or null with no best run saved. */
   ghostX: number | null;
   /** When the charge you built in a sprint fired at the lip (sim time), and how much faster it threw you than you were going. */
@@ -236,6 +249,11 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     moonGravity: T.num('moonGravity', 0.35, 0.1, 1, 0.05, 'Hop gravity on the moon, as a fraction of normal (floaty hops)'),
     seaGravity: T.num('seaGravity', 0.6, 0.1, 1, 0.05, 'Hop gravity underwater, as a fraction of normal'),
     plungeM: T.num('plungeM', 45, 10, 200, 5, 'How far you fall off a sky island or the moon before splashing into the sea (m, each half)'),
+    moonRings: T.num('moonRings', 4, 0, 12, 1, 'Rings you must fly through on one sky-island visit (jet + lean) before a full lift meter opens the moon shot'),
+    glideLean: T.num('glideLean', 0.4, 0.1, 1, 0.05, 'Falling off a sky island or the moon: lean back this hard (left paddle / ◀) to pull out into a glide'),
+    glideHoldS: T.num('glideHoldS', 0.5, 0.1, 2, 0.1, 'Seconds of leaning back to commit to the glide (then you glide down to the road, not the sea)'),
+    glideVy: T.num('glideVy', 24, 8, 60, 1, 'Top falling speed while gliding (m/s)'),
+    glideTouchM: T.num('glideTouchM', 6, 1, 20, 0.5, 'Height above the road you come out of the glide at: level the bike for a clean touchdown'),
     moonS: T.num('moonS', 60, 10, 600, 5, 'Seconds of cruising you get on the moon before you drift off and fall'),
     skyStartLift: T.num('skyStartLift', 0.3, 0, 1, 0.05, 'Lift meter on arrival at the sky islands (grace before you can fall off)'),
     jetRpm: T.num('jetRpm', 100, 70, 140, 1, 'Jet (hold B / up, up high) fires while you spin at least this cadence: a spin-up, not a power surge, so recoveries stay easy'),
@@ -282,7 +300,14 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   }
 
   const save: FullSendSave = { ver: 1, ...(ctx.load<FullSendSave>() ?? {}) };
-  let tour: Tour = TOURS[opts.tour ?? save.lastTour ?? 'classic'] ?? TOURS.classic;
+  const week = opts.week ?? (typeof opts.day === 'number' ? weekOf(opts.day) : 0);
+  const ALL: Record<string, Tour> = { weekly: weeklyTour(week), ...TOURS };
+  const IDS = ['weekly', ...TOUR_IDS] as string[];
+  let tour: Tour = ALL[opts.tour ?? save.lastTour ?? 'classic'] ?? TOURS.classic;
+  /** Where this tour's best, ghost and history live: the weekly tour is a new tour every week. */
+  const keyOf = (t: Tour) => (t.id === 'weekly' ? `weekly-${week}` : t.id);
+  /** Your score on the most recent earlier week's tour (0 = none): this week's ride is raced against it. */
+  const lastWeek = () => [...(save.weeks ?? [])].reverse().find((w) => w.week < week) ?? null;
   let menu = opts.menu !== false && opts.tour === undefined;
   let menuRow = 0, menuT = 0, reducedFlash = !!save.reducedFlash;
   const actions: Array<{ type: string; value?: unknown }> = [];
@@ -329,7 +354,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   /** Altitude: layer, lift meter, where we're flying to (or falling to), the scenery we're leaving, and stats. */
   let tier: Tier = 'ground', lift = 0, toTier: Tier | null = null, plunging = false, transFrom: BiomeId = cur, transMix = 0, warp = 0, tierT = 0, edgeX: number | null = null;
   let megaX: number | null = null, megaArmed = false; // the mega ramp ahead (or just behind) and whether it still launches you
-  let launchVy = 1, skyVisits = 0, moonVisits = 0, splashdowns = 0, peakAlt = 0;
+  let launchVy = 1, skyVisits = 0, moonVisits = 0, splashdowns = 0, touchdowns = 0, peakAlt = 0, skyRings = 0, gliding = false, glideT = 0;
   let fromTier: Tier | null = null, splashAt = -99, jet: 'on' | 'weak' | null = null, jetS = 0, moonDoneAt = -1;
   let chaseX = 0, chaseV = 0, caveDecel = 0, chaseRun = 0, chaseLead = 0; // outrun payoff: the chaser charging the cave mouth
   const caught = new Set<number>(); const got: Array<{ id: number; kind: AirKind; at: number }> = [];
@@ -378,7 +403,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   const scoreNow = () => results.reduce((a, r) => a + r.medal * 100 + (r.pb ? 50 : 0), 0)
     + style * 15 + flips * 10 + rings * 10 + stars * 3 + perfects * 2 + skyVisits * 20 + moonVisits * 40;
   const ghostAt = (): number | null => {
-    const tr = save.ghost?.[tour.id];
+    const tr = save.ghost?.[keyOf(tour)];
     if (!tr || tr.length < 2 || menu) return null;
     const i = Math.min(tr.length - 2, Math.floor(rideS)), f = Math.min(1, rideS - i);
     return tr[i] + (tr[i + 1] - tr[i]) * f;
@@ -403,7 +428,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   // ---- setup screen, saves and first-ride tips ----
   const MENU_ROWS = 3; // tour · fewer flashes · start
   function chooseTour(id: string) {
-    tour = TOURS[id] ?? TOURS.classic;
+    tour = ALL[id] ?? TOURS.classic;
     cur = lobbyBiome ?? tour.sets[0].biome; seam = null;
     route = tour.sets.map((_, i) => (opts.forks === 'alt' || (opts.forks === 'alternate' && i % 2 === 1) ? 1 : 0));
   }
@@ -423,7 +448,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     if (inp.pressed.has('up')) menuRow = (menuRow + MENU_ROWS - 1) % MENU_ROWS;
     if (inp.pressed.has('down')) menuRow = (menuRow + 1) % MENU_ROWS;
     const dir = inp.pressed.has('left') || inp.pressed.has('shiftDnL') || inp.pressed.has('shiftDnR') ? -1 : inp.pressed.has('right') || inp.pressed.has('shiftUpL') || inp.pressed.has('shiftUpR') ? 1 : 0;
-    if (dir && menuRow === 0) { const i = TOUR_IDS.indexOf(tour.id as never); chooseTour(TOUR_IDS[(i + dir + TOUR_IDS.length) % TOUR_IDS.length]); }
+    if (dir && menuRow === 0) { const i = IDS.indexOf(tour.id); chooseTour(IDS[(i + dir + IDS.length) % IDS.length]); }
     if (dir && menuRow === 1) reducedFlash = !reducedFlash;
     if (inp.pressed.has('a')) { if (menuRow === 1) reducedFlash = !reducedFlash; else { startRide(); return; } }
     menuT += dt;
@@ -437,15 +462,21 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   }
   function finishRide() {
     const sm = sim.summary();
-    const golds = Number(sm.gold), b = save.best?.[tour.id];
+    const key = keyOf(tour), golds = Number(sm.gold), b = save.best?.[key];
     const medals = medalString(), score = scoreNow(), prevScore = b?.score ?? 0;
     let rec = b ? { ...b } : null;
     if (!rec || golds > rec.golds || (golds === rec.golds && medalScore(medals) > medalScore(rec.medals))) {
       rec = { golds, medals, topKph: Number(sm.topKph), longestChain: Number(sm.longestChain), rings: Number(sm.rings) };
     }
     rec.score = Math.max(score, prevScore);
-    save.best = { ...(save.best ?? {}), [tour.id]: rec };
-    if (score > prevScore && trace.length > 1) save.ghost = { ...(save.ghost ?? {}), [tour.id]: trace.slice() };
+    const stale = (k: string) => k.startsWith('weekly-') && k !== `weekly-${week}`; // only this week's weekly tour keeps its best and ghost
+    save.best = { ...Object.fromEntries(Object.entries(save.best ?? {}).filter(([k]) => !stale(k))), [key]: rec };
+    if (score > prevScore && trace.length > 1) save.ghost = { ...Object.fromEntries(Object.entries(save.ghost ?? {}).filter(([k]) => !stale(k))), [key]: trace.slice() };
+    if (tour.id === 'weekly') { // the week's best goes in the history you race next week
+      const ws = (save.weeks ?? []).filter((w) => w.week !== week), old = (save.weeks ?? []).find((w) => w.week === week);
+      ws.push(old && old.score >= score ? old : { week, focus: tour.intent.focus, score, golds });
+      save.weeks = ws.sort((a, b2) => a.week - b2.week).slice(-8);
+    }
     // bests: a new one replaces the old; one you tried for but rode under fades a little, so targets follow your form
     const pb = { ...(save.pb ?? {}) };
     for (const [k, m] of Object.entries(rideBest)) {
@@ -495,6 +526,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     return null;
   }
   const tierBiome = (t: Tier): BiomeId => (t === 'sky' ? 'sky' : t === 'moon' ? 'moon' : t === 'sea' ? 'underwater' : cur);
+  /** Where a flight is heading: a glide off the edge comes down on the road, not in the sea. */
+  const destBiome = (t: Tier): BiomeId => (t === 'sea' && gliding ? cur : tierBiome(t));
   const gScale = () => (plunging ? 1 : tier === 'moon' ? tun.moonGravity() : tier === 'sea' ? tun.seaGravity() : 1); // falling: Earth's pull
   const airH = (): [number, number] | null => (toTier ? null : tier === 'sky' ? [4, 16] : tier === 'moon' ? [6, 30] : null);
   const cruising = () => phase === 'warmup' || phase === 'recovery' || phase === 'cooldown';
@@ -509,12 +542,14 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   }
   /** Run out of lift up high: drop off the edge, fall past the clouds, and splash into the sea. */
   function plunge(now: number) {
+    gliding = false; glideT = 0;
     transFrom = shown(); fromTier = tier; toTier = 'sea'; transMix = 0; plunging = true; edgeX = x;
     megaArmed = false; megaX = null;
     setMode('hop'); vy = 4; hopT0 = now; bouncing = false; landGrade = null;
   }
   /** Moon time's up: the next ramp throws you off the moon, and it's a long way down (re-entry, then the sea). */
   function leaveMoon(now: number) {
+    gliding = false; glideT = 0;
     transFrom = shown(); fromTier = 'moon'; toTier = 'sea'; transMix = 0; plunging = true; edgeX = x + 12; moonDoneAt = -1;
     setMode('hop'); vy = tun.moonExitVy(); hopT0 = now; bouncing = false; landGrade = null;
     ctx.emit({ type: 'launch', data: { from: 'moon', to: 'sea' } });
@@ -877,7 +912,9 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           : clamp(lift + ((flow - tun.liftFloor()) / Math.max(0.01, tun.flowMax())) * (flow > tun.liftFloor() ? fillBoost : 1) * dt / tun.liftFillS(), 0, 1);
         if (tier === 'sky' && lift <= 0 && mode === 'road') plunge(now);
         if (tier === 'moon' && lift <= 0 && moonDoneAt < 0) moonDoneAt = now; // out of moon time: a mega ramp throws you off
-        const due = tier === 'moon' ? moonDoneAt >= 0 : tier === 'sea' ? tierT >= tun.seaS() || lift >= 1 : lift >= 1;
+        // the moon is rare: a full meter on the sky islands opens it only once you've flown through enough rings up there
+        const due = tier === 'moon' ? moonDoneAt >= 0 : tier === 'sea' ? tierT >= tun.seaS() || lift >= 1
+          : tier === 'sky' ? lift >= 1 && skyRings >= tun.moonRings() : lift >= 1;
         // no launch up a layer just before a set piece: you would only have to come straight back down
         const roomUp = tier === 'sea' || tier === 'moon' || phase === 'cooldown'
           || phaseS() - phaseT > (tier === 'ground' ? tun.descentSkyS() : tun.descentMoonS()) + 25;
@@ -941,14 +978,26 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
             if (vy <= 0) {
               tier = toTier; toTier = null; tierT = 0; transMix = 0; fromTier = null; megaX = null;
               lift = tier === 'moon' ? 1 : tier === 'sky' ? tun.skyStartLift() : 0;
-              if (tier === 'sky') skyVisits++; else if (tier === 'moon') moonVisits++;
+              if (tier === 'sky') { skyVisits++; skyRings = 0; } else if (tier === 'moon') moonVisits++;
               ctx.emit({ type: 'biomeReached', data: { biome: shown() } });
             }
           } else if (plunging) { // falling: past the clouds, into the sea (re-based halfway so the sea floor is under you)
             const fallM = fromTier === 'moon' ? tun.moonFallM() : tun.plungeM(); // from the moon it's a long way down
             if (fromTier === 'moon') vy = Math.max(vy, -tun.reentryV()); // air drag: a long, steady burn you can watch
+            // or pull back (lean back and hold it) and glide down to the road instead of the sea
+            if (!gliding) {
+              const ln = opts.glide ? -1 : opts.autolean ? 0 : leanInput();
+              glideT = ln <= -tun.glideLean() ? glideT + dt : Math.max(0, glideT - dt);
+              if (glideT >= tun.glideHoldS()) { gliding = true; ctx.emit({ type: 'glide', data: { from: fromTier ?? 'sky' } }); }
+            }
+            if (gliding) vy = Math.max(vy, -tun.glideVy());
             transMix = clamp((ground - y) / fallM, 0, 1);
-            if (ground - y >= fallM) {
+            if (gliding && ground - y >= fallM) { // out of the clouds over the road: level off for the touchdown (it's graded)
+              tier = 'ground'; toTier = null; plunging = false; gliding = false; glideT = 0; transMix = 0; tierT = 0; megaX = null; lift = 0;
+              flow = keepFlow ?? 0; keepFlow = null; touchdowns++; warp++; landGrade = null; fromTier = null; edgeX = null;
+              y = ground + tun.glideTouchM(); vy = -4; bouncing = false; hopT0 = now - 1; pitch = 0.3;
+              ctx.emit({ type: 'biomeReached', data: { biome: cur } });
+            } else if (ground - y >= fallM) {
               tier = 'sea'; toTier = null; plunging = false; transMix = 0; tierT = 0; megaX = null; lift = 0; flow = keepFlow ?? 0; keepFlow = null; splashdowns++; warp++; landGrade = null;
               fromTier = null; splashAt = now; chain = 0;
               y = ground + tun.plungeM(); vy = Math.min(vy, -10); bouncing = true; edgeX = null; // the splashdown is never graded
@@ -997,7 +1046,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           if (Math.abs(alt - it.h) > (it.kind === 'ring' ? 3 : 2.2)) continue;
           caught.add(it.id); got.push({ id: it.id, kind: it.kind, at: now }); if (got.length > 12) got.shift();
           if (it.kind === 'ring') {
-            rings++; flow = Math.min(tun.flowMax(), flow + tun.ringFlow()); v *= 1.04;
+            rings++; if (tier === 'sky') skyRings++; flow = Math.min(tun.flowMax(), flow + tun.ringFlow()); v *= 1.04;
             lift = Math.min(1, lift + tun.ringLift() * (tier === 'moon' ? 0.5 : 1));
           } else { stars++; lift = Math.min(1, lift + tun.starLift() * (tier === 'moon' ? 0.5 : 1)); }
           ctx.emit({ type: 'collect', data: { kind: it.kind, tier } });
@@ -1040,7 +1089,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       if (mode === 'hop' && now - hopT0 > 0.5 && !toTier) offerTip('lean', 'Airtime! Lean with the paddles or ◀ ▶ so you land parallel to the slope.', now);
       if (landGrade === 'perfect' || landGrade === 'good') offerTip('landing', 'Clean landing: that adds FLOW, free speed for the same watts. Land crossed up and you bounce.', now);
       if (tier === 'ground' && lift > 0.25) offerTip('lift', 'Keep the flow going to fill LIFT. When it\'s full, your next jump launches you into the sky.', now);
-      if (tier === 'sky' && !toTier) offerTip('sky', `Sky Islands! Hold B and spin above ${Math.round(tun.jetRpm())} rpm (easy gear) to jet up to the rings.`, now);
+      if (tier === 'sky' && !toTier) offerTip('sky', `Sky Islands! Hold B and spin above ${Math.round(tun.jetRpm())} rpm to jet up to the rings: ${Math.round(tun.moonRings())} rings and a full meter open the Moon.`, now);
+      if (plunging && !gliding && tierT > 0.3) offerTip('glide', 'Falling! Hold the left paddle (or ◀) to pull back and glide down to the road instead of the sea.', now);
       if (tier === 'moon' && !toTier) offerTip('moon', 'The Moon: low gravity and limited time. Rings give you more moon time.', now);
       if (tier === 'sea' && !toTier) offerTip('sea', 'Splashdown! Keep pedalling: you\'ll breach back up to the road.', now);
       if (wind < -0.3) offerTip('wind', 'Headwind: it\'s heavier for a while. A tailwind gives it back.', now);
@@ -1091,7 +1141,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return {
         t: now, tour: tour.id, tourName: tour.name, phase, phaseT, phaseS: phaseS(), setIndex, setCount: tour.sets.length,
         x, y, v, vy: mode === 'hop' || mode === 'air' ? vy : 0, pitch, mode, camX, hill, grade, terrainSeed, stretch: tun.hillStretch(), maxGrade, bumpScale: tun.bumps() ? tun.bumpScale() : 0,
-        ...(toTier ? { biome: transMix < 0.5 ? transFrom : tierBiome(toTier), from: transFrom, to: tierBiome(toTier), mix: transMix }
+        ...(toTier ? { biome: transMix < 0.5 ? transFrom : destBiome(toTier), from: transFrom, to: destBiome(toTier), mix: transMix }
           : tier !== 'ground' ? { biome: shown(), from: shown(), to: shown(), mix: 0 }
             : { biome: cur, from: cur, to: cur, mix: 0 }),
         seam: tier === 'ground' && !toTier ? seam : null,
@@ -1104,14 +1154,19 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         tier, lift, alt: y - roadH(x), toTier, warp, edgeX, mega: megaX,
         fork, visited: [...visited],
         menu: menu ? { row: menuRow, tour: tour.id, reducedFlash, left: Math.max(0, tun.menuAutoS() - menuT),
-          tours: TOUR_IDS.map((id) => { const b = save.best?.[id]; return { id, name: TOURS[id].name, minutes: tourMinutes(TOURS[id], tun.approachS()), best: b ? `${b.medals} · ${b.golds} gold${b.score ? ` · best ${b.score} pts` : ""}` : null }; }) } : null,
+          tours: IDS.map((id) => {
+            const t = ALL[id], b = save.best?.[keyOf(t)], lw = id === 'weekly' ? lastWeek() : null;
+            const best = b ? `${b.medals} · ${b.golds} gold${b.score ? ` · best ${b.score} pts` : ''}` : lw ? `last week ${lw.score} pts` : null;
+            return { id, name: t.name, minutes: tourMinutes(t, tun.approachS()), best, focus: t.intent.focus, why: t.intent.why };
+          }) } : null,
         reducedFlash, tip: tip ? { id: tip.id, text: tip.text, age: now - tip.at } : null, wind, crashAt,
         fromTier, splashAt, jet, jetRpm: tun.jetRpm(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
+        skyRings, moonRings: Math.round(tun.moonRings()), gliding,
         fromLobby: !!lobbyBiome, loopV: mode === 'loop' ? loopV : 0,
         flip: flip ? { name: flip.name, age: now - flip.at } : null, spun,
         hazards: phase === 'payoff' && piece?.kind === 'leap' && (mode === 'air' || mode === 'fall') ? hazards.map((z) => ({ x: z.x, y: hazardY(z, leapT), vy: z.vy - z.g * (leapT - z.t0), hit: z.hit })) : [],
         scorchAt, leapSlow: phase === 'payoff' && piece?.kind === 'leap' && mode === 'air' ? 1 - (1 - tun.leapSlowMo()) * Math.sin(Math.PI * clamp((x - launchX) / Math.max(1, piece.x0 + piece.len - launchX), 0, 1)) ** 1.5 : 1,
-        score: scoreNow(), bestScore: save.best?.[tour.id]?.score ?? 0, ghostX: ghostAt(), chargeAt, chargeGain, ridden: ridden(),
+        score: scoreNow(), bestScore: save.best?.[keyOf(tour)]?.score ?? 0, intent: tour.intent, lastWeekScore: tour.id === 'weekly' ? lastWeek()?.score ?? 0 : 0, ghostX: ghostAt(), chargeAt, chargeGain, ridden: ridden(),
         hooks: { shielded: phase === 'effort', seg: phase, lobbyBiome: cur, ...(wantCad !== undefined ? { cadence: wantCad } : {}) },
       };
     },
@@ -1123,7 +1178,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return {
         tour: tour.name, sets: results.length, gold: n(3), silver: n(2), bronze: n(1), missed: n(0),
         topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, perfectLandings: perfects, badLandings: bads, flowPeakPct: Math.round(flowPeak * 100), hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
-        skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain, flips, scorched,
+        skyVisits, moonVisits, splashdowns, touchdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain, flips, scorched,
         distanceKm: +(x / 1000).toFixed(1), altRoutes: route.filter((r) => r).length, biomesSeen: new Set(visited).size,
         score: scoreNow(), newBests: results.filter((r) => r.pb).length,
         bestSprintW: results.reduce((a, r) => Math.max(a, r.peakW), 0),

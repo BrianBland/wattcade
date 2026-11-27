@@ -4,7 +4,7 @@ import type { InputState } from '../../../contracts';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { landingGrade, leapRange, loopExit, loopRadius, medalFor, smashCount, targetSpeed } from '../sim/physics';
-import { TOURS } from '../sim/tour';
+import { TOURS, weekOf, weeklyTour } from '../sim/tour';
 import { flipName, hazardY, leapHazards, type FullSendSnapshot } from '../sim/sim';
 
 describe('scenarios via runHeadless', () => {
@@ -215,14 +215,26 @@ describe('flips', () => {
 });
 
 describe('altitude: momentum takes you up to the sky islands and the moon', () => {
-  it('a rider who keeps their flow up launches to the sky, then the moon, falls into the sea and breaches back', () => {
-    const r = runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean: true } });
+  it('a rider who keeps their flow up and flies the rings launches to the sky, then the moon, falls into the sea and breaches back', () => {
+    const r = runHeadless({ game: module, script: 'cadence-follow', minutes: 32, seed: 3, simOpts: { tour: 'classic', autolean: true, autojet: true } });
     const sm = r.summary;
     expect(Number(sm.skyVisits)).toBeGreaterThanOrEqual(1);
     expect(Number(sm.moonVisits)).toBeGreaterThanOrEqual(1);
     expect(Number(sm.splashdowns)).toBeGreaterThanOrEqual(1);
     const order = r.events.filter((e) => e.type === 'launch').map((e) => (e.data as { to: string }).to);
-    expect(order.slice(0, 4)).toEqual(['sky', 'moon', 'sea', 'ground']); // thrown off the moon, then the breach out of the sea
+    const m = order.indexOf('moon');
+    expect(order[m - 1]).toBe('sky'); expect(order.slice(m, m + 3)).toEqual(['moon', 'sea', 'ground']); // thrown off the moon, then the breach out of the sea
+  });
+  it('the moon is rare: clean landings alone take you to the sky but not the moon (it needs rings up there)', () => {
+    const r = runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean: true } });
+    expect(Number(r.summary.skyVisits)).toBeGreaterThanOrEqual(1);
+    expect(Number(r.summary.moonVisits)).toBe(0);
+  });
+  it('lean back as you fall and you glide down to the road instead of the sea', () => {
+    const r = runHeadless({ game: module, script: 'cadence-follow', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean: true, autojet: true, glide: true } });
+    expect(Number(r.summary.touchdowns)).toBeGreaterThanOrEqual(1);
+    expect(r.events.some((e) => e.type === 'glide')).toBe(true);
+    expect(Number(r.summary.splashdowns)).toBe(0);
   });
   it('a hands-off rider stays on the road', () => {
     const sm = runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick' } }).summary;
@@ -386,6 +398,38 @@ describe('personal targets', () => {
     expect(Number(ride(store, 'steady-fs').sm.gold)).toBe(5);
     const easy = ride(store, 'steady90-fs').sm;
     expect(Number(easy.gold)).toBe(0); expect(Number(easy.silver) + Number(easy.bronze)).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('tours with a purpose, and the weekly tour', () => {
+  it('every tour says what it trains', () => {
+    for (const t of Object.values(TOURS)) { expect(t.intent.focus.length).toBeGreaterThan(3); expect(t.intent.why.length).toBeGreaterThan(10); }
+    expect(TOURS.punch.sets.every((q) => q.effortS <= 12 && (q.finale || q.recoveryS >= 150))).toBe(true); // short and full rest
+    expect(TOURS.repeat.sets.every((q) => q.effortS === 30 && (q.finale || q.recoveryS <= 75))).toBe(true); // short rest
+  });
+  it('the weekly tour is the same all week, changes next week, and rotates its focus', () => {
+    expect(weeklyTour(2970)).toEqual(weeklyTour(2970));
+    expect(JSON.stringify(weeklyTour(2971).sets)).not.toBe(JSON.stringify(weeklyTour(2970).sets));
+    expect(new Set([2970, 2971, 2972].map((w) => weeklyTour(w).intent.focus)).size).toBe(3);
+    expect(weekOf(20423)).toBe(weekOf(20429)); expect(weekOf(20430)).toBe(weekOf(20429) + 1); // Monday to Sunday
+    for (const w of [2970, 2971, 2972]) for (const q of weeklyTour(w).sets) if (q.kind === 'dive') expect(['underwater', 'marsh']).toContain(q.biome);
+  });
+  it("this week's ride is raced against last week's", () => {
+    const store: { data?: unknown } = {};
+    const ride = (week: number) => {
+      const prof = testProfile();
+      (prof as { gameData?: Record<string, unknown> }).gameData = store.data ? { fullsend: store.data } : {};
+      const s = createGameSession({ game: module, profile: prof, input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'weekly', week, forks: 'main' }, seed: 3, onSave: (d) => { store.data = d; } });
+      while (!s.sim.isOver()) s.step(300);
+      return (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    };
+    const a = ride(2970);
+    expect(a.lastWeekScore).toBe(0);
+    const b = ride(2971);
+    expect(b.lastWeekScore).toBe(a.score);
+    const save = store.data as { weeks: Array<{ week: number }>; best: Record<string, unknown> };
+    expect(save.weeks.map((w) => w.week)).toEqual([2970, 2971]);
+    expect(Object.keys(save.best)).toEqual(['weekly-2971']); // only this week's weekly best is kept
   });
 });
 

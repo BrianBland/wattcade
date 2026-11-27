@@ -304,7 +304,8 @@ export function startSession(game: GameModule, profile: Profile, onSave: (d: unk
   active = createGameSession({
     game, profile, input, dataHub: useFake ? undefined : dataHub,
     fake: useFake ? { script: fakeScript } : false, onSave, media,
-    ...(lobbyExit ? { simOpts: { lobby: { biome: lobbyExit.biome, v: lobbyExit.v } } } : {}),
+    // `day` (whole days since 1970) lets a game pick a daily or weekly challenge; sims stay deterministic given their opts
+    simOpts: { day: Math.floor(Date.now() / 86400000), ...(lobbyExit ? { lobby: { biome: lobbyExit.biome, v: lobbyExit.v } } : {}) },
   });
   return active;
 }

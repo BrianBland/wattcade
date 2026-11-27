@@ -425,6 +425,7 @@ export class FullSendRenderer implements GameRenderer {
     if (s.trick) { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
     drawRider(g, look, bike.crankRevs, s.x, { t, speed: Math.min(s.v, 20), gear: gearL === 'road' ? null : gearL });
     drawSlipstream(g, s.v, t);
+    if (s.gliding) drawCanopy(g, t);
     if (s.hay > 0.02 || s.mode === 'smash') drawHayOnRider(g, Math.max(s.hay, s.mode === 'smash' ? 0.3 : 0), t);
     if (crash >= 0 && crash < 1.6) { // dizzy stars round the helmet
       for (let i = 0; i < 3; i++) { const a = t * 6 + (i * Math.PI * 2) / 3; g.fillStyle = i % 2 ? '#ffd23b' : '#ffffff'; g.fillRect(Math.round(Math.cos(a) * 7) - 1, Math.round(-30 + Math.sin(a) * 2.5), 2, 2); }
@@ -435,7 +436,7 @@ export class FullSendRenderer implements GameRenderer {
     // ---- transitions: re-entry, cloud decks, the sea surface, splashes ----
     if (cross === 'reentry' && cdm >= 0 && hop.slope < 0) drawFireball(g, rx, ryy, Math.atan2(-hop.slope * 3, 1), Math.min(1, hop.h / 8), t);
     // re-entry: a long smoke-and-fire trail behind you (world points, so it streams away as you fall)
-    const burning = s.fromTier === 'moon' && s.toTier === 'sea';
+    const burning = s.fromTier === 'moon' && s.toTier === 'sea' && !s.gliding; // pull out into a glide and the burn ends
     if (!burning || s.warp !== this.trailWarp) this.trail.length = 0;
     this.trailWarp = s.warp;
     if (burning) {
@@ -444,7 +445,7 @@ export class FullSendRenderer implements GameRenderer {
       while (this.trail.length && s.t - this.trail[0].t > 3) this.trail.shift();
       drawTrail(g, this.trail.map((q) => ({ x: sx(q.x), y: sy(q.y) - 6, age: s.t - q.t })), Math.min(1, Math.max(0, (-s.vy - 8) / 25)));
     }
-    if (s.fromTier === 'moon' && s.toTier === 'sea' && s.vy < -12) {
+    if (burning && s.vy < -12) {
       drawFireball(g, rx, ryy, Math.atan2(-s.vy, s.v), Math.min(1, (-s.vy - 12) / 30), t);
     }
     const deckScroll = s.camX * PPM * 0.9;
@@ -674,7 +675,8 @@ export class FullSendRenderer implements GameRenderer {
       txt('KEEP PEDALLING!', cxm, B.y + 26, 34, s.reducedFlash ? '#ffd23b' : (Math.sin(s.t * 10) > 0 ? '#ffd23b' : '#ffffff'));
       this.meter(s, p);
     } else if (s.phase === 'recovery' || s.phase === 'warmup') {
-      txt(s.phase === 'warmup' ? `WARM-UP · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : 'RECOVER', cxm, B.y + 18, 18, '#ffffff', 'center', 900, true, 4);
+      txt(s.phase === 'warmup' ? `TODAY: ${s.intent.focus.toUpperCase()} · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : `RECOVER · ${s.intent.rest.toUpperCase()}`, cxm, B.y + 18, 18, '#ffffff', 'center', 900, true, 4);
+      if (s.phase === 'warmup' && s.phaseT < 25) txt(s.intent.why, cxm, B.y + 40, 13, '#e8f4ff', 'center', 700, false, 3);
     } else if (s.phase === 'done' || s.phase === 'cooldown') {
       const msg = s.phase === 'done' ? (s.ridden ? 'TOUR COMPLETE!' : 'RIDE OVER') : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`;
       txt(msg, cxm, B.y + 22, s.phase === 'done' ? 34 : 20, s.phase === 'done' ? '#ffd23b' : '#ffffff');
@@ -764,8 +766,8 @@ export class FullSendRenderer implements GameRenderer {
     m.fillText('FULL SEND', (M.x + M.w / 2) * d, (M.y + 34) * d);
     const tours = menu.tours, ti = Math.max(0, tours.findIndex((q) => q.id === menu.tour)), tr = tours[ti];
     const rowH = (M.h - 70) / 3;
-    const rows: Array<{ label: string; sub: string; act: () => void }> = [
-      { label: `◀  ${tr.name.toUpperCase()} · ~${tr.minutes} MIN  ▶`, sub: tr.best ? `Best: ${tr.best}` : 'Not ridden yet', act: () => this.send?.({ type: 'tour', value: tours[(ti + 1) % tours.length].id }) },
+    const rows: Array<{ label: string; sub: string; why?: string; act: () => void }> = [
+      { label: `◀  ${tr.name.toUpperCase()} · ~${tr.minutes} MIN  ▶`, sub: `${tr.focus.toUpperCase()} · ${tr.best ? `Best: ${tr.best}` : 'Not ridden yet'}`, why: tr.why, act: () => this.send?.({ type: 'tour', value: tours[(ti + 1) % tours.length].id }) },
       { label: `FEWER FLASHES: ${menu.reducedFlash ? 'ON' : 'OFF'}`, sub: 'No screen shake or flashing', act: () => this.send?.({ type: 'flash' }) },
       { label: 'START ▸', sub: `A to start · starts by itself in ${Math.ceil(menu.left)} s`, act: () => this.send?.({ type: 'start' }) },
     ];
@@ -774,10 +776,12 @@ export class FullSendRenderer implements GameRenderer {
       const box = { x: M.x + 16, y: y + 3, w: M.w - 32, h: rowH - 6 };
       if (i) { m.fillStyle = 'rgba(255,255,255,0.35)'; m.fillRect((box.x + 10) * d, (y - 1) * d, (box.w - 20) * d, 1 * d); }
       if (on) { m.fillStyle = '#ffd23b'; m.fillRect(box.x * d, (box.y + 4) * d, 6 * d, (box.h - 8) * d); m.fillRect((box.x + box.w - 6) * d, (box.y + 4) * d, 6 * d, (box.h - 8) * d); }
+      const k = r.why ? [0.2, 0.55, 0.83] : [0.4, 0.76, 0];
       m.fillStyle = on ? '#ffd23b' : '#ffffff'; m.font = font(900, 18, true);
-      m.fillText(r.label, (M.x + M.w / 2) * d, (box.y + box.h * 0.4) * d);
-      m.fillStyle = '#cfe8d8'; m.font = font(600, 12);
-      m.fillText(r.sub, (M.x + M.w / 2) * d, (box.y + box.h * 0.76) * d);
+      m.fillText(r.label, (M.x + M.w / 2) * d, (box.y + box.h * k[0]) * d);
+      m.fillStyle = '#cfe8d8'; m.font = font(r.why ? 800 : 600, 12);
+      m.fillText(r.sub, (M.x + M.w / 2) * d, (box.y + box.h * k[1]) * d);
+      if (r.why) { m.fillStyle = '#a9d6bb'; m.font = font(600, 11); m.fillText(r.why, (M.x + M.w / 2) * d, (box.y + box.h * k[2]) * d, (box.w - 24) * d); }
       this.menuHits.push({ ...box, act: r.act });
     });
   }
@@ -866,8 +870,8 @@ export class FullSendRenderer implements GameRenderer {
     m.fillStyle = '#0e6b3c'; m.fillRect(C.x * d, C.y * d, C.w * d, C.h * d);
     m.lineWidth = 3 * d; m.strokeStyle = '#ffffff'; m.strokeRect((C.x + 6) * d, (C.y + 6) * d, (C.w - 12) * d, (C.h - 12) * d);
     const hs = Math.min(1, C.headH / 64);
-    txt(s.tourName.toUpperCase(), C.x + C.w / 2, C.y + 22 * hs, 20 * hs, '#ffffff', 'center', 900, true, 0);
-    txt(cardHeadline(s.score, s.bestScore), C.x + C.w / 2, C.y + 46 * hs, 15 * hs, s.score > s.bestScore ? '#ffd23b' : '#cfe8d8', 'center', 900, false, 0);
+    txt(`${s.tourName} · ${s.intent.focus}`.toUpperCase(), C.x + C.w / 2, C.y + 22 * hs, 20 * hs, '#ffffff', 'center', 900, true, 0);
+    txt(cardHeadline(s.score, s.bestScore, s.lastWeekScore), C.x + C.w / 2, C.y + 46 * hs, 15 * hs, s.score > s.bestScore ? '#ffd23b' : '#cfe8d8', 'center', 900, false, 0);
     const fs = Math.max(8, Math.min(15, C.rowH * 0.55));
     rows.forEach((r, i) => {
       const y = C.y + C.headH + i * C.rowH + C.rowH / 2;
@@ -1004,18 +1008,23 @@ export function landingCall(grade: FullSendSnapshot['landGrade'], flow: number, 
 }
 
 /** Lift meter label and colour: what a full meter gets you (or, up high, how long you've got). */
-export function liftMeter(s: Pick<FullSendSnapshot, 'tier' | 'lift'>): { label: string; color: string } {
+export function liftMeter(s: Pick<FullSendSnapshot, 'tier' | 'lift' | 'skyRings' | 'moonRings'>): { label: string; color: string } {
   switch (s.tier) {
     case 'ground': return { label: s.lift >= 1 ? 'LAUNCH READY' : 'LIFT → SKY', color: '#9fe8ff' };
-    case 'sky': return { label: s.lift >= 1 ? 'MOON SHOT READY' : 'LIFT → MOON', color: '#e6dcff' };
+    case 'sky': { // the moon needs rings up here as well as a full meter
+      const left = Math.max(0, (s.moonRings ?? 0) - (s.skyRings ?? 0));
+      if (left > 0) return { label: `MOON · ${left} RING${left === 1 ? '' : 'S'} TO GO`, color: '#e6dcff' };
+      return { label: s.lift >= 1 ? 'MOON SHOT READY' : 'LIFT → MOON', color: '#e6dcff' };
+    }
     case 'moon': return { label: 'MOON TIME', color: '#fff3b0' };
     case 'sea': return { label: 'SURFACING', color: '#6fe0d0' };
   }
 }
 
 /** Big banner while flying between layers. */
-export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier' | 'fromTier' | 'vy'>): { text: string; color: string } | null {
+export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier' | 'fromTier' | 'vy'> & { gliding?: boolean }): { text: string; color: string } | null {
   if (!s.toTier) return null;
+  if (s.gliding) return { text: 'GLIDING DOWN!', color: '#b6f59a' };
   if (s.toTier === 'sea' && s.fromTier === 'moon') return s.vy < -12 ? { text: 'RE-ENTRY!', color: '#ffb030' } : { text: 'LOST THE MOON!', color: '#ff9a6a' };
   if (s.toTier === 'sea') return { text: 'OFF THE EDGE!', color: '#ff9a6a' };
   if (s.toTier === 'sky') return { text: 'SKY LAUNCH!', color: '#9fe8ff' };
@@ -1023,6 +1032,19 @@ export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier' | 'fromTi
   return { text: 'BREACH!', color: '#6fe0d0' };
 }
 
+
+/** The glide canopy: a striped paraglider wing over the rider (rider-local px, rider's seat at the origin). */
+function drawCanopy(g: G, t: number) {
+  const w = 34, top = -44 + Math.sin(t * 3) * 1.5;
+  g.strokeStyle = 'rgba(30,30,40,0.8)'; g.lineWidth = 1;
+  for (const fx of [-w / 2 + 3, -6, 6, w / 2 - 3]) { g.beginPath(); g.moveTo(fx, top + 6); g.lineTo(0, -16); g.stroke(); }
+  const cols = ['#ff4d6d', '#ffd23b', '#ff4d6d', '#ffd23b', '#ff4d6d'];
+  for (let i = 0; i < cols.length; i++) {
+    const a0 = Math.PI + (i / cols.length) * Math.PI, a1 = Math.PI + ((i + 1) / cols.length) * Math.PI;
+    g.fillStyle = cols[i]; g.beginPath(); g.moveTo(Math.cos(a0) * w / 2, top + 6 + Math.sin(a0) * 9); g.arc(0, top + 6, w / 2, a0, a1);
+    g.lineTo(Math.cos(a1) * w / 2 * 0.8, top + 7 + Math.sin(a1) * 6); g.lineTo(Math.cos(a0) * w / 2 * 0.8, top + 7 + Math.sin(a0) * 6); g.closePath(); g.fill();
+  }
+}
 
 /** Left-aligned word wrap, vertically centred on y (at most 3 lines). */
 function wrap(m: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lineH: number) {

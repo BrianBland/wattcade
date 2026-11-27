@@ -9,7 +9,7 @@ hud.style.height = `${inset}px`;
 const session = createGameSession({
   game, profile: testProfile({ color: '#4cc9f0' }), input: new NullInput(),
   fake: { script: q.get('script') ?? 'hook-responsive' }, seed: Number(q.get('seed') ?? 1),
-  simOpts: { ...(q.get('tour') ? { tour: q.get('tour') } : {}), autolean: q.get('autolean') !== '0', autojet: q.get('autojet') === '1', ...(q.get('forks') ? { forks: q.get('forks') } : {}) },
+  simOpts: { ...(q.get('tour') ? { tour: q.get('tour') } : {}), autolean: q.get('autolean') !== '0', autojet: q.get('autojet') === '1', ...(q.get('forks') ? { forks: q.get('forks') } : {}), glide: q.get('glide') === '1', ...(q.get('week') ? { week: Number(q.get('week')) } : {}) },
 });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const r = await game.loadRenderer();

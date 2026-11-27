@@ -20,7 +20,7 @@ export const module: GameModule = {
   progressLine(save: unknown) {
     const sv = save as FullSendSave | undefined;
     if (!sv?.best) return null;
-    const parts = Object.entries(sv.best).map(([id, b]) => `${TOURS[id]?.name ?? id}: ${b.golds} gold${b.score ? ` · ${b.score} pts` : ''}`);
+    const parts = Object.entries(sv.best).map(([id, b]) => `${TOURS[id]?.name ?? (id.startsWith('weekly-') ? 'This week' : id)}: ${b.golds} gold${b.score ? ` · ${b.score} pts` : ''}`);
     if (sv.moonVisits) parts.push(`moon ×${sv.moonVisits}`);
     return parts.join(' · ') || null;
   },

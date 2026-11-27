@@ -63,9 +63,10 @@ export function cardRows(results: readonly SetResult[]): CardRow[] {
   }));
 }
 /** The card's headline: score, and how it compares with your best on this tour. */
-export function cardHeadline(score: number, bestScore: number): string {
-  if (!bestScore) return `${score} PTS · FIRST RIDE OF THIS TOUR`;
-  return score > bestScore ? `${score} PTS · NEW BEST (+${score - bestScore})` : `${score} PTS · BEST ${bestScore}`;
+export function cardHeadline(score: number, bestScore: number, lastWeek = 0): string {
+  const vsWeek = lastWeek > 0 ? ` · LAST WEEK ${lastWeek} (${score >= lastWeek ? '+' : '−'}${Math.abs(score - lastWeek)})` : '';
+  if (!bestScore) return `${score} PTS · FIRST RIDE OF THIS TOUR${vsWeek}`;
+  return (score > bestScore ? `${score} PTS · NEW BEST (+${score - bestScore})` : `${score} PTS · BEST ${bestScore}`) + vsWeek;
 }
 /** The end-of-tour card shows once the last set piece is done (through the cool-down and after). */
 export const cardVisible = (s: Pick<FullSendSnapshot, 'phase' | 'phaseT' | 'results' | 'setCount' | 'menu'>) =>

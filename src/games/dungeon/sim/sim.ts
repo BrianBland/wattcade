@@ -8,6 +8,7 @@ import { DEFAULT_ZONE_REFILL, completeCooldown, startCooldown, effortFlourish, e
 import { DEFAULT_CFG, DEFAULT_TARGETS, newFloor, spinupCalled, stepDirector, type DirectorCfg, type DirectorState, type Seg } from './director';
 import { sprintBreak, DEFAULT_BOSS, bossDamageMult, bossStunned, newBoss, strikeBoss, stepBoss, tideBonus, type BossCfg, type BossState } from './boss';
 import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
+import { STANCE_STRIKE, arcanePulseProc, onKillElementProc, stormChainTargets } from './elementProcs';
 import { createArsenalCollection } from './arsenal';
 import { DEFAULT_OFFER, PERK_FX, PERKS, RARITY_NAMES, SLOT_NAMES, STYLE_NAMES, kitOf, perkMods, rollOffer, styleWeights, suggestPerk, type FloorRide, type PerkId, type PerkMods, type PerkRanks } from './perks';
 import { clearLine, cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
@@ -573,7 +574,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#ffe08a', text: 'SECOND WIND' });
     addFx({ kind: 'levelup', x: P.x, y: P.y, life: 1, color: '#ffe08a', r: 3.5 });
   }
-  function damageEnemy(e: Enemy, raw: number, bike: Readonly<BikeState>, crit = false, color = '#fff') {
+  function damageEnemy(e: Enemy, raw: number, bike: Readonly<BikeState>, crit = false, color = '#fff', fromProc = false) {
     if (!e.alive) return;
     let dmg = raw;
     if (e.kind === 'boss') {
@@ -586,7 +587,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const applied = Math.min(dmg, e.hp);
     e.hp -= dmg; damageDealt += applied; e.hurtT = t;
     dmgNumber(e, dmg, crit, color);
-    if (e.hp <= 0) killEnemy(e);
+    if (e.hp <= 0) {
+      const proc = !fromProc && e.kind !== 'boss' ? onKillElementProc(e, weapon.element, liveInRoom(current)) : null;
+      killEnemy(e);
+      if (proc) {
+        addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.35, color: proc.color, r: proc.radius });
+        const procDmg = weapon.dmg * playerDmg(bike) * proc.dmgMult;
+        for (const o of proc.targets as Enemy[]) {
+          if (proc.applySlowS > 0) o.slowT = Math.max(o.slowT, proc.applySlowS);
+          if (proc.applyDotS > 0) { o.dotT = Math.max(o.dotT, proc.applyDotS); o.dotDps = Math.max(o.dotDps, procDmg * 0.3); }
+          damageEnemy(o, procDmg, bike, false, proc.color, true);
+        }
+      }
+    }
   }
   function killEnemy(e: Enemy) {
     e.alive = false; kills++;
@@ -699,6 +712,28 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       }
       if (pts.length > 1) addFx({ kind: 'chain', x: e.x, y: e.y, life: 0.25, color: col, pts: [{ x: b.x - b.vx * 0.03, y: b.y - b.vy * 0.03 }, ...pts] });
     }
+    if (b.crit && !b.child) {
+      if (w.element === 'storm' && chains === 0) {
+        const ch = stormChainTargets(e, liveInRoom(current), 2, 4.2);
+        if (ch.targets.length) {
+          addFx({ kind: 'chain', x: e.x, y: e.y, life: 0.28, color: '#ffe45e', pts: ch.pts });
+          for (const nx of ch.targets as Enemy[]) damageEnemy(nx, b.dmg * ch.dmgMult, bike, false, '#ffe45e', true);
+        }
+      } else if (w.element === 'arcane') {
+        const ap = arcanePulseProc(e.x, e.y, e.id, liveInRoom(current), 2.8);
+        if (ap.targets.length) {
+          addFx({ kind: 'levelup', x: e.x, y: e.y, life: 0.32, color: ap.color, r: ap.radius });
+          for (const nx of ap.targets as Enemy[]) {
+            if (nx.kind !== 'boss') {
+              const d = Math.hypot(e.x - nx.x, e.y - nx.y) || 1;
+              nx.x += ((e.x - nx.x) / d) * Math.min(ap.pullTiles, d * 0.4);
+              nx.y += ((e.y - nx.y) / d) * Math.min(ap.pullTiles, d * 0.4);
+            }
+            damageEnemy(nx, b.dmg * ap.dmgMult, bike, false, ap.color, true);
+          }
+        }
+      }
+    }
     if (w.unique === 'split' && !b.child) {
       const a0 = Math.atan2(b.vy, b.vx);
       for (let k = 0; k < 4; k++) {
@@ -728,12 +763,42 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function doStrike(bike: Readonly<BikeState>) {
     const hit = liveInRoom(current).filter((e) => Math.hypot(e.x - P.x, e.y - P.y) < strikeRadius() + e.r);
     if (!hit.length) { cue('deny'); return false; }
+    const stFx = STANCE_STRIKE[stance];
     const dmg = weapon.dmg * playerDmg(bike) * strikeMult();
     // Record before damage: a killing Strike emits bossDefeated synchronously.
     if (hit.some((e) => e.kind === 'boss') && bs.cycle === 'exposed' && !expHit) { expHit = true; expStruck++; }
-    for (const e of hit) { damageEnemy(e, dmg, bike, true, '#ffd84a'); e.slowT = Math.max(e.slowT, 2); }
+    for (const e of hit) {
+      damageEnemy(e, dmg, bike, true, stFx.color);
+      e.slowT = Math.max(e.slowT, 2);
+      if (e.alive && e.kind !== 'boss' && stFx.knockbackMult > 1) {
+        const d = Math.hypot(e.x - P.x, e.y - P.y) || 1;
+        const rm = world.rooms[e.room];
+        e.x = clamp(e.x + ((e.x - P.x) / d) * 0.7 * stFx.knockbackMult, rm.x0 + e.r + 0.05, rm.x0 + rm.w - e.r - 0.05);
+        e.y = clamp(e.y + ((e.y - P.y) / d) * 0.7 * stFx.knockbackMult, rm.y0 + e.r + 0.05, rm.y0 + rm.h - e.r - 0.05);
+      }
+    }
+    // Stance-flavored Strike signature payoffs
+    if (stFx.shardCount > 0) {
+      const a0 = P.aim;
+      for (let k = 0; k < stFx.shardCount; k++) {
+        const a = a0 + (k - (stFx.shardCount - 1) / 2) * 0.24;
+        bullets.push({
+          x: P.x, y: P.y, vx: Math.cos(a) * 14, vy: Math.sin(a) * 14, r: 0.2,
+          dmg: dmg * 0.35, life: 0.55, age: 0, friendly: true, w: weapon,
+          pierce: 2, bounce: 0, hits: [], crit: true, child: true,
+        });
+      }
+    }
+    if (weapon.element === 'storm' && hit[0]) {
+      const ch = stormChainTargets(hit[0], liveInRoom(current), 3, 4.8);
+      if (ch.targets.length) {
+        addFx({ kind: 'chain', x: hit[0].x, y: hit[0].y, life: 0.32, color: '#ffe45e', pts: ch.pts });
+        for (const nx of ch.targets as Enemy[]) damageEnemy(nx, dmg * 0.35, bike, false, '#ffe45e', true);
+      }
+    }
     if (hit.some((e) => e.kind === 'boss') && strikeBoss(bs, bossCfg())) toast(`Timed Strike: exposed +${bossCfg().strikeBonusS}s`, '#ffd84a');
-    addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.4, color: '#ffd84a', r: strikeRadius() });
+    addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.42, color: stFx.color, r: strikeRadius() });
+    addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.36, color: stFx.accent, r: strikeRadius() * 0.8 });
     freeze(0.08); cue('explode');
     return true;
   }
@@ -1469,7 +1534,20 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         if (stance === 'arcanist') bs.left += 1; // the shield-breaker keeps it open longer
         bs.left += pm.exposedS; // Polka Dot Jersey
         addFx({ kind: 'banner', x: boss.x, y: boss.y, life: 1.8, color: '#ffe08a', text: bs.parried ? 'PARRIED! EXPOSED' : 'EXPOSED ×2' });
-        if (bs.parried) toast(`Parried with Ward: exposed +${cfg.parryBonusS}s`, '#8fd8ff');
+        if (bs.parried) {
+          freeze(0.1);
+          addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.45, color: '#ffe08a', r: 3.4 });
+          addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.5, color: '#8fd8ff', r: 2.2 });
+          const ang = Math.atan2(boss.y - P.y, boss.x - P.x);
+          const parryDmg = weapon.dmg * playerDmg(ctx.bike()) * 0.9;
+          for (const da of [-0.16, 0, 0.16]) {
+            bullets.push({
+              x: P.x, y: P.y, vx: Math.cos(ang + da) * 15, vy: Math.sin(ang + da) * 15, r: 0.22,
+              dmg: parryDmg, life: 1.1, age: 0, friendly: true, w: weapon, pierce: 1, bounce: 0, hits: [], crit: true, child: true,
+            });
+          }
+          toast(`Parried with Ward: exposed +${cfg.parryBonusS}s`, '#8fd8ff');
+        }
         cue('crit'); expWindows++; expHit = false; ctx.emit({ type: 'bossExposed', data: { floor, parried: bs.parried } });
       } else if (ev === 'phase') {
         freeze(0.3); cue('bossStart'); if (boss.variant === 2 && fl.mode !== 'hand') flailReel();
@@ -1685,7 +1763,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       player: {
         x: P.x, y: P.y, r: PLAYER_R, hp: P.hp, maxHp: P.maxHp, potions: P.potions, potionCap: potionCap(),
         invuln: P.invuln > 0, onSwamp: P.onSwamp, speedMult: P.speedMult, moving: P.moving, rolling: P.rollT > 0, warded: P.ward > 0, rallied: P.rally > 0, hurt: t - P.hurtT,
-        secondWind: swCd.left <= 0 ? 1 : 1 - swCd.left / swCd.total, secondWindFlash: Math.max(0, 1 - (t - swUsedT) / 2.5), level: P.level, xp: P.xp, xpNext: xpNext(P.level), coins: P.coins, bank: Math.round(bankStart + P.coinsEarned),
+        secondWind: swCd.left <= 0 ? 1 : 1 - swCd.left / swCd.total, secondWindFlash: Math.max(0, 1 - (t - swUsedT) / 2.5),
+        firedUpLeft: Math.max(0, firedUpUntil - t),
+        level: P.level, xp: P.xp, xpNext: xpNext(P.level), coins: P.coins, bank: Math.round(bankStart + P.coinsEarned),
       },
       weapon, gear: { ...gear },
       aim: { angle: P.aim },

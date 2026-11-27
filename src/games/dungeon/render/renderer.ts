@@ -2,6 +2,7 @@ import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../..
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
 import { desaturate } from '../../kit/actionButton';
 import { runLayout, bossHudLayout } from './layout';
+import { drawBossTelegraph, drawHeroEffortFx } from './combatFx';
 import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
@@ -637,6 +638,7 @@ export function createRenderer(): GameRenderer {
         for (const q of info.pillars) if (inView(q, 2) && lr) actors.push({ y: q.y + 0.5, d: () => { const fx2 = q.x * TS + 16, fy2 = q.y * TS + 28; shadow(fx2, fy2, 9); drawZoneProp(gg, Zn, 'light', fx2 - (lr.w >> 1), fy2 - lr.h); } });
         for (const sh of s.shrines) if (w.rooms[sh.room].seen) actors.push({ y: sh.y, d: () => { shadow(sh.x * TS, sh.y * TS, 11); drawShrine32(gg, sh.kind, sh.x * TS, sh.y * TS, t, sh.state === 'failed'); } });
       }
+      if (bossE && s.boss?.active) drawBossTelegraph(gg, bossE, s.boss, p.x, p.y, TS, t);
       actors.sort((a, b) => a.y - b.y);
       for (const a of actors) a.d();
       if (bg32 && info) { // atmosphere that the lighting should shade: fog banks in the Crypt, falling grit elsewhere
@@ -658,6 +660,7 @@ export function createRenderer(): GameRenderer {
           for (let r = 0; r < 5; r++) { gg.fillStyle = r < 2 ? '#fff4c0' : '#ffd84a'; gg.fillRect(ax - 5 + r, ay + r, (5 - r) * 2 + 1, 1); }
           gg.fillStyle = '#0a0810'; gg.fillRect(ax - 3, ay - 7, 7, 8); gg.fillStyle = '#ffd84a'; gg.fillRect(ax - 2, ay - 6, 5, 6); gg.fillStyle = '#fff4c0'; gg.fillRect(ax - 2, ay - 6, 1, 6);
         }
+        drawHeroEffortFx(gg, s, TS, t);
         if (s.perks?.ranks.length) drawPerkParticles(gg, s.perks, p.x * TS, p.y * TS + p.r * TS * 1.1, p.moving, t, p.hp >= p.maxHp, s.stance.id);
         if (swapFx) { const k = (t - swapFx.t0) / 0.5; if (k < 0 || k > 1) swapFx = null; else drawStanceSwap(gg, p.x * TS, p.y * TS + p.r * TS * 1.1, k, swapFx.c, swapFx.from, t); }
         for (const b of s.bullets) if (!(artReady() && drawShot32(gg, b, TS))) drawBullet(b, TS, t);

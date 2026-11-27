@@ -185,31 +185,29 @@ describe('Purgatour P0 regressions', () => {
     }
     expect(checkedShrine).toBe(true);
 
-    // 2. Soft-pedaling in ERG mode does NOT get the Exposed x2 sprint damage multiplier
-    SCRIPTS['test-erg-soft'] = { ...SCRIPTS.z2, name: 'test-erg-soft', powerFtp: () => 0.45, cadence: () => 85 };
-    SCRIPTS['test-erg-surge'] = { ...SCRIPTS.z2, name: 'test-erg-surge', powerFtp: () => 1.15, cadence: () => 85 };
-    const measureExposedDmg = (script: string) => {
-      const r = new TuningRegistry({ profileId: `p0-${script}` });
-      r.scoped('dungeon').num('bossBigEveryS', 20, 6, 60, 1);
-      r.set('dungeon.bossBigEveryS', 6);
-      const sess = createGameSession({ game: module, profile, input: new NullInput(), fake: { script }, seed: 5, simOpts: { skipCamp: true, erg: true, invulnerable: true }, tuningRegistry: r });
-      let hitDmg = 0;
-      for (let i = 0; i < 30 * 60 * 10 && hitDmg === 0; i++) {
-        const prevHp = (sess.sim.snapshot() as any).boss?.hp ?? 0;
-        sess.step(1);
-        const cur = sess.sim.snapshot() as any;
-        if (cur.boss && cur.boss.cycle === 'exposed' && prevHp > cur.boss.hp) {
-          hitDmg = prevHp - cur.boss.hp;
-        }
+    // 2. Soft-pedaling in ERG mode does NOT get the Exposed x2 surge bonus; hitting ERG surge power DOES
+    const r = new TuningRegistry({ profileId: 'p0-erg-exposed' });
+    r.scoped('dungeon').num('bossBigEveryS', 20, 6, 60, 1);
+    r.set('dungeon.bossBigEveryS', 6);
+    const sess = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true, erg: true, invulnerable: true }, tuningRegistry: r });
+    let lowPerDmg = 0, highPerDmg = 0;
+    for (let i = 0; i < 30 * 60 * 10 && (!lowPerDmg || !highPerDmg); i++) {
+      const prevHp = (sess.sim.snapshot() as any).boss?.hp ?? 0;
+      sess.step(1);
+      const cur = sess.sim.snapshot() as any;
+      if (cur.boss && cur.boss.cycle === 'exposed' && prevHp > cur.boss.hp) {
+        const hit = prevHp - cur.boss.hp;
+        const perDmg = hit / Math.max(0.5, cur.weapon.dmg);
+        if (perDmg < 3) continue; // ignore small 1-tick DoT ticks
+        const ftpNow = sess.ctx.bike().ftpFraction;
+        if (ftpNow < 0.88 && !lowPerDmg) lowPerDmg = perDmg / ftpNow;
+        if (ftpNow >= 1.0 && !highPerDmg) highPerDmg = perDmg / ftpNow;
       }
-      return hitDmg;
-    };
-    const softHit = measureExposedDmg('test-erg-soft');
-    const surgeHit = measureExposedDmg('test-erg-surge');
-    expect(softHit).toBeGreaterThan(0);
-    expect(surgeHit).toBeGreaterThan(0);
-    // Power ratio alone is 1.15 / 0.45 = 2.55x; with the x2 Exposed surge bonus only on surgeHit, ratio is > 4x
-    expect(surgeHit / softHit).toBeGreaterThan(3.8);
+    }
+    expect(lowPerDmg).toBeGreaterThan(0);
+    expect(highPerDmg).toBeGreaterThan(0);
+    // After dividing out linear ftpFraction, crossing the ERG surge threshold still doubles Exposed damage (~2x)
+    expect(highPerDmg / lowPerDmg).toBeGreaterThan(1.7);
   });
 
   it('fixes stale shield metadata/roles and exposes an async renderer.ready() backed by art32 loadArt()', async () => {

@@ -28,6 +28,11 @@ export const ITEMS: Item[] = ORIGINAL_ITEMS.map(it => resourced(ROTATION[itemKey
     look: { pattern: 'circuit', base: '#3a4a2a', ink: '#e9d9a6' } },
   { slot: 'jersey', id: 'hi_vis', name: 'Hi-Vis', source: { achievement: 'td_full_shift' },
     look: { pattern: 'hazard', base: '#ff7a1a', ink: '#15151c' } },
+  // Purgatour's finished descent (Nov 2026): the Grim Sweeper's broom-wagon colours, and a rainbow-gold paint for the top Category.
+  { slot: 'jersey', id: 'broom_wagon', name: 'Broom Wagon', source: { achievement: 'dg_finish' },
+    look: { pattern: 'chevrons', base: '#1a1524', ink: '#c42a2a' } },
+  { slot: 'paint', id: 'world_tour', name: 'World Tour', source: { achievement: 'dg_world_tour' },
+    look: { frame: '#ffd84a', frame2: '#3a7bd5', kind: 'fade' } },
   { slot: 'paint', id: 'night_watch', name: 'Night Watch', source: { achievement: 'td_night_watch' },
     look: { frame: '#16205a', frame2: '#7df9ff', kind: 'glow' } },
   // Full Send (Nov 2026): new art for the big ones (jet wings, pet boulder, astronaut helmet, re-entry trail, pocket rocket), recolours for the rest, and its title.

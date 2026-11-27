@@ -10,6 +10,8 @@ The comparison below uses the same rider, camera and lap positions in both build
 
 [Compare the chase-camera frames](environment-comparison.webp)
 
+The latest trackside comparison follows the same 78% FTP rider through the Bowl’s home turn and Cablehead’s carriage road. Watch the tire stacks and spectators pass close to the bike, then follow the mountain silhouette across the switchback. Each venue now has its own 360° painted horizon. [Watch the matched turns](trackside-depth.mp4) · [Compare still frames](trackside-depth.webp)
+
 ## Cinder Bowl · playable
 
 **The look.** Late afternoon at a demolition derby built in an old gas holder. Iron uprights frame bottle-green bleachers, hand-lettered cream banners and spectators in patched team colours. Pale chalk sweeps across red cinder. A stripped yellow taxi hangs over the infield with its doors missing. Its slow turn catches the last sunlight, then the floodlights pick it up.

@@ -3,11 +3,12 @@ import type { LevelView } from '../types';
 import { zoneFractions } from '../format';
 import { UiButton, UiProgress, UiReadout, UI } from '../../ui';
 import { play } from '../../audio/sfx';
+import { shellCommit } from '../commitGuard';
 
 export function Btn(p: { children: ComponentChildren; onClick: () => void; primary?: boolean; focused?: boolean; small?: boolean; disabled?: boolean; class?: string; label?: string }) {
   return (
     <UiButton aria-label={p.label} title={p.label} class={`btn${p.small ? ' small' : ''}${p.class ? ` ${p.class}` : ''}`} variant={p.primary ? 'primary' : 'quiet'} focused={p.focused}
-      disabled={p.disabled} onClick={(e) => { e.stopPropagation(); play('uiSelect'); p.onClick(); }}>{p.children}</UiButton>
+      disabled={p.disabled} onClick={(e) => { e.stopPropagation(); if (!shellCommit()) return; play('uiSelect'); p.onClick(); }}>{p.children}</UiButton>
   );
 }
 export function Dot({ on, busy }: { on: boolean; busy?: boolean }) { return <span class={`dot${on ? ' on' : ''}${busy ? ' busy' : ''}`} />; }

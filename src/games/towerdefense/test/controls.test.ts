@@ -17,9 +17,10 @@ class Pad {
 }
 const snap = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as TdSnapshot;
 const geo = levelGeometry(LEVEL_0);
-function rig(stars = 99) {
+function rig(stars = 99, guard = false) {
   const pad = new Pad(), s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 1,
     simOpts: { stars, skipGarage: true, level: LEVEL_0 } });
+  if (!guard) s.tuning.set('towerdefense.commitGuardS', 0); // most tests press faster than a person; the guard has its own test
   s.tuning.set('towerdefense.startScrap', 1000);
   s.tuning.set('towerdefense.baseHp', 1000); // isolate input behavior from falling mid-gesture
   s.step(1);
@@ -117,6 +118,23 @@ describe('pad cursor and build menu', () => {
     s.sim.receive!({ type: 'row', row: mortar, pad: snap(s).workshop!.pad, revision: snap(s).workshop!.revision }); s.step(1);
     expect(snap(s).towers).toHaveLength(0);
     expect(rig(4).s.sim.snapshot()).toBeTruthy();
+  });
+  it('debounces build-menu commits: a double press of A opens the menu once and buys nothing; a person-paced A buys', () => {
+    const { s, press } = rig(99, true);
+    press('a'); press('a'); // two presses a tick apart: a double tap or a bouncing button
+    expect(snap(s).workshop).not.toBeNull(); expect(snap(s).towers).toHaveLength(0);
+    s.step(9); press('a'); // a third of a second later
+    expect(snap(s).towers).toHaveLength(1);
+  });
+  it('debounces taps on menu rows: a double tap on Build does not also buy the upgrade that replaces it', () => {
+    const { s, press } = rig(99, true);
+    press('a'); s.step(10);
+    const ws = () => snap(s).workshop!, tap = () => s.sim.receive!({ type: 'row', row: 0, pad: ws().pad, revision: ws().revision });
+    tap(); s.step(1); tap(); s.step(1); // the second tap lands on the refreshed row (same revision as the screen)
+    const tower = snap(s).towers.find((t) => t.pad === ws().pad)!;
+    expect(tower.level).toBe(1);
+    s.step(10); tap(); s.step(1);
+    expect(snap(s).towers.find((t) => t.pad === ws().pad)!.level).toBe(2);
   });
   it('pause discards queued taps and the button that resumes play', () => {
     const { s, pad } = rig();

@@ -15,7 +15,9 @@ const state = (patch: Partial<ConstructionState> = {}): ConstructionState => ({
   scrap: 1000, costMult: 1, baseHp: 100, baseMaxHp: 100, repairCost: 42, ...patch,
 });
 function session(input = new TimelineInput(), extra: Record<string, unknown> = {}, profile = testProfile()) {
-  return createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true, level: LEVEL_0, ...extra } });
+  const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true, level: LEVEL_0, ...extra } });
+  s.tuning.set('towerdefense.commitGuardS', 0); // these tests press faster than a person; the guard has its own test
+  return s;
 }
 
 describe('build bot recommendation (headless only)', () => {

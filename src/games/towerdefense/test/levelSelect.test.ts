@@ -12,6 +12,7 @@ const snap = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as Td
 const saveWith = (cleared: number) => ({ v: 4, runs: 3, campaign: Object.fromEntries(CAMPAIGN.slice(0, cleared).map((c, i) => [c.id, (i % 3) + 1])) });
 const menu = (cleared: number, input = new TimelineInput([])) => {
   const s = createGameSession({ game: module, profile: testProfile({ gameData: { towerdefense: saveWith(cleared) } }), input, fake: { script: 'z2' }, seed: 1 });
+  s.tuning.set('towerdefense.commitGuardS', 0); // these tests press faster than a person; the guard has its own test
   s.step(1);
   return s;
 };

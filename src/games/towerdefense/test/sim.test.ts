@@ -352,6 +352,7 @@ describe('workshop', () => {
   it('A opens it on the cursor\'s empty pad, a row tap builds, close closes', () => {
     const input = new TimelineInput([{ t: 0.5, press: 'a' }, { t: 0.6, release: 'a' }]);
     const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
+    s.tuning.set('towerdefense.commitGuardS', 0); // these tests press faster than a person; the guard has its own test
     s.step(20);
     const ws = snap(s).workshop!;
     expect(ws).not.toBeNull();
@@ -372,6 +373,7 @@ describe('workshop', () => {
   it('towers only fire on pedal power', () => {
     const run = (script: string) => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { stars: 99, skipGarage: true } });
+      s.tuning.set('towerdefense.commitGuardS', 0); // these tests press faster than a person; the guard has its own test
       s.tuning.set('towerdefense.baseHp', 1000); // keep the tower present to isolate power gating
       // a weak turret leaves the aliens to the tower: at full strength it kills the early stream before it arrives
       s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.railDamageMult', 0); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02);
@@ -383,6 +385,7 @@ describe('workshop', () => {
   });
   it('the Flamethrower fires in bursts: aim locked while it fires, then a cool-off before it can turn and fire again', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 4, simOpts: { stars: 99, skipGarage: true } });
+    s.tuning.set('towerdefense.commitGuardS', 0); // these tests press faster than a person; the guard has its own test
     s.tuning.set('towerdefense.baseHp', 1000);
     s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.railDamageMult', 0); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02);
     s.tuning.set('towerdefense.towerDamageMult', 0.1); // aliens linger in the cone so bursts follow each other

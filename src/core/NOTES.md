@@ -36,4 +36,5 @@ scenario (mixerCommands/events as counts, plus ok/failures), exits 1 on failure.
 ## Gaps
 No DataHub unit tests with real device mocks beyond fake; ControllerDevice adapter untested. No FIT export.
 - `cooldown.ts` (pure, sim-safe): effort-scaled cooldowns — `refillRate(powerZone)` (Z1 = 1x up to Z5 = 3.2x), `startCooldown`/`tickCooldown`/`completeCooldown` (e.g. on a sprint)/`readyFrac`. Draw with `games/kit/actionButton.ts`.
+- `pressGuard.ts` (pure, sim-safe): `PressGuard` commit debounce (`pass(now, holdS?)`, `arm`, `reset`; default `COMMIT_GUARD_S` 0.25 s). A menu commit (buy/confirm/open/start/back) re-arms it; another inside the hold is a double tap or button bounce and is dropped. Sims pass sim seconds; never guard D-pad moves. The shell's shared instance is `shell/commitGuard.ts`.
 - Native shifts send ratios independent of gradient; capability/connection revision restores gearing on reconnect. Panic selects native gear 1; ERG remains watts-only.

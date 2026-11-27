@@ -13,4 +13,5 @@ export { createGameSession, type GameSession, type SessionOpts, type SessionMedi
 export { runHeadless, resolveMedia, type HeadlessOpts, type HeadlessResult, type MediaSpec } from './headless';
 export { testProfile } from './testProfile';
 export { RENAMED_GAMES, currentGameId, migrateProfile, migrateSessionRecord, migrateTuning } from './renames';
+export { PressGuard, COMMIT_GUARD_S } from './pressGuard';
 export { DEFAULT_ZONE_REFILL, clampZone, refillRate, startCooldown, tickCooldown, completeCooldown, readyFrac, isReady, type Cooldown } from './cooldown';

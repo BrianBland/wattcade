@@ -9,12 +9,19 @@ export interface TourSet {
   /** The other branch at the fork before this set: same sprint length, different set piece and scenery. */
   alt?: { kind: PieceKind; biome: BiomeId };
 }
-export interface Tour { id: string; name: string; warmupS: number; cooldownS: number; sets: TourSet[] }
+/** What a tour trains, said up front: a short focus, one line on why, and the recovery cue between sets. */
+export interface TourIntent {
+  focus: string; why: string; rest: string;
+  /** Short rest is the point (repeatability): recoveries never wait for your heart rate to come down. */
+  shortRest?: boolean;
+}
+export interface Tour { id: string; name: string; warmupS: number; cooldownS: number; sets: TourSet[]; intent: TourIntent }
 
 /** Fixed tours: each set piece lives in a biome that suits it, and the biome changes during the recovery before it. */
 export const TOURS: Record<string, Tour> = {
   quick: {
     id: 'quick', name: 'Quick Send', warmupS: 240, cooldownS: 150,
+    intent: { focus: 'Mixed sprints', why: 'A bit of everything: a 10 s punch up to a 45 s chase. Hold each zone to the end.', rest: 'Spin easy' },
     sets: [
       { kind: 'smash', biome: 'countryside', effortS: 10, recoveryS: 75, alt: { kind: 'leap', biome: 'seaside' } },
       { kind: 'leap', biome: 'desert', effortS: 15, recoveryS: 90, alt: { kind: 'smash', biome: 'market' } },
@@ -25,6 +32,7 @@ export const TOURS: Record<string, Tour> = {
   },
   classic: {
     id: 'classic', name: 'Classic', warmupS: 300, cooldownS: 240,
+    intent: { focus: 'Sprint endurance', why: 'Eight efforts with two long ones late on: hold your zone when you are tired.', rest: 'Spin easy' },
     sets: [
       { kind: 'smash', biome: 'countryside', effortS: 10, recoveryS: 75, alt: { kind: 'leap', biome: 'seaside' } },
       { kind: 'leap', biome: 'desert', effortS: 15, recoveryS: 85, alt: { kind: 'smash', biome: 'autumn' } },
@@ -37,7 +45,66 @@ export const TOURS: Record<string, Tour> = {
     ],
   },
 };
+// two focused tours: the same set pieces, built around one training goal each
+TOURS.punch = {
+  id: 'punch', name: 'Peak Power', warmupS: 180, cooldownS: 180,
+  intent: { focus: 'Peak power', why: 'Six short all-out bursts with full rest: go hard from GO, top-end power.', rest: 'Full rest · spin very easy' },
+  sets: [
+    { kind: 'smash', biome: 'countryside', effortS: 8, recoveryS: 150, alt: { kind: 'leap', biome: 'seaside' } },
+    { kind: 'leap', biome: 'desert', effortS: 10, recoveryS: 150, alt: { kind: 'smash', biome: 'market' } },
+    { kind: 'smash', biome: 'autumn', effortS: 10, recoveryS: 165, alt: { kind: 'leap', biome: 'snow' } },
+    { kind: 'leap', biome: 'volcano', effortS: 12, recoveryS: 165, alt: { kind: 'smash', biome: 'market' } },
+    { kind: 'smash', biome: 'snow', effortS: 10, recoveryS: 180, alt: { kind: 'leap', biome: 'seaside' } },
+    { kind: 'leap', biome: 'desert', effortS: 12, recoveryS: 0, finale: true, alt: { kind: 'smash', biome: 'countryside' } },
+  ],
+};
+TOURS.repeat = {
+  id: 'repeat', name: 'Back to Back', warmupS: 180, cooldownS: 240,
+  intent: { focus: 'Repeatability', why: 'Six 30 s efforts on short rest: pace the first so you can hold the last.', rest: 'Short rest · keep spinning', shortRest: true },
+  sets: [
+    { kind: 'loop', biome: 'jungle', effortS: 30, recoveryS: 70, alt: { kind: 'outrun', biome: 'volcano' } },
+    { kind: 'outrun', biome: 'volcano', effortS: 30, recoveryS: 70, alt: { kind: 'leap', biome: 'desert' } },
+    { kind: 'dive', biome: 'underwater', effortS: 30, recoveryS: 70, alt: { kind: 'outrun', biome: 'snow' } },
+    { kind: 'leap', biome: 'snow', effortS: 30, recoveryS: 70, alt: { kind: 'loop', biome: 'market' } },
+    { kind: 'outrun', biome: 'jungle', effortS: 30, recoveryS: 70, alt: { kind: 'dive', biome: 'marsh' } },
+    { kind: 'loop', biome: 'market', effortS: 30, recoveryS: 0, finale: true, alt: { kind: 'leap', biome: 'volcano' } },
+  ],
+};
 export const TOUR_IDS = Object.keys(TOURS) as Array<keyof typeof TOURS>;
+
+/** ISO-ish week number from a day count since 1970-01-01 (a Thursday), weeks starting Monday. */
+export const weekOf = (day: number) => Math.floor((day + 3) / 7);
+const LAND: BiomeId[] = ['countryside', 'seaside', 'desert', 'market', 'volcano', 'jungle', 'snow', 'autumn'];
+const WATER: BiomeId[] = ['underwater', 'marsh'];
+const WEEK_PLANS = [
+  { focus: 'Peak power', why: 'Short all-out bursts with full rest: go hard from GO.', rest: 'Full rest · spin very easy',
+    n: 6, effort: [8, 10, 12], recovery: [150, 180], kinds: ['smash', 'leap'] as PieceKind[] },
+  { focus: 'Repeatability', why: 'Hard efforts on short rest: pace the first so you can hold the last.', rest: 'Short rest · keep spinning', shortRest: true,
+    n: 6, effort: [20, 25, 30], recovery: [60, 75], kinds: ['loop', 'outrun', 'leap', 'dive'] as PieceKind[] },
+  { focus: 'Sprint endurance', why: 'Long sprints: settle into your zone and hold it to the line.', rest: 'Spin easy',
+    n: 5, effort: [40, 45, 60], recovery: [120, 150], kinds: ['outrun', 'dive', 'loop', 'leap'] as PieceKind[] },
+];
+/**
+ * This week's tour: the same for everyone all week (seeded by the week number), and a different focus each week.
+ * Pure: a small local PRNG seeded from the week, so the tour never depends on the ride's rng.
+ */
+export function weeklyTour(week: number): Tour {
+  let a = (week * 2654435761) >>> 0 || 1;
+  const rnd = () => { a ^= a << 13; a >>>= 0; a ^= a >>> 17; a ^= a << 5; a >>>= 0; return a / 4294967296; };
+  const pick = <T,>(xs: readonly T[]) => xs[Math.floor(rnd() * xs.length) % xs.length];
+  const plan = WEEK_PLANS[((week % WEEK_PLANS.length) + WEEK_PLANS.length) % WEEK_PLANS.length];
+  const where = (k: PieceKind, not: BiomeId | null): BiomeId => { const pool = (k === 'dive' ? WATER : LAND).filter((b) => b !== not); return pick(pool); };
+  const sets: TourSet[] = [];
+  let prev: BiomeId | null = null;
+  for (let i = 0; i < plan.n; i++) {
+    const kind = pick(plan.kinds), biome = where(kind, prev);
+    const altKind = pick(plan.kinds.filter((k) => k !== kind)), alt = { kind: altKind, biome: where(altKind, biome) };
+    const last = i === plan.n - 1;
+    sets.push({ kind, biome, effortS: pick(plan.effort), recoveryS: last ? 0 : Math.round(plan.recovery[0] + rnd() * (plan.recovery[1] - plan.recovery[0])), ...(last ? { finale: true } : {}), alt });
+    prev = biome;
+  }
+  return { id: 'weekly', name: 'This Week', warmupS: 150, cooldownS: 180, sets, intent: { focus: plan.focus, why: plan.why, rest: plan.rest, ...(plan.shortRest ? { shortRest: true } : {}) } };
+}
 
 /** Default medal thresholds as FTP fractions: [bronze, silver, gold]. Tunable per kind (`fullsend.<kind>Bronze` …). */
 export const MEDAL_FTP: Record<PieceKind, [number, number, number]> = {

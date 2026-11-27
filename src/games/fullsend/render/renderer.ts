@@ -19,7 +19,8 @@ import { AIR_CELL, airItemAt, bumpH, DIVE, diveDip, MEGA, megaLift } from '../si
 import { FullSendSound } from './sound';
 import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
 import { drawCloudDeck, drawFireball, drawTrail, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
-import { layout, type FullSendLayout } from './layout';
+import { cardBox, layout, type FullSendLayout } from './layout';
+import { cardHeadline, cardRows, cardVisible, ghostCall, horizonPreview, paceCall, sprintIntensity, zoneNow } from './sprint';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
 import { drawMegaRamp } from './mega';
@@ -73,6 +74,8 @@ export class FullSendRenderer implements GameRenderer {
   /** The distant sign: which message it shows and where the far layer was when that message went up. */
   private signKey = ''; private signBase = 0; private farOff = 0;
   private L!: FullSendLayout;
+  /** Sprint escalation (0..1), the pace you were last on and when it changed, and the last charge seen (for the call-out). */
+  private heat = 0; private paceSeen = { key: '', medal: -1, at: -99 }; private chargeSeen = -99; private chargeShown = { at: -99, gain: 0 };
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets; send?: (action: unknown) => void }) {
     void loadFonts();
@@ -249,6 +252,7 @@ export class FullSendRenderer implements GameRenderer {
     };
     if (!blend) midProps(null, g); else this.layer(blend, (l, gg) => midProps(l, gg)); // props are never cut
 
+
     // ---- the gap / water / loop sit behind the road surface ----
     const gapX0 = p?.kind === 'leap' ? sx(p.x0) : NaN, gapX1 = p?.kind === 'leap' ? sx(p.x0 + p.len) : NaN;
     const inGap = (x: number) => x > gapX0 && x < gapX1;
@@ -397,6 +401,22 @@ export class FullSendRenderer implements GameRenderer {
 
     // ---- the rider and the rocket ----
     const look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
+    if (s.ghostX != null && s.phase !== 'done' && !s.toTier) { // the ghost of your best run on this tour (on whatever layer you're on)
+      const gx = sx(s.ghostX);
+      if (gx > -30 && gx < W + 30 && Math.abs(gx - sx(s.x)) > 6) {
+        const gy = Math.round(roadY(s.ghostX));
+        g.save(); g.globalAlpha = 0.4; g.translate(Math.round(gx), gy); g.rotate(-Math.atan((roadH(s.ghostX + 0.5) - roadH(s.ghostX - 0.5))));
+        drawRider(g, look, bike.crankRevs + 0.37, s.ghostX, { t, speed: 14, gear: null });
+        g.restore();
+        g.globalAlpha = 0.85; g.fillStyle = '#7af0ff'; g.fillRect(Math.round(gx) - 10, gy - 40, 20, 7); // a 'BEST' plate over its head
+        g.fillStyle = '#0a1a2a'; g.fillRect(Math.round(gx) - 8, gy - 38, 16, 3); g.globalAlpha = 1;
+      } else if (Math.abs(gx - sx(s.x)) > 6) { // off screen: a marker on the edge it's beyond
+        const ex = gx < 0 ? 4 : W - 10, ey = Math.round(roadY(s.x)) - 30;
+        g.globalAlpha = 0.85; g.fillStyle = '#7af0ff'; g.beginPath();
+        if (gx < 0) { g.moveTo(ex, ey); g.lineTo(ex + 6, ey - 5); g.lineTo(ex + 6, ey + 5); } else { g.moveTo(ex + 6, ey); g.lineTo(ex, ey - 5); g.lineTo(ex, ey + 5); }
+        g.fill(); g.globalAlpha = 1;
+      }
+    }
     const air = s.mode === 'air' || s.mode === 'fall' || s.mode === 'rescue';
     const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : rampLift(p, s.x)) : p?.kind === 'dive' ? rampLift(p, s.x) : 0) + (s.mode === 'road' ? megaLift(s.mega, s.x) : 0) + hop.h;
     const inLoop = p?.kind === 'loop' && (s.mode === 'loop' || s.mode === 'drop');
@@ -413,6 +433,7 @@ export class FullSendRenderer implements GameRenderer {
     if (s.trick) { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
     drawRider(g, look, bike.crankRevs, s.x, { t, speed: Math.min(s.v, 20), gear: gearL === 'road' ? null : gearL });
     drawSlipstream(g, s.v, t);
+    if (s.gliding) drawCanopy(g, t);
     if (s.hay > 0.02 || s.mode === 'smash') drawHayOnRider(g, Math.max(s.hay, s.mode === 'smash' ? 0.3 : 0), t);
     if (crash >= 0 && crash < 1.6) { // dizzy stars round the helmet
       for (let i = 0; i < 3; i++) { const a = t * 6 + (i * Math.PI * 2) / 3; g.fillStyle = i % 2 ? '#ffd23b' : '#ffffff'; g.fillRect(Math.round(Math.cos(a) * 7) - 1, Math.round(-30 + Math.sin(a) * 2.5), 2, 2); }
@@ -423,7 +444,7 @@ export class FullSendRenderer implements GameRenderer {
     // ---- transitions: re-entry, cloud decks, the sea surface, splashes ----
     if (cross === 'reentry' && cdm >= 0 && hop.slope < 0) drawFireball(g, rx, ryy, Math.atan2(-hop.slope * 3, 1), Math.min(1, hop.h / 8), t);
     // re-entry: a long smoke-and-fire trail behind you (world points, so it streams away as you fall)
-    const burning = s.fromTier === 'moon' && s.toTier === 'sea';
+    const burning = s.fromTier === 'moon' && s.toTier === 'sea' && !s.gliding; // pull out into a glide and the burn ends
     if (!burning || s.warp !== this.trailWarp) this.trail.length = 0;
     this.trailWarp = s.warp;
     if (burning) {
@@ -432,7 +453,7 @@ export class FullSendRenderer implements GameRenderer {
       while (this.trail.length && s.t - this.trail[0].t > 3) this.trail.shift();
       drawTrail(g, this.trail.map((q) => ({ x: sx(q.x), y: sy(q.y) - 6, age: s.t - q.t })), Math.min(1, Math.max(0, (-s.vy - 8) / 25)));
     }
-    if (s.fromTier === 'moon' && s.toTier === 'sea' && s.vy < -12) {
+    if (burning && s.vy < -12) {
       drawFireball(g, rx, ryy, Math.atan2(-s.vy, s.v), Math.min(1, (-s.vy - 12) / 30), t);
     }
     const deckScroll = s.camX * PPM * 0.9;
@@ -465,12 +486,21 @@ export class FullSendRenderer implements GameRenderer {
       }
     };
     if (!blend) foreProps(null, g); else this.layer(blend, (l, gg) => foreProps(l, gg));
+    // the set piece you're sprinting for, on the horizon from the approach on: it grows as you close in. Drawn over the
+    // scenery (it's the target, like the sign) with an outline so it reads through trees.
+    if (p && (s.phase === 'approach' || s.phase === 'effort') && !(p.kind === 'dive' && s.phase === 'effort')) {
+      const hp = horizonPreview(p.x0 - s.x, (W - RX) / PPM, W, midBase + 4, roadY0);
+      if (hp) this.preview(g, p, hp, t, W);
+    }
     // riding through a portal: the scene has already swapped behind this flash
     drawPortalFlash(g, W, H, rx, ryy - 10, portalFlash(t - this.portalAt) * (s.reducedFlash ? 0.3 : cross === 'dive' || cross === 'surface' || this.portalTo === 'underwater' ? 0.35 : 0.7), this.portalTo);
     const lines = Math.max(0, Math.min(1, (s.v - 20) / 50));
+    // the sprint escalates with your pace and power: more speed lines, a heat glow at the edges, a rising shake
+    const heat = sprintIntensity(s, p);
+    this.heat += (heat - this.heat) * Math.min(1, dt * 3);
     if (lines > 0) {
-      g.globalAlpha = 0.35 * lines; g.fillStyle = '#ffffff';
-      for (let i = 0; i < 14; i++) {
+      g.globalAlpha = (0.35 + 0.3 * this.heat) * lines; g.fillStyle = this.heat > 0.7 ? '#fff2c0' : '#ffffff';
+      for (let i = 0; i < 14 + Math.round(22 * this.heat); i++) {
         const y = hash01(i * 5 + 1) * UH, len = 10 + hash01(i * 5 + 2) * 30;
         const x = W - (((t * (300 + hash01(i) * 300)) + hash01(i * 5 + 3) * W) % (W + len));
         g.fillRect(Math.round(x), Math.round(y), Math.round(len), 1);
@@ -488,6 +518,8 @@ export class FullSendRenderer implements GameRenderer {
     if (s.piece && s.piece.crashAt !== sn.cave) { if (s.piece.crashAt > 0) this.shake = Math.max(this.shake, 9); sn.cave = s.piece.crashAt; }
     if (s.piece && s.piece.caughtAt !== sn.caught) { if (s.piece.caughtAt > 0) this.shake = Math.max(this.shake, 5); sn.caught = s.piece.caughtAt; }
     if (s.jet === 'on') this.shake = Math.max(this.shake, 0.8);
+    if (this.heat > 0.45) this.shake = Math.max(this.shake, 0.4 + 1.4 * (this.heat - 0.45) / 0.55);
+    if (s.chargeAt !== this.chargeSeen) { this.chargeSeen = s.chargeAt; if (s.chargeAt > 0 && s.chargeGain > 0.03) { this.shake = Math.max(this.shake, 6); this.chargeShown = { at: now, gain: s.chargeGain }; } }
     this.shake *= Math.exp(-dt * 7);
     const sh = s.reducedFlash ? 0 : this.shake;
     const dx = Math.round(Math.sin(t * 91) * sh) * this.px, dy = Math.round(Math.cos(t * 77) * sh) * this.px;
@@ -508,6 +540,10 @@ export class FullSendRenderer implements GameRenderer {
       for (let i = 0; i < 10; i++) { const e = 10 - i; g.globalAlpha = 0.025 * bt * e / 2; g.fillRect(0, 0, W, i * 3); g.fillRect(0, H - i * 3, W, i * 3); g.fillRect(0, 0, i * 4, H); g.fillRect(W - i * 4, 0, i * 4, H); }
       g.globalAlpha = 1;
     }
+    if (this.heat > 0.05) { // heat glow at the edges
+      for (let i = 0; i < 8; i++) { g.globalAlpha = 0.03 * this.heat * (8 - i); g.fillStyle = this.heat > 0.8 ? '#ffb030' : '#ff5a2a'; g.fillRect(0, 0, i * 4 + 2, H); g.fillRect(W - i * 4 - 2, 0, i * 4 + 2, H); }
+      g.globalAlpha = 1;
+    }
     if (this.dusk > 0.01) { g.globalAlpha = this.dusk * 0.42; g.fillStyle = '#0a1030'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
     const m = this.g;
     m.imageSmoothingEnabled = false;
@@ -521,7 +557,7 @@ export class FullSendRenderer implements GameRenderer {
     this.cam = { x: Math.round(r.x + dx), y: Math.round(r.y + dy), s: r.w / W };
     this.farOff = s.camX * (PPM / k) * DISTANT.parallax;
     m.drawImage(this.far, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
-    if (hand < 0.35 && !s.menu) { // the distant sign stands behind the hills and trees
+    if (hand < 0.35 && !s.menu && !cardVisible(s)) { // the distant sign stands behind the hills and trees (the end card replaces it)
       m.globalAlpha = 1 - hand / 0.35;
       const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
       this.drawDistant(s, signMessage(s, c?.m ?? null));
@@ -622,6 +658,10 @@ export class FullSendRenderer implements GameRenderer {
     const mmss = (sec: number) => { const v = Math.max(0, Math.ceil(sec)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
     // (what's coming and how far is on the distant sign; up here only the sprint clock, the meter and 3-2-1-GO)
     if (s.phase === 'approach' && p && c) {
+      if (s.calibrating && c.s > 3.2) { // first ride: no zones yet, this sprint sets them
+        txt('FIRST RIDE · THIS SPRINT SETS YOUR ZONES', cxm, B.y + 18, 18, '#7af0ff', 'center', 900, true, 4);
+        txt('Go as hard as you can hold all the way to the end', cxm, B.y + 40, 13, '#e8f4ff', 'center', 700, false, 3);
+      } else if (c.s > 3.2 && c.s < 9 && s.cadence < 85) txt(`SPIN UP · 90+ RPM (${s.cadence})`, cxm, B.y + 18, 18, '#ffd23b', 'center', 900, true, 4);
       if (c.s <= 3.2) {
         const n = c.s > 0.2 ? String(Math.ceil(c.s)) : 'GO!', k2 = s.reducedFlash ? 0 : 1 - (c.s % 1);
         txt(n, this.cssW / 2, L.UH * 0.5, 110 + 30 * k2, n === 'GO!' ? '#6dff8a' : '#ff4d6d', 'center', 900, true, 8);
@@ -629,15 +669,41 @@ export class FullSendRenderer implements GameRenderer {
     } else if (s.phase === 'effort' && p && c) {
       const word = p.kind === 'dive' ? 'SWIM FOR IT!' : p.kind === 'outrun' ? 'RUN!' : 'SPRINT!';
       txt(`${word} ${p.kind === 'dive' ? '' : mmss(c.s)}`.trim(), cxm, B.y + 26, 34, '#ff4d6d');
+      if (p.kind !== 'dive' && c.s <= 3 && c.s > 0.6) { // the last three seconds, big
+        const n = Math.ceil(c.s), k2 = s.reducedFlash ? 0 : 1 - (c.s % 1);
+        m.globalAlpha = 0.85; txt(String(n), this.cssW / 2, L.UH * 0.42, 80 + 24 * k2, '#ffd23b', 'center', 900, true, 7); m.globalAlpha = 1;
+      }
       if (c.s < 0.6 && p.kind !== 'dive' && p.kind !== 'outrun' && !s.reducedFlash) txt('GO GO GO', this.cssW / 2, L.UH * 0.38, 60, '#ffd23b', 'center', 900, true, 6);
       this.meter(s, p);
+      // pace: the medal your mean power is on course for; it pops when you move up a step
+      const call = paceCall(p), pc = call.medal, key = `${s.setIndex}`;
+      if (this.paceSeen.key !== key) this.paceSeen = { key, medal: pc, at: -99 };
+      else if (pc !== this.paceSeen.medal) this.paceSeen = { key, medal: pc, at: pc > this.paceSeen.medal ? this.lastNow : -99 };
+      const pop = s.reducedFlash ? 0 : Math.max(0, 0.35 - (this.lastNow - this.paceSeen.at)) * 1.6;
+      const M2 = L.meter;
+      const blink = call.slipping && !s.reducedFlash && Math.sin(s.t * 12) > 0;
+      txt(call.text, M2.x + M2.w / 2, M2.y + M2.h + 16, 18 * (1 + pop), call.slipping ? (blink ? '#ffffff' : '#ff4d6d') : pc ? MEDAL_COLORS[pc] : '#ff4d6d', 'center', 900, true, 4);
     } else if (s.phase === 'payoff' && p?.kind === 'loop' && s.mode === 'loop') {
       txt('KEEP PEDALLING!', cxm, B.y + 26, 34, s.reducedFlash ? '#ffd23b' : (Math.sin(s.t * 10) > 0 ? '#ffd23b' : '#ffffff'));
       this.meter(s, p);
     } else if (s.phase === 'recovery' || s.phase === 'warmup') {
-      txt(s.phase === 'warmup' ? `WARM-UP · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : 'RECOVER', cxm, B.y + 18, 18, '#ffffff', 'center', 900, true, 4);
-    } else if (s.phase === 'done') {
-      txt(s.phase === 'done' ? 'TOUR COMPLETE!' : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`, cxm, B.y + 22, s.phase === 'done' ? 34 : 20, s.phase === 'done' ? '#ffd23b' : '#ffffff');
+      txt(s.phase === 'warmup' ? `TODAY: ${s.intent.focus.toUpperCase()} · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : s.hrWait ? `RECOVER · HEART RATE ${s.hrWait.hr} → ${s.hrWait.target}` : `RECOVER · ${s.intent.rest.toUpperCase()}`, cxm, B.y + 18, 18, s.hrWait ? '#ff9ab0' : '#ffffff', 'center', 900, true, 4);
+      if (s.hrWait) txt('Next sprint when your heart rate is down: keep spinning easy', cxm, B.y + 40, 13, '#e8f4ff', 'center', 700, false, 3);
+      if (s.phase === 'warmup' && s.phaseT < 25) txt(s.intent.why, cxm, B.y + 40, 13, '#e8f4ff', 'center', 700, false, 3);
+    } else if (s.phase === 'done' || s.phase === 'cooldown') {
+      const msg = s.phase === 'done' ? (s.ridden ? 'TOUR COMPLETE!' : 'RIDE OVER') : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`;
+      txt(msg, cxm, B.y + 22, s.phase === 'done' ? 34 : 20, s.phase === 'done' ? '#ffd23b' : '#ffffff');
+    }
+    if (cardVisible(s)) this.card(s, txt);
+    // the ghost of your best run: how far ahead or behind you are (under the medal coins)
+    const gc = s.phase !== 'done' && !cardVisible(s) ? ghostCall(s.x, s.ghostX) : null;
+    if (gc) txt(gc.text, rx0, st.y + 62, 12, gc.ahead ? '#7af0ff' : '#ff9a7a', 'right', 900, true, 3);
+    // the charge you built fires at the lip
+    const ca = this.lastNow - this.chargeShown.at;
+    if (ca >= 0 && ca < 1.4) {
+      m.globalAlpha = Math.min(1, (1.4 - ca) * 2.5);
+      txt(`CHARGE! +${Math.round(this.chargeShown.gain * 100)}%`, L.riderX, Math.min(L.roadY - 90, this.riderY - 60) - ca * 16, 26, '#ffb030', 'center', 900, true, 5);
+      m.globalAlpha = 1;
     }
 
     // medal stamp
@@ -650,7 +716,7 @@ export class FullSendRenderer implements GameRenderer {
       m.fillText(label, (S.x + S.w / 2) * d + 3 * d, (S.y + S.h * 0.4) * d + 3 * d);
       m.fillStyle = MEDAL_COLORS[s.last.medal]; m.fillText(label, (S.x + S.w / 2) * d, (S.y + S.h * 0.4) * d);
       m.font = font(800, 16); m.fillStyle = '#ffffff';
-      m.fillText(`${s.last.title} · ${s.last.detail}`, (S.x + S.w / 2) * d, (S.y + S.h * 0.85) * d);
+      m.fillText(`${s.last.title} · ${s.last.detail}${s.last.avgW ? ` · ${s.last.avgW} W` : ''}${s.last.pb ? ' · NEW PB!' : ''}`, (S.x + S.w / 2) * d, (S.y + S.h * 0.85) * d);
       m.globalAlpha = 1;
     }
     if (s.trick && s.trick.age < 1.4) {
@@ -682,7 +748,7 @@ export class FullSendRenderer implements GameRenderer {
     }
     if (s.jet) {
       m.textAlign = 'center'; m.font = font(900, s.jet === 'on' ? 16 : 14, s.jet === 'on'); m.fillStyle = s.jet === 'on' ? '#ffb030' : '#ff7a5a';
-      const txt = s.jet === 'on' ? 'JET!' : `PEDAL HARDER · JET NEEDS ${Math.round(s.jetFtp * 100)}% FTP`;
+      const txt = s.jet === 'on' ? 'JET!' : `SPIN IT UP · JET NEEDS ${Math.round(s.jetRpm)} RPM`;
       m.lineWidth = 4 * d; m.strokeStyle = 'rgba(10,12,40,0.8)'; m.lineJoin = 'round';
       m.strokeText(txt, L.riderX * d, (this.riderY + 26) * d); m.fillText(txt, L.riderX * d, (this.riderY + 26) * d);
     }
@@ -713,8 +779,8 @@ export class FullSendRenderer implements GameRenderer {
     m.fillText('FULL SEND', (M.x + M.w / 2) * d, (M.y + 34) * d);
     const tours = menu.tours, ti = Math.max(0, tours.findIndex((q) => q.id === menu.tour)), tr = tours[ti];
     const rowH = (M.h - 70) / 3;
-    const rows: Array<{ label: string; sub: string; act: () => void }> = [
-      { label: `◀  ${tr.name.toUpperCase()} · ~${tr.minutes} MIN  ▶`, sub: tr.best ? `Best: ${tr.best}` : 'Not ridden yet', act: () => this.send?.({ type: 'tour', value: tours[(ti + 1) % tours.length].id }) },
+    const rows: Array<{ label: string; sub: string; why?: string; act: () => void }> = [
+      { label: `◀  ${tr.name.toUpperCase()} · ~${tr.minutes} MIN  ▶`, sub: `${tr.focus.toUpperCase()} · ${tr.best ? `Best: ${tr.best}` : 'Not ridden yet'}`, why: tr.why, act: () => this.send?.({ type: 'tour', value: tours[(ti + 1) % tours.length].id }) },
       { label: `FEWER FLASHES: ${menu.reducedFlash ? 'ON' : 'OFF'}`, sub: 'No screen shake or flashing', act: () => this.send?.({ type: 'flash' }) },
       { label: 'START ▸', sub: `A to start · starts by itself in ${Math.ceil(menu.left)} s`, act: () => this.send?.({ type: 'start' }) },
     ];
@@ -723,10 +789,12 @@ export class FullSendRenderer implements GameRenderer {
       const box = { x: M.x + 16, y: y + 3, w: M.w - 32, h: rowH - 6 };
       if (i) { m.fillStyle = 'rgba(255,255,255,0.35)'; m.fillRect((box.x + 10) * d, (y - 1) * d, (box.w - 20) * d, 1 * d); }
       if (on) { m.fillStyle = '#ffd23b'; m.fillRect(box.x * d, (box.y + 4) * d, 6 * d, (box.h - 8) * d); m.fillRect((box.x + box.w - 6) * d, (box.y + 4) * d, 6 * d, (box.h - 8) * d); }
+      const k = r.why ? [0.2, 0.55, 0.83] : [0.4, 0.76, 0];
       m.fillStyle = on ? '#ffd23b' : '#ffffff'; m.font = font(900, 18, true);
-      m.fillText(r.label, (M.x + M.w / 2) * d, (box.y + box.h * 0.4) * d);
-      m.fillStyle = '#cfe8d8'; m.font = font(600, 12);
-      m.fillText(r.sub, (M.x + M.w / 2) * d, (box.y + box.h * 0.76) * d);
+      m.fillText(r.label, (M.x + M.w / 2) * d, (box.y + box.h * k[0]) * d);
+      m.fillStyle = '#cfe8d8'; m.font = font(r.why ? 800 : 600, 12);
+      m.fillText(r.sub, (M.x + M.w / 2) * d, (box.y + box.h * k[1]) * d);
+      if (r.why) { m.fillStyle = '#a9d6bb'; m.font = font(600, 11); m.fillText(r.why, (M.x + M.w / 2) * d, (box.y + box.h * k[2]) * d, (box.w - 24) * d); }
       this.menuHits.push({ ...box, act: r.act });
     });
   }
@@ -744,14 +812,89 @@ export class FullSendRenderer implements GameRenderer {
       for (let i = 0; i < segs; i++) seg(i, i / segs < p.air ? (p.air > 0.25 ? '#4dc3ff' : '#ff4d6d') : 'rgba(255,255,255,0.12)');
       return;
     }
-    const maxF = p.th[2] * 1.15, live = p.live;
-    const medal = live >= p.th[2] * 0.97 ? 3 : live >= p.th[1] * 0.97 ? 2 : live >= p.th[0] * 0.97 ? 1 : 0;
+    // the bar is your power now (lightly smoothed) against the medal zones: keep it in the zone for the whole sprint
+    const maxF = p.th[2] * 1.15, live = s.phase === 'effort' ? p.now : p.live;
+    const medal = s.phase === 'effort' ? zoneNow(p) : live >= p.th[2] ? 3 : live >= p.th[1] ? 2 : live >= p.th[0] ? 1 : 0;
+    const gx = M.x + (M.w - sk) * Math.min(1, p.th[2] / maxF); // the gold zone, shaded so the target range reads at a glance
+    m.fillStyle = 'rgba(255,210,59,0.16)'; m.fillRect(gx * d, (M.y - 2) * d, (M.x + M.w - gx) * d, (M.h * 0.7 + 4) * d);
     for (let i = 0; i < segs; i++) seg(i, (i + 0.5) / segs * maxF <= live ? (medal ? MEDAL_COLORS[medal] : '#ff4d6d') : 'rgba(255,255,255,0.12)');
+    if (s.phase === 'effort' && p.hold[0] + p.hold[2] > 0) { // how much of the sprint you've held each zone, with the line you need
+      const hy = M.y + M.h * 0.7 + 3, hh = 3;
+      for (let k = 2; k >= 0; k--) {
+        m.fillStyle = MEDAL_COLORS[k + 1]; m.globalAlpha = 0.9;
+        m.fillRect(M.x * d, (hy + (2 - k) * (hh + 1)) * d, (M.w * Math.min(1, p.hold[k])) * d, hh * d);
+      }
+      m.globalAlpha = 1; m.fillStyle = '#ffffff';
+      m.fillRect((M.x + M.w * p.holdNeed - 1) * d, (hy - 1) * d, 2 * d, (3 * (hh + 1) + 1) * d);
+    }
     for (let i = 0; i < 3; i++) { // medal flags
       const fx = M.x + (M.w - sk) * Math.min(1, p.th[i] / maxF) + sk / 2;
       m.fillStyle = MEDAL_COLORS[i + 1]; m.fillRect((fx - 1) * d, (M.y - 4) * d, 2 * d, (M.h * 0.7 + 8) * d);
       m.beginPath(); m.moveTo((fx + 1) * d, (M.y - 4) * d); m.lineTo((fx + 9) * d, (M.y - 1) * d); m.lineTo((fx + 1) * d, (M.y + 2) * d); m.fill();
     }
+    if (p.pb > 0) { // your best for a sprint this long: beat it for a new best
+      const fx = M.x + (M.w - sk) * Math.min(1, p.pb / maxF) + sk / 2;
+      m.fillStyle = '#7af0ff'; m.fillRect((fx - 1) * d, (M.y - 6) * d, 2 * d, (M.h * 0.7 + 12) * d);
+      m.font = fsFont(900, 10 * d, true); m.textAlign = 'center'; m.fillText('PB', fx * d, (M.y - 11) * d);
+    }
+  }
+
+  /** The set piece you're sprinting for, seen from afar: a hazy silhouette on the horizon (buffer px, scale `hp.sc`). */
+  private preview(g: G, p: PieceView, hp: { x: number; y: number; sc: number; alpha: number }, t: number, W: number) {
+    const look = LOOKS[p.biome], z = Math.max(0.22, hp.sc), x = Math.round(hp.x), y = Math.round(hp.y);
+    g.save(); g.globalAlpha = hp.alpha * (0.85 + 0.15 * hp.sc);
+    g.shadowColor = 'rgba(10,12,30,0.9)'; g.shadowBlur = 0; g.shadowOffsetX = 1; g.shadowOffsetY = 1;
+    g.fillStyle = mixColor(look.groundDark, look.haze, 0.45 * (1 - hp.sc));
+    if (p.kind === 'leap') { // the launch ramp, the gap and the far rim
+      const gw = Math.min(p.len * PPM, W * 0.9) * z, ch = Math.max(3, 26 * z), rw = RAMP_M * PPM * z * 0.6;
+      g.fillRect(x - rw - 40 * z, y - ch * 0.3, rw + 40 * z, ch);
+      g.beginPath(); g.moveTo(x - rw, y - ch * 0.3); g.lineTo(x, y - ch * 0.3 - RAMP_H * PPM * z * 0.6); g.lineTo(x, y - ch * 0.3); g.fill();
+      g.fillRect(x + gw, y - ch * 0.3, Math.max(8, 60 * z), ch);
+    } else if (p.kind === 'smash') { // a wall of bales / crates
+      const ww = Math.min(p.n * p.spacing * PPM, W) * z, wh = Math.max(3, 3 * 2.4 * PPM * z), cell = Math.max(2, 2.4 * PPM * z);
+      g.fillStyle = mixColor(p.biome === 'countryside' ? '#d9b24c' : look.roadEdge, look.haze, 0.4 * (1 - hp.sc));
+      g.fillRect(x, y - wh, ww, wh);
+      g.globalAlpha *= 0.5; g.fillStyle = look.groundDark;
+      for (let cx = x; cx < x + ww; cx += cell) g.fillRect(Math.round(cx), y - wh, 1, wh);
+    } else if (p.kind === 'loop') { // a ring standing on the road
+      const R = Math.max(3, p.len * PPM * z);
+      g.beginPath(); g.arc(x + R, y - R, R, 0, Math.PI * 2);
+      g.strokeStyle = '#1a1d2a'; g.lineWidth = Math.max(3, 5 * z); g.stroke();
+      g.strokeStyle = '#e8ecf4'; g.lineWidth = Math.max(1.5, 3 * z); g.stroke();
+    } else if (p.kind === 'outrun') { // the bolt-hole: a dark cave mouth in a rock mound
+      const mw = Math.max(10, 70 * PPM * z * 0.5), mh = Math.max(6, 20 * PPM * z * 0.5);
+      g.beginPath(); g.ellipse(x + mw / 2, y, mw / 2, mh, 0, Math.PI, 0); g.fill();
+      g.fillStyle = '#05040d'; g.beginPath(); g.ellipse(x + mw * 0.3, y, mw * 0.12, mh * 0.5, 0, Math.PI, 0); g.fill();
+    } else if (p.kind === 'dive') { // the water you dive into
+      g.fillStyle = mixColor('#2a6fb0', look.haze, 0.4 * (1 - hp.sc)); g.fillRect(x, y - 2, Math.min(W - x, p.len * PPM * z), Math.max(2, 6 * z));
+    }
+    g.globalAlpha = hp.alpha * (0.6 + 0.4 * Math.sin(t * 6)); g.fillStyle = '#ffd23b'; // a marker so it reads as the target
+    const my = y - Math.max(14, (p.kind === 'loop' ? 2 * p.len * PPM : 40) * z) - 8;
+    g.beginPath(); g.moveTo(x - 6, my); g.lineTo(x + 6, my); g.lineTo(x, my + 7); g.fill();
+    g.restore();
+  }
+
+  /** End-of-tour card: score against your best, then each set piece with its medal, watts and any new best. */
+  private card(s: FullSendSnapshot, txt: (t: string, x: number, y: number, size: number, color: string, align?: CanvasTextAlign, weight?: number, italic?: boolean, outline?: number) => void) {
+    const m = this.g, d = this.dpr, rows = cardRows(s.results), C = cardBox(this.L, this.cssW, rows.length);
+    const a = s.phase === 'done' ? 1 : Math.min(1, (s.phaseT - 4) / 0.6);
+    m.globalAlpha = a;
+    m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((C.x + 5) * d, (C.y + 5) * d, C.w * d, C.h * d);
+    m.fillStyle = '#0e6b3c'; m.fillRect(C.x * d, C.y * d, C.w * d, C.h * d);
+    m.lineWidth = 3 * d; m.strokeStyle = '#ffffff'; m.strokeRect((C.x + 6) * d, (C.y + 6) * d, (C.w - 12) * d, (C.h - 12) * d);
+    const hs = Math.min(1, C.headH / 64);
+    txt(`${s.tourName} · ${s.intent.focus}`.toUpperCase(), C.x + C.w / 2, C.y + 22 * hs, 20 * hs, '#ffffff', 'center', 900, true, 0);
+    txt(cardHeadline(s.score, s.bestScore, s.lastWeekScore), C.x + C.w / 2, C.y + 46 * hs, 15 * hs, s.score > s.bestScore ? '#ffd23b' : '#cfe8d8', 'center', 900, false, 0);
+    const fs = Math.max(8, Math.min(15, C.rowH * 0.55));
+    rows.forEach((r, i) => {
+      const y = C.y + C.headH + i * C.rowH + C.rowH / 2;
+      m.fillStyle = 'rgba(255,255,255,0.18)'; if (i) m.fillRect((C.x + 18) * d, (y - C.rowH / 2) * d, (C.w - 36) * d, 1 * d);
+      m.beginPath(); m.arc((C.x + 26) * d, y * d, Math.min(7, C.rowH * 0.3) * d, 0, Math.PI * 2); m.fillStyle = MEDAL_COLORS[r.medal]; m.fill();
+      txt(r.title, C.x + 40, y, fs, '#ffffff', 'left', 900, true, 0);
+      txt(r.watts, C.x + C.w - (r.pb ? 64 : 20), y, fs * 0.85, '#cfe8d8', 'right', 700, false, 0);
+      if (r.pb) txt('NEW PB', C.x + C.w - 18, y, fs * 0.85, '#7af0ff', 'right', 900, true, 0);
+    });
+    m.globalAlpha = 1;
   }
 
   /** The one big sign everything is on: it stands far off (slow parallax) so it stays put long enough to read, and it is
@@ -878,18 +1021,23 @@ export function landingCall(grade: FullSendSnapshot['landGrade'], flow: number, 
 }
 
 /** Lift meter label and colour: what a full meter gets you (or, up high, how long you've got). */
-export function liftMeter(s: Pick<FullSendSnapshot, 'tier' | 'lift'>): { label: string; color: string } {
+export function liftMeter(s: Pick<FullSendSnapshot, 'tier' | 'lift' | 'skyRings' | 'moonRings'>): { label: string; color: string } {
   switch (s.tier) {
     case 'ground': return { label: s.lift >= 1 ? 'LAUNCH READY' : 'LIFT → SKY', color: '#9fe8ff' };
-    case 'sky': return { label: s.lift >= 1 ? 'MOON SHOT READY' : 'LIFT → MOON', color: '#e6dcff' };
+    case 'sky': { // the moon needs rings up here as well as a full meter
+      const left = Math.max(0, (s.moonRings ?? 0) - (s.skyRings ?? 0));
+      if (left > 0) return { label: `MOON · ${left} RING${left === 1 ? '' : 'S'} TO GO`, color: '#e6dcff' };
+      return { label: s.lift >= 1 ? 'MOON SHOT READY' : 'LIFT → MOON', color: '#e6dcff' };
+    }
     case 'moon': return { label: 'MOON TIME', color: '#fff3b0' };
     case 'sea': return { label: 'SURFACING', color: '#6fe0d0' };
   }
 }
 
 /** Big banner while flying between layers. */
-export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier' | 'fromTier' | 'vy'>): { text: string; color: string } | null {
+export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier' | 'fromTier' | 'vy'> & { gliding?: boolean }): { text: string; color: string } | null {
   if (!s.toTier) return null;
+  if (s.gliding) return { text: 'GLIDING DOWN!', color: '#b6f59a' };
   if (s.toTier === 'sea' && s.fromTier === 'moon') return s.vy < -12 ? { text: 'RE-ENTRY!', color: '#ffb030' } : { text: 'LOST THE MOON!', color: '#ff9a6a' };
   if (s.toTier === 'sea') return { text: 'OFF THE EDGE!', color: '#ff9a6a' };
   if (s.toTier === 'sky') return { text: 'SKY LAUNCH!', color: '#9fe8ff' };
@@ -897,6 +1045,19 @@ export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier' | 'fromTi
   return { text: 'BREACH!', color: '#6fe0d0' };
 }
 
+
+/** The glide canopy: a striped paraglider wing over the rider (rider-local px, rider's seat at the origin). */
+function drawCanopy(g: G, t: number) {
+  const w = 34, top = -44 + Math.sin(t * 3) * 1.5;
+  g.strokeStyle = 'rgba(30,30,40,0.8)'; g.lineWidth = 1;
+  for (const fx of [-w / 2 + 3, -6, 6, w / 2 - 3]) { g.beginPath(); g.moveTo(fx, top + 6); g.lineTo(0, -16); g.stroke(); }
+  const cols = ['#ff4d6d', '#ffd23b', '#ff4d6d', '#ffd23b', '#ff4d6d'];
+  for (let i = 0; i < cols.length; i++) {
+    const a0 = Math.PI + (i / cols.length) * Math.PI, a1 = Math.PI + ((i + 1) / cols.length) * Math.PI;
+    g.fillStyle = cols[i]; g.beginPath(); g.moveTo(Math.cos(a0) * w / 2, top + 6 + Math.sin(a0) * 9); g.arc(0, top + 6, w / 2, a0, a1);
+    g.lineTo(Math.cos(a1) * w / 2 * 0.8, top + 7 + Math.sin(a1) * 6); g.lineTo(Math.cos(a0) * w / 2 * 0.8, top + 7 + Math.sin(a0) * 6); g.closePath(); g.fill();
+  }
+}
 
 /** Left-aligned word wrap, vertically centred on y (at most 3 lines). */
 function wrap(m: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lineH: number) {

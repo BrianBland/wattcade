@@ -74,3 +74,19 @@ it('lets a controller scroll long ride details while keeping the rewards continu
     vi.useRealTimers();
   }
 });
+it('lists the power bests a ride set', async () => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  const record: SessionRecord = { id: 'r', profileId: 'rider', gameId: 'warmup', startedAt: 0, durationS: 600, samples: [], events: [],
+    stats: { avgPower: 180, maxPower: 900, kj: 100, avgHr: null, zoneSeconds: [0, 0, 0, 0, 0], sprints: 1 }, gameSummary: {} };
+  try {
+    await act(() => render(<Summary record={record} award={{ xpGained: 10, levelBefore: 1, levelAfter: 1, newAchievements: [], newItems: [], picks: 0,
+      powerBests: [{ durationS: 5, w: 912, prevW: 870, allTime: true }, { durationS: 60, w: 420, prevW: 0, allTime: true }] }}
+      xpAfter={10} ftp={200} profile={defaultProfile('Mika')} onDone={() => {}} />, host));
+    const text = host.querySelector('.power-bests')!.textContent!;
+    expect(text).toContain('5 s'); expect(text).toContain('912 W (+42)'); expect(text).toContain('1 min'); expect(text).toContain('420 W');
+  } finally {
+    await act(() => render(null, host));
+    host.remove();
+  }
+});

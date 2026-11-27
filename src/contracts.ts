@@ -39,6 +39,23 @@ export interface Profile {
    * `picks` = level → the item chosen at that level's reward pick. Ownership follows the current catalog's level, achievement and pick rules; `rotation` versions reward-choice migration.
    */
   cosmetics?: { loadout?: Record<string, string>; picks?: Record<string, string>; rotation?: number };
+  /** Best mean power per standard duration, from every real ride in any game (progression-owned; absent until the first one). Read it with `powerCurve()` in `src/progression/powerProfile.ts`. */
+  power?: PowerProfile;
+}
+
+/** One best effort: mean watts over a duration, when (epoch ms) and in which game. */
+export interface PowerEffort { w: Watts; at: number; gameId: string }
+/**
+ * The rider's power profile, shared by every game. Keys of `bests` are durations in seconds (`POWER_DURATIONS`).
+ * `recent` holds the efforts that can still be the best of a recent window: oldest first, each higher than every later
+ * one (a newer, higher effort removes the older ones). `lastRideAt` is the time "recent" is measured from, so sims that
+ * read it stay deterministic.
+ */
+export interface PowerProfile {
+  v: 1;
+  bests: Record<string, { allTime: PowerEffort; recent: PowerEffort[] }>;
+  rides: number;
+  lastRideAt: number;
 }
 
 /**

@@ -28,3 +28,12 @@ export function layout(W: number, H: number, insetBottom: number, insetTop = 0):
   const tip: Box = { x: (W - tw) / 2, y: UH - th - 10, w: tw, h: th };
   return { UH, riderX: Math.round(W * 0.28), roadY: Math.round(UH * 0.68), banner, meter, speed, stamp, status, menu, tip };
 }
+
+/** The end-of-tour card: centred above the HUD, below the banner, sized for `rows` set pieces (rows shrink to fit). */
+export function cardBox(L: FullSendLayout, W: number, rows: number): Box & { rowH: number; headH: number } {
+  const w = Math.min(W - 32, 560), y = L.meter.y + 4;
+  const avail = Math.max(40, L.UH - y - 12), headH = Math.min(64, avail * 0.3);
+  const rowH = Math.max(4, Math.min(30, (avail - headH - 14) / Math.max(1, rows)));
+  const h = Math.min(avail, headH + rowH * rows + 14);
+  return { x: (W - w) / 2, y, w, h, rowH, headH };
+}

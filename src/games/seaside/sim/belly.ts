@@ -10,7 +10,7 @@ export interface BellyTuning {
   /** A part is in reach this far (scene progress) either side of it. */ partReach: number;
 }
 
-export const BELLY_DEFAULTS: BellyTuning = { wakeRpm: 30, wakeS: 45, partReach: 0.07 };
+export const BELLY_DEFAULTS: BellyTuning = { wakeRpm: 30, wakeS: 30, partReach: 0.07 };
 
 export type PartId = 'bit' | 'gearbox' | 'chain';
 export interface PartDef { id: PartId; name: string; /** spareParts progress where it lies */ at: number }

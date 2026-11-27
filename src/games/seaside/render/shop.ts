@@ -72,7 +72,7 @@ export function drawShop(g: CanvasRenderingContext2D, s: ShopView, L: ShopLayout
 
   // the till receipt: a header, a dashed rule, the newest lines that fit, the net
   const r = pixelPanel(g, L.receipt, 2, PAPER), rx = r.x + 10, rw = r.w - 20, uR = rw >= 230 ? 2 : 1, lh = LINE * uR;
-  pixelText(g, "LOU'S / RECEIPT", rx, r.y + 10, uR, INK);
+  pixelText(g, s.id === 'shop1' ? "LOU'S / RECEIPT" : 'PIER STAND / RECEIPT', rx, r.y + 10, uR, INK);
   const ruleY = r.y + 12 + FONT_H * uR + 6;
   g.fillStyle = '#b4aa91'; for (let x = rx; x < rx + rw; x += 3 * uR) g.fillRect(x, ruleY, 2 * uR - (uR > 1 ? 1 : 0), uR);
   const footH = r.h > 90 ? FONT_H * uR + 8 + FONT_H + 12 : 0;

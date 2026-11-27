@@ -1,8 +1,10 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
 import { desaturate } from '../../kit/actionButton';
-import { runLayout, bossHudLayout } from './layout';
-import { play, type SfxName } from '../../../audio/sfx';
+import { runLayout, bossHudLayout, playerHudLayout } from './layout';
+import { createPlayerHudState, drawPlayerHud } from './playerHud';
+import { DungeonSound } from './sound';
+import { JuiceEngine, activeBuffs } from './juice';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
 import { BOSS_ART, anim, heroPalette, sprite, sprite2, type AnimState } from './sprites';
@@ -39,8 +41,6 @@ const ELITE_COLORS: Record<EliteMod, string> = { undying: '#7dff5a', splitting: 
 const ELITE_LABEL: Record<EliteMod, string> = { undying: 'Undying', splitting: 'Splitting', shielded: 'Warded', swift: 'Swift', volatile: 'Volatile' };
 const KIND_LABEL: Record<string, string> = { chaser: 'Coneling', bat: 'Saddle Sore', spitter: 'Gel Slime', archer: 'Lost Rider', brute: 'Wrench Troll', bomber: 'CO2 Gremlin', summoner: 'Directeur Sportif' };
 const SHRINE_COLORS = { fury: '#ff8c2a', endurance: '#5aa9ff', sprint: '#ffd84a', whirl: '#8fd8ff' } as const;
-// rate limits (s) for spammy sound cues
-const CUE_GAP: Partial<Record<SfxName, number>> = { shoot: 0.06, shootHeavy: 0.08, zap: 0.06, flame: 0.1, hit: 0.05, crit: 0.08, coin: 0.05, kill: 0.04, explode: 0.08, hurt: 0.2, door: 0.2 };
 
 const hash = (x: number, y: number) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
@@ -177,7 +177,8 @@ export function createRenderer(): GameRenderer {
   let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
   let lightC: HTMLCanvasElement | null = null;
   let campSnap: HTMLCanvasElement | null = null;
-  let lastCue = -1;
+  const sound = new DungeonSound(), juice = new JuiceEngine(), playerHud = createPlayerHudState();
+  let juiceT = 0, bossCycle = '';
   let send: ((a: unknown) => void) | undefined;
   let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
   let hudOcclusions: Insets['occlusions'];
@@ -332,7 +333,8 @@ export function createRenderer(): GameRenderer {
     drawFlail32(g!, { hx, hy, gx, gy, groundY: f.y * TS + 2, spin, sag, onFloor });
   }
   function drawEnemy(e: EnemyView, TS: number, t: number) {
-    const gg = g!, x = e.x * TS, y = e.y * TS + e.r * TS * 0.9;
+    const rec = juice.recoilOf(e.id);
+    const gg = g!, x = (e.x + rec.dx) * TS, y = (e.y + rec.dy) * TS + e.r * TS * 0.9;
     const isBoss = e.kind === 'boss';
     // animation state (render-only): hurt flinch, wind-up = attack pose, moving = walk cycle
     const prev = moved.get(e.id), mv = !!prev && Math.hypot(e.x - prev.x, e.y - prev.y) > 0.004;
@@ -345,6 +347,11 @@ export function createRenderer(): GameRenderer {
     const bob = e.kind === 'bat' ? Math.sin(t * 14 + e.id) * TS * 0.12 : -Math.abs(Math.sin(t * 8 + e.id)) * TS * 0.05;
     shadow(x, y, e.r * TS * 0.9);
     if (e.elite) { gg.globalCompositeOperation = 'lighter'; glowAt(ELITE_COLORS[e.elite], x, y - e.r * TS, e.r * TS * (2 + Math.sin(t * 5 + e.id) * 0.2), 0.55); gg.globalCompositeOperation = 'source-over'; }
+    if (isBoss && bossCycle === 'windup') {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 18);
+      pixelDisc(gg, x, y - e.r * TS * 0.35, e.r * TS * (1.8 + 0.35 * pulse), '#ff3b4a26');
+      pixelRing(gg, x, y - e.r * TS * 0.35, e.r * TS * (2.0 + 0.3 * pulse), pulse > 0.5 ? '#ff5a6a' : '#ffd84a', true);
+    }
     if (e.tell > 0) { gg.globalCompositeOperation = 'lighter'; glowAt(e.kind === 'bomber' ? '#ff7a2a' : '#ff3b3b', x, y - e.r * TS, e.r * TS * (1.5 + e.tell), 0.3 + e.tell * 0.6); gg.globalCompositeOperation = 'source-over'; }
     if (e.exposed) pixelRing(gg,x,y-e.r*TS,e.r*TS*1.9,'#ffe08a',true);
     if (e.exposed) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffe08a', x, y - e.r * TS, e.r * TS * 2.6, 0.75 + Math.sin(t * 9) * 0.2); gg.globalCompositeOperation = 'source-over'; }
@@ -399,9 +406,9 @@ export function createRenderer(): GameRenderer {
       const s = snapshot as DungeonSnapshot;
       if (!canvas || !g || !s.world) return;
       pinchEnabled = s.phase === 'run' && !s.perks?.offer;
-      // sound cues (skip any backlog from before mount)
-      if (lastCue < 0) lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
-      for (const c of s.cues) if (c.id > lastCue) { lastCue = c.id; play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] }); }
+      bossCycle = s.boss?.active ? s.boss.cycle : '';
+      const dtJ = Math.max(0, Math.min(0.1, s.t - juiceT)); juiceT = s.t;
+      if (!hideHero) { sound.update(s); juice.update(s, dtJ); }
       if (prevPhase === 'run' && s.phase === 'camp' && s.camp?.lastDeath && lastHero && artReady()) {
         // re-draw the last run frame without the standing hero, so only the falling one shows
         if (lastRun) { hideHero = true; this.render(lastRun.s, lastRun.bike, lastRun.input); hideHero = false; }
@@ -413,7 +420,12 @@ export function createRenderer(): GameRenderer {
       lastStance = s.phase === 'run' ? s.stance.id : '';
       if (s.phase !== 'camp') dnf = null;
       if (dnf && s.phase === 'camp' && s.t - dnf.t0 < DNF_S) { drawDnf(s.t - dnf.t0); return; }
-      if (s.phase === 'camp' && s.camp) { clearPinch(); drawCamp(s.camp, canvas.width, canvas.height, s.t, s.stance.id, s.weapon); return; }
+      if (s.phase === 'camp' && s.camp) {
+        clearPinch();
+        drawCamp(s.camp, canvas.width, canvas.height, s.t, s.stance.id, s.weapon);
+        drawScreenJuice(g, canvas.width, canvas.height);
+        return;
+      }
       campHits = [];
       const output=g, OW=canvas.width, OH=canvas.height, w=s.world,t=s.t,p=s.player;
       // Orientation-balanced framing; room boundaries and boss phases never change the selected zoom.
@@ -439,7 +451,7 @@ export function createRenderer(): GameRenderer {
       const fx0 = bossE ? p.x + (bossE.x - p.x) * 0.45 : p.x, fy0 = bossE ? p.y + (bossE.y - p.y) * 0.45 : p.y;
       if (camFor !== w || !Number.isFinite(camX)) { camX = fx0; camY = fy0; camFor = w; }
       else { const kf = 1 - Math.exp(-dtR * 6); camX += (fx0 - camX) * kf; camY += (fy0 - camY) * kf; }
-      const cx = camX * TS - W / 2, cy = camY * TS - VH / 2;
+      const cx = camX * TS - W / 2 + juice.shakeX, cy = camY * TS - VH / 2 + juice.shakeY;
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
       const k = TS / BT;
@@ -760,6 +772,13 @@ export function createRenderer(): GameRenderer {
         }
         for (const sh of s.shrines) if (w.rooms[sh.room].seen && sh.state !== 'failed') { gg.globalAlpha = 0.5; drawShrine32(gg, sh.kind, sh.x * TS, sh.y * TS, t, false); gg.globalAlpha = 1; }
         emissive();
+        for (const pt of juice.particles) if (!pt.screen) {
+          gg.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+          gg.fillStyle = pt.color;
+          const sz = Math.max(1, Math.round(pt.size));
+          gg.fillRect(Math.round(pt.x * TS - sz / 2), Math.round(pt.y * TS - sz / 2), sz, sz);
+        }
+        gg.globalAlpha = 1;
         for (const r of w.rooms) if (!r.seen) { gg.fillStyle = '#07060b'; gg.fillRect((r.x0 - 1) * TS, (r.y0 - 1) * TS - 16, (r.w + 2) * TS, (r.h + 2) * TS + 16); }
         gg.restore();
       } else {
@@ -787,11 +806,13 @@ export function createRenderer(): GameRenderer {
         output.fillStyle = label.color; fillText(output, label.text, label.x * pixelScale, label.y * pixelScale);
       }
       output.restore();
+      drawScreenJuice(output, OW, OH);
       drawHud(s,OW,OH,bike);
       perkHits = s.perks?.offer && artReady() ? drawPerkPicker(output, s.perks, OW, OH, insetCss * dpr, uiU, dpr, s.perks.offer.age, heroPerkLook(s.perks, s.stance.id),
         (hg, x, foot, look) => drawHero32(hg, x, foot, { moving: false, t, hurt: false, weapon: look.stance && look.stance !== s.stance.id ? stanceWeapon(s, look.stance) : s.weapon, kick: 0, ...look, stance: look.stance ?? s.stance.id, angle: look.angle ?? Math.PI * 0.5 })) : [];
     },
     unmount() {
+      sound.dispose(); juice.reset();
       clearPinch(); pinchEnabled = false;
       canvas?.removeEventListener('pointerdown', onPointer);
       canvas?.removeEventListener('pointermove', moveTouch);
@@ -808,6 +829,21 @@ export function createRenderer(): GameRenderer {
       lastRun = null; dnf = null; zoom.held = 0;
     },
   };
+
+  function drawScreenJuice(ctx: CanvasRenderingContext2D, W: number, H: number) {
+    if (juice.edgeFlash) {
+      const bw = Math.max(4, Math.round(6 * dpr));
+      ctx.save(); ctx.globalAlpha = juice.edgeFlash.alpha; ctx.fillStyle = juice.edgeFlash.color;
+      ctx.fillRect(0, 0, W, bw); ctx.fillRect(0, H - bw, W, bw); ctx.fillRect(0, 0, bw, H); ctx.fillRect(W - bw, 0, bw, H);
+      ctx.restore();
+    }
+    for (const pt of juice.particles) if (pt.screen) {
+      ctx.save(); ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife); ctx.fillStyle = pt.color;
+      const sz = Math.max(2, Math.round(pt.size * dpr));
+      ctx.fillRect(Math.round(pt.x * W), Math.round(pt.y * H), sz, sz * 1.4);
+      ctx.restore();
+    }
+  }
 
   function drawDnf(k: number) {
     const gg = g!, d = dnf!, W = canvas!.width, H = canvas!.height, h = d.hero;
@@ -985,25 +1021,15 @@ export function createRenderer(): GameRenderer {
     const gg = g!, p = s.player, u = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr;
     const L = 14 * u, fs = Math.round(13 * u);
     gg.textAlign = 'left';
-    // compact status panel (top-left): thin HP + XP bars, then Lv/floor, coins, potions and the Second Wind pip on one line.
-    // `hu` scales from CSS pixels, so the iPad's large device scale doesn't double it (and it clears the boss bar).
-    const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, PW = 172 * hu;
+    // boxless player HUD (top-left): ornate Level Crest anchoring beveled HP/XP bars, floating stage/gold header,
+    // full-scale Bidon potions, and a sculpted Second Wind wing emblem.
+    const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr;
+    const buffs = activeBuffs(s);
+    const PH = playerHudLayout(W, H, hu, !!(s.perks?.ranks.length), buffs.length > 0);
     {
-      const x = L, y = L, hpLow = p.hp < p.maxHp * 0.4;
-      const perkRow = s.perks?.ranks.length ? 17 * hu : 0;
-      pixelPanel(gg,x-3*hu,y-3*hu,PW+6*hu,38*hu+perkRow,'#746481','#15111fee',dpr); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu + perkRow);
-      if (perkRow && s.perks) drawPerkBadges(gg, s.perks, x, y + 34 * hu, PW, hu, s.t);
-      pixelMeter(gg,x,y,PW,11*hu,p.hp/p.maxHp,hpLow?'#e96d75':'#68ba78',dpr);
-      gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(9 * hu));
-      fillTextShadow(gg, `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
-      pixelMeter(gg,x,y+13*hu,PW,3*hu,p.xp/p.xpNext,'#b58ad9',dpr);
-      const ly = y + 28 * hu; gg.font = pixelFont(Math.round(10 * hu));
-      gg.fillStyle = '#fff'; const lvTxt = `Lv${p.level} F${s.floor}${s.run ? `/${s.run.floors}` : ''}`; fillTextShadow(gg, lvTxt, x, ly); const coinX = Math.max(x + 44 * hu, x + textW(gg, lvTxt) + 6 * hu);
-      const cp = Math.max(0, 1 - (s.t - coinPulseT) / 0.25);
-      if (cp > 0) { gg.save(); gg.font = pixelFont(Math.round(10 * hu * (1 + 0.35 * cp))); }
-      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillTextShadow(gg, `● ${p.coins}`, coinX, ly); const coinEnd = coinX + textW(gg, `● ${p.coins}`);
-      if (cp > 0) gg.restore();
-      const tx = coinX + 3 * hu, ty = ly - 3.5 * hu;
+      const phRes = drawPlayerHud(gg, s, PH, hu, dpr, coinPulseT, playerHud);
+      for (const b of phRes.boxes) hudBox(b.x, b.y, b.w, b.h);
+      const tx = phRes.coinX, ty = phRes.coinY;
       for (let i = flyers.length - 1; i >= 0; i--) {
         const f = flyers[i], k = (s.t - f.t0) / 0.45;
         if (k >= 1 || k < 0) { flyers.splice(i, 1); if (k >= 1) coinPulseT = s.t; continue; }
@@ -1012,15 +1038,6 @@ export function createRenderer(): GameRenderer {
         if (cf) { const sc = Math.max(1, Math.round((1.4 - 0.6 * k) * hu)); gg.drawImage(cf, Math.round(fx2 - cf.width * sc / 2), Math.round(fy2 - cf.height * sc / 2), cf.width * sc, cf.height * sc); }
         else drawSprite('coin', fx2, fy2 + 3 * hu, (1.4 - 0.6 * k) * hu);
       }
-      const potX = Math.max(x + 86 * hu, coinEnd + 9 * hu), potStep = Math.min(9 * hu, (x + PW - 32 * hu - potX) / Math.max(1, p.potionCap - 1));
-      for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; if (!drawItem32(gg, 'potion', potX + k * potStep, ly + 4 * hu, Math.max(1, Math.round(hu * 0.6)))) drawSprite('potion', potX + k * potStep, ly - 3.5 * hu, 1.1 * hu); }
-      gg.globalAlpha = 1;
-      // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
-      const sw = p.secondWind, sx = x + PW - 26 * hu, sy = ly - 8 * hu, w = 26 * hu, h = 9 * hu, ready = sw >= 1;
-      gg.fillStyle = 'rgba(0,0,0,0.55)'; gg.fillRect(sx, sy, w, h);
-      gg.fillStyle = ready ? '#ffe08a' : desaturate('#ffe08a', 0.7, 0.35); gg.fillRect(sx, sy, w * Math.min(1, sw), h);
-      if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = Math.max(1, hu); gg.strokeRect(sx - 1, sy - 1, w + 2, h + 2); }
-      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = pixelFont(Math.round(7 * hu)); gg.textAlign = 'center'; fillText(gg, '2nd W', sx + w / 2, sy + h - 2 * hu); gg.textAlign = 'left';
     }
     // inventory row (bottom-left): the active stance card, chips for the other stances, then the gear sockets.
     // Actions and cooldowns live in the shell HUD; use its occupied shape to share the row.
@@ -1128,11 +1145,28 @@ export function createRenderer(): GameRenderer {
       strokeText(gg, q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u); gg.fillStyle = q.color; fillText(gg, q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u);
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
+    // active workout & combat buff pills (Fired Up, In Rhythm, Ward, Rally)
+    const buffY = PH.buffY;
+    if (buffs.length) {
+      let bx = L;
+      gg.font = pixelFont(Math.round(8.5 * hu));
+      for (const b of buffs) {
+        const bw = textW(gg, b.label) + 10 * hu, bh = 13 * hu;
+        pixelPanel(gg, bx, buffY, bw, bh, b.color, '#15111fe8', dpr);
+        if (b.fill !== undefined) {
+          gg.fillStyle = b.color + '44';
+          gg.fillRect(Math.round(bx + dpr), Math.round(buffY + bh - 2 * hu), Math.round((bw - 2 * dpr) * Math.max(0, Math.min(1, b.fill))), Math.round(1.5 * hu));
+        }
+        gg.fillStyle = b.color; fillTextShadow(gg, b.label, bx + 5 * hu, buffY + 9.5 * hu);
+        hudBox(bx, buffY, bw, bh);
+        bx += bw + 4 * hu;
+      }
+    }
     // toasts
     gg.font = pixelFont(Math.round(11 * hu));
     s.toasts.forEach((tt, i) => {
       const age = s.t - tt.t0; gg.globalAlpha = Math.max(0, Math.min(1, (6 - age) / 1.5));
-      gg.lineWidth = 3; gg.strokeStyle = '#000'; const ty0 = L + (52 + (s.perks?.ranks.length ? 17 : 0) + i * 15) * hu; strokeText(gg, tt.text, L, ty0, W - 2 * L); gg.fillStyle = tt.color; fillText(gg, tt.text, L, ty0, W - 2 * L);
+      gg.lineWidth = 3; gg.strokeStyle = '#000'; const ty0 = PH.toastY + (10 + i * 15) * hu; strokeText(gg, tt.text, L, ty0, W - 2 * L); gg.fillStyle = tt.color; fillText(gg, tt.text, L, ty0, W - 2 * L);
     });
     gg.globalAlpha = 1;
 

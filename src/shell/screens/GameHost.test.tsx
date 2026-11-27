@@ -4,7 +4,7 @@ import { act } from 'preact/test-utils';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameModule, GameRenderer, Profile } from '../../contracts';
 const mocks = vi.hoisted(() => ({
-  session: { frame: vi.fn(), idle: vi.fn(() => new Set()), pause: vi.fn(), resume: vi.fn(), ctx: { bike: () => ({}) }, sim: { snapshot: () => ({}), isOver: () => false, inMenu: vi.fn(() => false), menuActions: vi.fn((): import('../../contracts').GameMenuAction[] => []), receive: vi.fn() } },
+  session: { frame: vi.fn(), idle: vi.fn(() => new Set()), pause: vi.fn(), resume: vi.fn(), ctx: { bike: vi.fn((): { activeSeconds?: number } => ({})) }, sim: { snapshot: () => ({}), isOver: () => false, inMenu: vi.fn(() => false), menuActions: vi.fn((): import('../../contracts').GameMenuAction[] => []), receive: vi.fn() } },
   raf: vi.fn((_cb: FrameRequestCallback) => 1), panic: vi.fn(), system: null as null | ((action: string) => void), quit: vi.fn(), abandon: vi.fn(),
 }));
 vi.mock('../services', () => ({ startSession: () => mocks.session, previewAward: () => null, takeLobbyFrame: () => null, getFake: () => false, activeSession: () => null, mediaEngine: vi.fn(), hasConnectedController: () => false, onSystem: (fn: (action: string) => void) => { mocks.system = fn; return () => {}; }, debugActions: { panic: mocks.panic }, input: { attachKeyboard: () => () => {}, attachGamepad: () => () => {}, attachTouch: () => () => {}, state: () => ({}) } }));
@@ -29,7 +29,7 @@ async function mount(id = 'towerdefense', diagnostics?: { debugStats: boolean; t
   await act(async()=>{render(<GameHost game={game} profile={{level:1,...(diagnostics ? {settings:{debugStats:diagnostics.debugStats}} : {})} as Profile} media={diagnostics ? {timings:diagnostics.timings} as MediaRun : undefined} onQuit={mocks.quit} onAbandon={mocks.abandon} onRestart={()=>{}} onSave={()=>{}} />,container);});
 }
 beforeEach(()=>{
-  vi.clearAllMocks(); mocks.session.sim.inMenu.mockReturnValue(false); mocks.session.sim.menuActions.mockReturnValue([]);
+  vi.clearAllMocks(); mocks.session.ctx.bike.mockReturnValue({}); mocks.session.sim.inMenu.mockReturnValue(false); mocks.session.sim.menuActions.mockReturnValue([]);
   vi.stubGlobal('requestAnimationFrame',mocks.raf); vi.stubGlobal('cancelAnimationFrame',vi.fn());
   vi.stubGlobal('ResizeObserver',class {observe(){} disconnect(){}});
   container=document.createElement('div');document.body.appendChild(container);
@@ -177,5 +177,17 @@ describe('pause menu exit', () => {
     expect(container.textContent).toContain('Exit game');
     await act(async () => container.querySelector<HTMLButtonElement>('button:last-child')!.click());
     expect(mocks.abandon).toHaveBeenCalledOnce();
+  });
+  it('finishes the ride instead of abandoning when in an in-ride hub after active pedalling', async () => {
+    await readyToPlay('dungeon');
+    mocks.session.sim.inMenu.mockReturnValue(true);
+    mocks.session.ctx.bike.mockReturnValue({ activeSeconds: 600 });
+    await act(async () => mocks.system?.('pause'));
+    expect(container.textContent).toContain('Finish ride');
+    expect(container.textContent).not.toContain('Exit game');
+    await act(async () => container.querySelector<HTMLButtonElement>('button:last-child')!.click());
+    expect(mocks.abandon).not.toHaveBeenCalled();
+    expect(mocks.panic).toHaveBeenLastCalledWith(true);
+    expect(container.textContent).not.toContain('Finish ride');
   });
 });

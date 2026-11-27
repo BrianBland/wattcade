@@ -22,7 +22,7 @@ export const STANCES: Record<StanceId, StanceDef> = {
     band: [92, 100], bonus: 'fire', dmgTaken: 1, moveMult: 1, standoff: (b) => Math.max(b, 4.5), strafe: 0.6 },
   skirmisher: { id: 'skirmisher', name: 'Skirmisher', role: 'kite', color: '#8fd8ff', styles: ['star', 'spark', 'knife'], starter: 'star',
     band: [88, 98], bonus: 'move', dmgTaken: 1, moveMult: 1.1, standoff: (b) => Math.max(3.5, Math.min(b, 5)), strafe: 1 },
-  arcanist: { id: 'arcanist', name: 'Arcanist', role: 'shield-breaker', color: '#c77dff', styles: ['orb'], starter: 'orb',
+  arcanist: { id: 'arcanist', name: 'Arcanist', role: 'expose-extender', color: '#c77dff', styles: ['orb'], starter: 'orb',
     band: [85, 95], bonus: 'dmg', dmgTaken: 1, moveMult: 1, standoff: (b) => Math.max(b, 4), strafe: 0.5 },
 };
 export const STANCE_ORDER: StanceId[] = ['vanguard', 'ranger', 'skirmisher', 'arcanist'];

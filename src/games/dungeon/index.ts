@@ -10,9 +10,9 @@ export const module: GameModule = {
   snapshotFormat: 2,
   accent: '#b26bff',
   title: 'Purgatour',
-  blurb: 'Endless dungeon dive: pedal to shoot, loot ever-better weapons and gear, level up. Zone 2 heals; sprint to crack boss shields.',
+  blurb: 'Endless dungeon dive: pedal to fire, swap stances, pick post-boss perks, and sprint during Exposed windows. Zone 2 heals between fights.',
   progressLine, drawCard,
-  tags: ['zone2', 'sprint'],
+  tags: ['zone2', 'intervals', 'sprint', 'erg'],
   createSim(ctx, opts) {
     return createDungeonSim(ctx, opts as DungeonOpts | undefined);
   },

@@ -1,5 +1,6 @@
 // Arcade card + picker preview for Cadenza (pure Canvas 2D; no renderer imports).
 import type { MediaTimeline, Profile } from '../../contracts';
+import { selectedShip, shipHandling } from './ships';
 import { buildTrack, rateTrack, type Difficulty } from './sim/track';
 import type { CadenzaSave } from './sim/sim';
 
@@ -39,7 +40,7 @@ export function drawCard(g: CanvasRenderingContext2D, w: number, h: number, t: n
 export function mediaPreview(g: CanvasRenderingContext2D, w: number, h: number, tl: MediaTimeline, profile: Readonly<Profile>): void {
   const save = profile.gameData.cadenza as CadenzaSave | undefined;
   const difficulty: Difficulty = save?.lastDifficulty ?? 'pro';
-  const tr = buildTrack(tl, { difficulty, mode: 'mono', seed: 1 });
+  const tr = buildTrack(tl, { difficulty, mode: 'mono', seed: 1, lanes: shipHandling(selectedShip(profile)).lanes });
   const n = tr.height.length; let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < n; i++) { lo = Math.min(lo, tr.height[i]); hi = Math.max(hi, tr.height[i]); }
   const top = 28, bot = h - 6, X = (p: number) => (p / tr.durationS) * w, Y = (v: number) => bot - ((v - lo) / (hi - lo || 1)) * (bot - top);

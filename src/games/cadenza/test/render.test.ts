@@ -14,6 +14,23 @@ function longTrack() {
   const items = [{ id: 'long', title: 'Mixtape', artist: 'Artist', analysis: estimatedAnalysis(14400) }];
   return buildTrack(buildTimeline(planMix(items, 'continuous'), items), { difficulty: 'pro', mode: 'mono', seed: 1 });
 }
+it('stands collectibles as slim road-aligned bars, and keeps mines as tumbling hazards', () => {
+  const track = longTrack(), path = new Path(track);
+  track.blocks = [{ t: 40, lane: 1, color: 2, zone: 0 }, { t: 41, lane: -1, color: -1, zone: 0 }];
+  const blocks = new Blocks(path, 0, 120);
+  const bar = blocks.group.children[0] as THREE.InstancedMesh, mine = blocks.group.children[1] as THREE.InstancedMesh;
+  bar.geometry.computeBoundingBox();
+  const box = bar.geometry.boundingBox!;
+  expect(box.max.y - box.min.y).toBeGreaterThan(1.4);
+  expect(box.max.x - box.min.x).toBeLessThan(0.5);
+  expect(box.max.y - box.min.y).toBeGreaterThan(3 * (box.max.x - box.min.x));
+  const m = new THREE.Matrix4();
+  bar.getMatrixAt(0, m);
+  const up = new THREE.Vector3().setFromMatrixColumn(m, 1).normalize();
+  expect(up.y).toBeGreaterThan(0.9);
+  expect(mine.geometry.getAttribute('aTip')).toBeTruthy();
+  disposeObjects(blocks.group);
+});
 it('renders bounded, finite geometry near either end of a four-hour video', () => {
   const track = longTrack(), path = new Path(track);
   track.blocks = [{ t: 30, lane: 0, color: 0, zone: 0 }, { t: 14350, lane: 0, color: 0, zone: 0 }];

@@ -12,7 +12,7 @@ afterEach(() => setShellCommitGuard(0));
 it('swallows a second commit inside the hold and passes one after it', () => {
   setShellCommitGuard(SHELL_COMMIT_GUARD_S);
   expect(shellCommit(10)).toBe(true);
-  expect(shellCommit(10.1)).toBe(false);
+  expect(shellCommit(10.1)).toBe(false); // a 100 ms double tap
   expect(shellCommit(10 + SHELL_COMMIT_GUARD_S)).toBe(true);
 });
 

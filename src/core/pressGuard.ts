@@ -4,7 +4,7 @@
 // sims pass their own sim seconds, the shell passes performance.now() / 1000.
 
 /** Default hold between two accepted commits, in seconds. */
-export const COMMIT_GUARD_S = 0.25;
+export const COMMIT_GUARD_S = 0.15;
 
 export class PressGuard {
   private last = -Infinity;

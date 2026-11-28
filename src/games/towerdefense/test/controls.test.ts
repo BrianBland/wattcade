@@ -123,7 +123,7 @@ describe('pad cursor and build menu', () => {
     const { s, press } = rig(99, true);
     press('a'); press('a'); // two presses a tick apart: a double tap or a bouncing button
     expect(snap(s).workshop).not.toBeNull(); expect(snap(s).towers).toHaveLength(0);
-    s.step(9); press('a'); // a third of a second later
+    s.step(6); press('a'); // about 0.23 s later
     expect(snap(s).towers).toHaveLength(1);
   });
   it('debounces taps on menu rows: a double tap on Build does not also buy the upgrade that replaces it', () => {

@@ -5,7 +5,7 @@ import { PressGuard } from '../core/pressGuard';
  * Shared across screens, so the press that leaves one screen cannot also act on the next one.
  * (Pure helper from core; no singletons, so this is the one exception to "only services.ts imports core".)
  */
-export const SHELL_COMMIT_GUARD_S = 0.25;
+export const SHELL_COMMIT_GUARD_S = 0.15;
 const guard = new PressGuard(SHELL_COMMIT_GUARD_S);
 const nowS = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
 

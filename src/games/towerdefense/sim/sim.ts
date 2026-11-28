@@ -3,6 +3,7 @@
 // sustained threshold power charges the Railgun, sprints trigger Overdrive and Power Surges fire an EMP.
 import type { Button, ControlHint, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
 import { makeRng } from '../../../core/rng';
+import { PressGuard, COMMIT_GUARD_S } from '../../../core/pressGuard';
 import { suggestBuild, type BuildSuggestion } from './construction';
 import { LEVEL_0, levelGeometry, type TdLevel } from './level';
 import { CAMPAIGN, INTENSITIES, LEVELS_PER_STYLE, INTENSITY_NAME, QUICK_MINUTES, bossCount, campaignOpen, estimateMinutes, levelWaves, quickRide, endlessMap, starsFor, type Intensity, type LevelSpec, type LevelWave } from './campaign';
@@ -145,6 +146,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const waveRng = makeRng(Math.floor(ctx.rng() * 0x1_0000_0000));
   const swarmRng = makeRng(Math.floor(ctx.rng() * 0x1_0000_0000));
   // weapons (spec)
+  // Menu commits (buy, confirm, open/close the build menu, start, back) are debounced: a second commit inside this
+  // window is a double tap or a bouncing button, and is dropped. D-pad moves and weapon/tier buttons are not.
+  const commitGuardS = T.num('commitGuardS', COMMIT_GUARD_S, 0, 1, 0.05, 'ignore a second menu commit (buy/confirm/open/start/back) within this many seconds');
+  const guard = new PressGuard();
+  const commit = () => guard.pass(t, commitGuardS());
   const gatlingRevs = T.num('gatlingRevsPerShot', 0.25, 0.05, 2, 0.05, 'crank revs per Gatling bullet');
   const gatlingDmg = T.num('gatlingDamage', 30, 0.5, 60, 0.5);
   // intensity tiers (shifters) and the game-owned resistance gearbox
@@ -1198,19 +1204,20 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       garageT = 0;
     };
     const ride = () => {
+      if (!commit()) return false;
       if (levelSel > open) { cue('deny'); return false; }
       campaignSel = levelSel; menuPage = 'modes'; startLevel(CAMPAIGN[levelSel]); return true;
     };
     for (const a of pending.splice(0)) {
       if (a.type === 'levelTile' && Number.isInteger(a.index)) { if (a.index === levelSel) { if (ride()) return; } else select(a.index as number); }
       else if (a.type === 'levelStart') { if (ride()) return; }
-      else if (a.type === 'levelBack') { menuPage = 'modes'; garageSel = 0; cue('uiClose'); return; }
+      else if (a.type === 'levelBack') { if (commit()) { menuPage = 'modes'; garageSel = 0; cue('uiClose'); return; } }
     }
     if (p('left')) select(levelSel - 1);
     if (p('right')) select(levelSel + 1);
     if (p('up')) select(levelSel - LEVELS_PER_STYLE);
     if (p('down')) select(levelSel + LEVELS_PER_STYLE);
-    if (p('b')) { menuPage = 'modes'; garageSel = 0; garageT = 0; cue('uiClose'); return; }
+    if (p('b') && commit()) { menuPage = 'modes'; garageSel = 0; garageT = 0; cue('uiClose'); return; }
     if (p('a') && ride()) return;
     if (garageBreather > 0) garageBreather = Math.max(0, garageBreather - dt);
     else if (ctx.bike().cadence3s > garageCadence()) garageT += dt;
@@ -1227,7 +1234,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         garageSel = a.row as number; touchStep = a.step as number;
       } else if (a.type === 'quickReroll') { rerollQuick(); garageSel = rows.findIndex((r) => r.kind === 'quick'); }
       else if (a.type === 'levelTile' && !result && Number.isInteger(a.index) && (a.index as number) >= 0 && (a.index as number) < CAMPAIGN.length) {
-        menuPage = 'campaign'; levelSel = a.index as number; garageT = 0; cue('uiOpen'); return;
+        if (commit()) { menuPage = 'campaign'; levelSel = a.index as number; garageT = 0; cue('uiOpen'); return; }
       }
     garageSel = Math.min(garageSel, rows.length - 1);
     if (p('up')) { garageSel = (garageSel + rows.length - 1) % rows.length; garageT = 0; cue('select'); }
@@ -1242,8 +1249,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (p('y') && row.kind === 'quick') rerollQuick();
     // B starts the first row (the campaign level, or the next level on the clear screen; Endless again after Endless)
     rows = garageRows();
-    if (p('b')) { if (garageAct(rows[0], false)) return; }
-    if (p('a') || act) { garageT = 0; if (garageAct(rows[garageSel], true)) return; }
+    if (p('b') && commit()) { if (garageAct(rows[0], false)) return; }
+    if ((p('a') || act) && commit()) { garageT = 0; if (garageAct(rows[garageSel], true)) return; }
     if (garageBreather > 0) garageBreather = Math.max(0, garageBreather - dt);
     else if (ctx.bike().cadence3s > garageCadence()) garageT += dt;
     if (garageT >= garageAutostart()) garageAct(garageRows()[0], false);
@@ -1361,16 +1368,21 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         if (!mounted && WEAPONS.includes(a.weapon as Weapon)) { mounted = true; selectWeapon(a.weapon as Weapon); }
       } else if (a.type === 'pad' && Number.isInteger(a.pad) && (a.pad as number) >= -1 && (a.pad as number) <= BASE_PAD) {
         menuHandled = true;
+        if (!commit()) continue;
         if (workshop && workshop.pad === a.pad) closeWorkshop();
         else openWorkshop((a.pad as number) < 0 ? undefined : a.pad as number);
-      } else if (a.type === 'close') { menuHandled = true; closeWorkshop(); }
+      } else if (a.type === 'close') { menuHandled = true; if (commit()) closeWorkshop(); }
       else if ((a.type === 'row' || a.type === 'confirm') && workshop && !purchased) {
         if (a.revision != null && a.revision !== workshopRevision) continue;
         if (a.pad != null && a.pad !== workshop.pad) continue;
         if (a.type === 'row' && (!Number.isInteger(a.row) || (a.row as number) < 0 || (a.row as number) > workshopRows(workshop.pad).length)) continue;
-        workshop.idle = 0; workshopAct(a.type === 'row' ? a.row as number : undefined);
+        menuHandled = true; workshop.idle = 0;
+        if (!commit()) continue;
+        workshopAct(a.type === 'row' ? a.row as number : undefined);
         menuHandled = true; purchased = true;
       } else if (a.type === 'construct' && !workshop && !purchased) {
+        menuHandled = true;
+        if (!commit()) continue;
         purchased = true; openWorkshop(cursorPad()); menuHandled = true;
       } else if (a.type === 'inputCancel') menuHandled = true;
     }

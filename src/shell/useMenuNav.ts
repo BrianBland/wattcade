@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { navReduce, navRows, type NavKey } from './nav';
 import { onMenuPress } from './menuInput';
 import { play } from '../audio/sfx';
+import { shellCommit } from './commitGuard';
 
 export interface MenuNavOpts {
   /** Start focused here. */
@@ -52,8 +53,9 @@ export function useMenuNav(count: number, layout: number | readonly number[], on
       }
       if (next !== r.index) { play('uiMove'); ref.current.index = next; setIndex(next); }
     };
-    const select = () => { play('uiSelect'); if (!ref.current.opts.isDisabled?.(ref.current.index)) ref.current.onSelect(ref.current.index); };
-    const back = () => { if (ref.current.onBack) { play('uiBack'); ref.current.onBack(); } };
+    // A/B (and Enter/Esc) are commits: a double press or a bouncing button acts once (shared with Btn taps).
+    const select = () => { if (ref.current.opts.isDisabled?.(ref.current.index) || !shellCommit()) return; play('uiSelect'); ref.current.onSelect(ref.current.index); };
+    const back = () => { if (ref.current.onBack && shellCommit()) { play('uiBack'); ref.current.onBack(); } };
     const off = onMenuPress((p) => {
       for (const k of ['up', 'down', 'left', 'right'] as const) if (p.has(k)) move(k);
       if (p.has('a')) select();

@@ -40,6 +40,7 @@ export class DungeonSound {
   private lastPlayed = new Map<string, number>();
   private prevBossCycle = '';
   private prevBossPhase = 0;
+  private prevSeg = '';
   private prevWarded = false;
   private prevRallied = false;
   private prevRolling = false;
@@ -108,6 +109,11 @@ export class DungeonSound {
 
     // 3. Snapshot-transition audio matched to visual combat beats
     if (s.phase === 'run') {
+      if (s.hooks.seg === 'ambush' && this.prevSeg && this.prevSeg !== 'ambush' && rack) {
+        this.music.triggerStinger('ambushStart');
+      }
+      this.prevSeg = s.hooks.seg;
+
       const b = s.boss;
       if (b?.active) {
         if (b.cycle === 'windup' && this.prevBossCycle !== 'windup' && rack) {
@@ -115,11 +121,13 @@ export class DungeonSound {
         }
         if (b.cycle === 'exposed' && this.prevBossCycle !== 'exposed' && rack) {
           playDungeonSfx(rack, 'bossExposed', { parried: s.player.warded });
-          this.music.duck(0.62, 0.25);
+          this.music.triggerStinger('bossExposed');
+          this.music.duck(0.68, 0.22);
         }
         if (b.phase > this.prevBossPhase && this.prevBossPhase > 0 && rack) {
           playDungeonSfx(rack, 'bossStagger');
-          this.music.duck(0.5, 0.35);
+          this.music.triggerStinger('bossPhase');
+          this.music.duck(0.55, 0.32);
         }
         this.prevBossCycle = b.cycle;
         this.prevBossPhase = b.phase;

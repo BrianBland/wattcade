@@ -235,3 +235,100 @@
 
 .scrapjet-stage.cinder-sky, .scrapjet-world.cinder-sky { background-color:#c89768; }
 .scrapjet-stage.cable-sky, .scrapjet-world.cable-sky { background-color:#acbcca; }
+
+.sj-pursuit {
+  position: absolute;
+  top: 3%;
+  left: 2.5%;
+  width: min(80%, clamp(202px, 29%, 320px));
+  box-sizing: border-box;
+  padding: 0.55em 0.72em 0.5em;
+  background: linear-gradient(105deg, #171d21f5, #212b2bed);
+  border-left: 3px solid #efba72;
+  box-shadow: 0 2px 6px #15151b44;
+  font:
+    650 clamp(12px, 1.55vw, 19px) / 1.2 system-ui,
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.sj-pursuit[hidden],
+.in-pursuit .sj-rank {
+  display: none;
+}
+.sj-pursuit header,
+.sj-power {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35em;
+}
+.sj-pursuit header {
+  color: #f4cd92;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sj-power {
+  margin: 0.3em 0;
+}
+.sj-power strong {
+  font-size: 1.75em;
+  color: #fff9e5;
+  white-space: nowrap;
+}
+.sj-power span {
+  color: #f6d0a4;
+  font-size: 1em;
+}
+.sj-pursuit[data-zone='Hold'] .sj-power span {
+  color: #a5f3d9;
+}
+.sj-range {
+  height: 4px;
+  position: relative;
+  background: linear-gradient(to right, #71716b 30%, #76b7a6 30% 70%, #906f56 70%);
+}
+.sj-range i {
+  position: absolute;
+  left: var(--needle);
+  bottom: -2px;
+  height: 8px;
+  width: 3px;
+  background: #fffae5;
+}
+.sj-pursuit footer {
+  margin-top: 0.55em;
+  color: #c1cfca;
+  font-size: 0.82em;
+}
+@media (max-width: 650px) {
+  .in-pursuit .sj-cue {
+    top: 26%;
+    max-width: 90%;
+    font-size: 0.87em;
+  }
+  .sj-grid {
+    max-width: 89%;
+    box-sizing: border-box;
+  }
+}
+.sj-split {
+  position: absolute;
+  left: 2.6%;
+  top: calc(3.5% + 3.2em);
+  padding: 0.48em 0.7em;
+  background: #20252aeb;
+  border-left: 3px solid #e9b76f;
+  color: #fff1d4;
+  font:
+    700 clamp(10px, 1.25vw, 16px) / 1.25 system-ui,
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.sj-split.faster {
+  color: #a7f1d8;
+  border-color: #78beac;
+}
+
+.sj-pursuit.complete .sj-range {
+  display: none;
+}

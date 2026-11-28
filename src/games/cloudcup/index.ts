@@ -1,5 +1,6 @@
 import type { GameModule } from '../../contracts';
 import { createRace } from './sim/race';
+import type { RallySave } from './sim/timing';
 import { drawCard } from './art';
 
 export const module: GameModule = {
@@ -7,13 +8,16 @@ export const module: GameModule = {
   title: 'Scrapjet Rally',
   accent: '#ffad57',
   blurb:
-    'Race five scrapyard circuits, from Cinder Bowl’s derby oval to the branching climb on Cablehead Pass. Choose a quick heat or an endurance ride, draft a rival and swing your chain on either flank.',
+    'Race five scrapyard circuits, from Cinder Bowl’s derby oval to the branching climb on Cablehead Pass. Race the pack or ride an 18-minute FTP pursuit with three timed duels, easy recoveries and a cool-down.',
   tags: ['intervals'],
   drawCard,
   createSim: (ctx) => createRace(ctx),
   progressLine(raw) {
-    const best = (raw as { bestPlace?: number } | undefined)?.bestPlace;
-    return best ? 'Best finish · ' + best + ' / 4' : null;
+    const save = raw as RallySave | undefined;
+    const flags = Object.values(save?.pursuits ?? {}).map((row) => row.flags);
+    const results = save?.bestPlace ? ['Best finish · ' + save.bestPlace + ' / 4'] : [];
+    if (flags.length) results.push('Pursuit · ' + Math.max(...flags) + '/3 flags');
+    return results.join('   ·   ') || null;
   },
   async loadRenderer() {
     return new (await import('./render/renderer')).Renderer();

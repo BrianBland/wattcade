@@ -773,7 +773,7 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
         lod.addLevel(far, 44 + bounds.radius, 0.12);
         root.add(lod);
       }
-  return (time: number, at: number, state: { laps: number }) => {
+  return (time: number, at: number, state: { laps: number; pursuit?: unknown }) => {
     if (bowl) {
       raceClock.value = time;
       pennants.forEach((flag, i) => {
@@ -785,7 +785,10 @@ export function buildEndCourse(root: T.Group, bowl: boolean, art: VenueArt) {
     } else {
       runRiver(time);
       moving.rotation.z = time * 0.65;
-      const journey = Math.max(0, Math.min(1, (at - (state.laps - 1) * LAP - saddle) / (LAP - saddle)));
+      const journey = Math.max(
+        0,
+        Math.min(1, ((state.pursuit ? at % LAP : at - (state.laps - 1) * LAP) - saddle) / (LAP - saddle)),
+      );
       car.position.copy(cableHigh).lerp(cableLow, journey);
     }
   };

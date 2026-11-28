@@ -3,7 +3,7 @@ import type { RaceView } from '../sim/race';
 import type { BikePose } from '../sim/motion';
 
 export function displayRace(s: RaceView, fraction: number): RaceView {
-  if (fraction >= 1 || s.menu || !s.time || s.at >= s.finishAt) return s;
+  if (fraction >= 1 || s.menu || !s.time || s.finished) return s;
   const mix = (from: number, to: number) => from + (to - from) * fraction;
   const motion = (from: BikePose, to: BikePose) => ({
     at: mix(from.at, to.at),

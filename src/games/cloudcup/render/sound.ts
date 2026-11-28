@@ -14,12 +14,17 @@ export class RallySound {
   update(s: RaceView) {
     const prev = this.previous;
     this.previous = s;
+    if (sfxGraph() && prev && !s.pursuit && !s.menu && s.lap === s.laps && prev.lap < s.lap)
+      play('bell', { vol: 0.54, pitch: 1.18 });
     if (sfxGraph() && prev && !prev.bell && s.bell) play('bell', { vol: 0.8 });
     if (sfxGraph() && prev && s.doubleFiring > prev.doubleFiring) {
       play('horn', { vol: 0.45, pitch: 1.28 });
       play('foghorn', { vol: 0.28, pitch: 1.6 });
     }
-    if (!sfxGraph() || s.menu || s.at >= s.finishAt) {
+    if (sfxGraph() && prev?.pursuit && s.pursuit && prev.pursuit.phase !== s.pursuit.phase) {
+      play(s.pursuit.phase % 2 === 1 ? 'bell' : s.pursuit.lastWon ? 'chime' : 'horn', { vol: 0.55 });
+    }
+    if (!sfxGraph() || s.menu || s.finished) {
       this.stop();
       return;
     }

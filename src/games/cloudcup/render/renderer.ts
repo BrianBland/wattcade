@@ -1,3 +1,6 @@
+import { lapTime } from '../sim/timing';
+import { pursuitPhases, workBand } from '../sim/pursuit';
+import { PursuitBoard } from './pursuitBoard';
 import { buildChain } from './chain';
 import { drawnPhase, SWING, rivalSwing } from '../sim/chain';
 import { displayRace } from './motion';
@@ -71,6 +74,9 @@ function courseCue(s: RaceView, d: number) {
 }
 
 export class Renderer implements GameRenderer {
+  private splitBoard!: HTMLDivElement;
+  private pursuitBoard = new PursuitBoard();
+  private duelMarker!: T.Sprite;
   private root!: HTMLDivElement;
   private stage!: HTMLDivElement;
   private info!: HTMLDivElement;
@@ -234,7 +240,40 @@ export class Renderer implements GameRenderer {
     this.info.className = 'scrapjet-dash';
     this.info.innerHTML =
       '<div class="sj-rank"><b></b><span></span></div><canvas class="sj-map" width="180" height="114"></canvas><div class="sj-combat"></div><div class="sj-threat"></div><div class="sj-speed"><div><b>0</b><small>KM/H</small></div><div class="sj-dial"><i></i><em></em></div><span></span></div><div class="sj-cue"></div><div class="sj-grid"><small>SCRAPJET RALLY</small><strong></strong><p></p><span></span><small>Paddles · class &nbsp; B · course &nbsp; ↑ · distance &nbsp; A · race</small></div>';
+    this.splitBoard = document.createElement('div');
+    this.splitBoard.className = 'sj-split';
+    this.info.append(this.splitBoard, this.pursuitBoard.el);
     this.stage.append(this.info);
+    const pennant = document.createElement('canvas');
+    pennant.width = 96;
+    pennant.height = 64;
+    const ink = pennant.getContext('2d')!;
+    ink.fillStyle = '#26252c';
+    ink.beginPath();
+    ink.moveTo(7, 6);
+    ink.lineTo(89, 6);
+    ink.lineTo(89, 35);
+    ink.lineTo(48, 59);
+    ink.lineTo(7, 35);
+    ink.closePath();
+    ink.fill();
+    ink.strokeStyle = '#ffe8bd';
+    ink.lineWidth = 4;
+    ink.stroke();
+    for (let j = 0; j < 2; j++)
+      for (let k = 0; k < 6; k++) {
+        ink.fillStyle = (j + k) % 2 ? '#bc7334' : '#ffdd8b';
+        ink.fillRect(17 + k * 10, 13 + j * 9, 10, 9);
+      }
+    const pennantMap = new T.CanvasTexture(pennant);
+    pennantMap.colorSpace = T.SRGBColorSpace;
+    this.duelMarker = new T.Sprite(
+      new T.SpriteMaterial({ map: pennantMap, depthWrite: false, toneMapped: false }),
+    );
+    this.duelMarker.scale.set(1.15, 0.77, 1);
+    this.duelMarker.visible = false;
+    this.scene.add(this.duelMarker);
+
     this.label = this.info.querySelector('b')!;
     this.lap = this.info.querySelector('.sj-rank span')!;
     this.combat = this.info.querySelector('.sj-combat')!;
@@ -416,6 +455,8 @@ export class Renderer implements GameRenderer {
       },
       ...s.rivals,
     ];
+    const marked = s.pursuit && !s.menu && !s.finished ? pursuitPhases[s.pursuit.phase].rival : -1;
+    this.duelMarker.visible = false;
     actors.forEach((r, i) => {
       const p = (s.course === 4 && r.cut ? winchCut : courses[s.course]).world(r.at, r.x);
       const obj = this.bikes[i].group;
@@ -427,6 +468,11 @@ export class Renderer implements GameRenderer {
         this.touchdowns[i] && age >= 0 && age < 0.55 ? Math.sin(age * 17) * Math.exp(-age * 7) : 0;
       obj.visible = r.finish === null;
       obj.position.set(p.x, p.y + r.lift + 0.26 - settle * 0.34 + Math.sin(s.time * 8 + i) * 0.045, p.z);
+      if (i > 0 && i - 1 === marked && !r.fall && Math.abs(r.at - s.at) < 85) {
+        this.duelMarker.visible = true;
+        this.duelMarker.position.copy(obj.position);
+        this.duelMarker.position.y += 2.8;
+      }
       const ageOfFall = RESCUE - r.fall;
       const tumble = r.fall
         ? (r.x < 0 ? -1 : 1) *
@@ -543,17 +589,19 @@ export class Renderer implements GameRenderer {
     this.sound.update(snapshot);
   }
   private drawHud(s: RaceView) {
+    this.pursuitBoard.update(s);
     const g = this.map.getContext('2d')!;
     g.clearRect(0, 0, 180, 114);
     g.drawImage(this.routeMap, 0, 0);
+    const target = s.pursuit ? s.rivals[pursuitPhases[s.pursuit.phase].rival] : undefined;
     for (const r of [...s.rivals, s]) {
       const p = (s.course === 4 && r.cut ? winchCut : courses[s.course]).track(r.at);
-      g.fillStyle = r === s ? '#a6fff1' : '#ff8757';
+      g.fillStyle = r === s ? '#a6fff1' : r === target ? '#ffe6a5' : '#ff8757';
       g.beginPath();
       g.arc(
         (s.course === 4 ? 88 : 32) + p.x * 0.34,
         55 + p.z * (s.course === 4 ? 0.21 : 0.27),
-        r === s ? 4 : 2.3,
+        r === s ? 4 : r === target ? 3.8 : 2.3,
         0,
         Math.PI * 2,
       );
@@ -571,34 +619,37 @@ export class Renderer implements GameRenderer {
       this.threat.classList.toggle('left', left);
       this.threat.style.setProperty('--wind', (100 * (1 - danger.windup / 1.15)).toFixed(0) + '%');
     }
-    const cue =
-      s.at >= s.finishAt
-        ? places[s.place - 1] + ' · FINISH'
-        : s.fall
-          ? RESCUE - s.fall < CATCH
-            ? 'MAGNET INBOUND'
-            : RESCUE - s.fall < DROP
-              ? 'ON THE WINCH'
-              : 'RELEASING'
-          : s.flight
-            ? 'AIRBORNE'
-            : s.slow
-              ? 'OVERLOAD   /   ' +
-                Math.round(s.purgeFtp * 100) +
-                '% FTP   ' +
-                Math.floor(s.purge * 100) +
-                '%'
-              : s.notice > 0
-                ? s.message
-                : routeCue
-                  ? routeCue
-                  : s.draft > 0.7
-                    ? 'IN THE SLIPSTREAM'
-                    : '';
+    const cue = s.finished
+      ? s.pursuit
+        ? 'PURSUIT COMPLETE'
+        : places[s.place - 1] + ' · FINISH'
+      : s.fall
+        ? RESCUE - s.fall < CATCH
+          ? 'MAGNET INBOUND'
+          : RESCUE - s.fall < DROP
+            ? 'ON THE WINCH'
+            : 'RELEASING'
+        : s.flight
+          ? 'AIRBORNE'
+          : s.slow
+            ? 'OVERLOAD · ' + Math.ceil(s.slow) + 's  /  ' + Math.ceil(s.ftp * s.purgeFtp) + ' W clears early'
+            : s.notice > 0
+              ? s.message
+              : routeCue
+                ? routeCue
+                : s.draft > 0.7
+                  ? 'IN THE SLIPSTREAM'
+                  : '';
     const speed = Math.round(s.speed * 3.6);
     const ramp = s.course === 0 && d >= 145 && d < LIP && s.x > 0.1 && !s.fall;
     const enough = s.speed >= LAUNCH_SPEED;
+    const showSplit = !s.pursuit && !s.menu && s.splitUntil > s.time && s.splitReading > 0;
     const key = [
+      showSplit,
+      s.splitReading,
+      s.previousBest,
+      s.bestPursuit?.flags,
+      s.bestPursuit?.seconds,
       ramp,
       enough,
       !!s.boost,
@@ -611,7 +662,9 @@ export class Renderer implements GameRenderer {
       s.lap,
       cue,
       speed,
-      !!s.reload,
+      Math.ceil(s.reload),
+      !!s.pursuit,
+      s.pursuit?.phase,
       !!s.shield,
       Math.ceil(s.tow),
       !!run,
@@ -622,11 +675,14 @@ export class Renderer implements GameRenderer {
     if (key === this.lastHud) return;
     this.lastHud = key;
     this.info.classList.toggle('on-grid', s.menu);
+    this.info.classList.toggle('in-pursuit', !!s.pursuit);
     if (s.menu) {
       this.menu.querySelector('strong')!.textContent = courses[s.course].name;
       this.menu.querySelector('small')!.textContent =
         s.cupStage < 0
-          ? 'SCRAPJET RALLY'
+          ? s.pursuit
+            ? 'SCRAPJET RALLY · PURSUIT'
+            : 'SCRAPJET RALLY'
           : 'BREAKER CUP · HEAT ' +
             (s.cupStage + 1) +
             ' / 5' +
@@ -636,7 +692,9 @@ export class Renderer implements GameRenderer {
           ? 'A · start next heat'
           : s.cupStage === 0
             ? 'Paddles · class   ↓ · single race   A · start cup'
-            : 'Paddles · class   B · course   ↑ · distance   ↓ · cup   A · race';
+            : s.pursuit
+              ? 'Paddles · class   B · course   Y · single race   A · ride'
+              : 'Paddles · class   B · course   ↑ · distance   ↓ · cup   Y · pursuit   A · race';
       this.menu.querySelector('p')!.textContent =
         s.course === 3
           ? 'Hold a wheel around the bowl. Pass on the final straight to ring the tram bell.'
@@ -647,14 +705,42 @@ export class Renderer implements GameRenderer {
               : kiln
                 ? 'Hold the first seam. Ride the high bank, then follow the copper across the return drum.'
                 : 'Bridge left. Line up the right boost pad to clear the broken viaduct.';
-      this.menu.querySelector('span')!.textContent =
-        classes[s.tier] +
+      if (s.pursuit)
+        this.menu.querySelector('p')!.textContent =
+          'Three 2-minute duels. Gain ground on the marked rival and ride 90 seconds in range to win each flag.';
+      const work = workBand(s.tier).map((v) => Math.round(v * s.ftp));
+      const minutes = (s.laps * (s.course === 4 ? 1.45 : 1) * LAP) / (s.cruise * Math.sqrt(s.paceFtp) * 60);
+      this.menu.querySelector('span')!.textContent = s.pursuit
+        ? classes[s.tier] + ' · ' + work.join('–') + ' W work  /  18 min including warm-up & cool-down'
+        : classes[s.tier] +
+          ' · ' +
+          Math.round(100 * s.paceFtp) +
+          '% FTP pace   /   ' +
+          s.laps +
+          ' laps   /   ' +
+          ('about ' + Math.round(minutes) + ' min');
+    }
+    if (s.menu) {
+      const line = s.pursuit
+        ? s.bestPursuit && 'Best ' + s.bestPursuit.flags + '/3 flags'
+        : s.previousBest && 'PB ' + lapTime(s.previousBest);
+      if (line) this.menu.querySelector('span')!.textContent += '   ·   ' + line;
+    }
+    this.splitBoard.hidden = !showSplit;
+    if (showSplit) {
+      const delta = s.splitDelta;
+      const label =
+        s.splitSector === 3
+          ? s.lap === s.laps && !s.finished
+            ? 'Final lap'
+            : 'Lap time'
+          : 'Split ' + s.splitSector;
+      this.splitBoard.textContent =
+        label +
         ' · ' +
-        Math.round(100 * s.paceFtp) +
-        '% FTP pace   /   ' +
-        s.laps +
-        ' laps   /   ' +
-        (s.laps === 3 ? '2–4 min' : s.laps === 12 ? '9–14 min' : '18–28 min');
+        lapTime(s.splitReading) +
+        (delta === null ? '' : '   ' + (delta > 0 ? '+' : '−') + Math.abs(delta).toFixed(1) + 's');
+      this.splitBoard.classList.toggle('faster', delta !== null && delta <= 0);
     }
     this.label.textContent = places[s.place - 1];
     this.lap.textContent = 'LAP ' + s.lap + ' / ' + s.laps;
@@ -685,13 +771,16 @@ export class Renderer implements GameRenderer {
           : '';
     this.cue.textContent = cue;
     this.cue.classList.toggle('danger', s.slow > 0);
-    this.combat.textContent = s.shield
-      ? 'SCRAP ARMOUR'
-      : s.tow
-        ? 'TOW CELL  ·  ' + Math.ceil(s.tow) + 's'
-        : s.reload
-          ? 'CHAIN RECOVERY'
-          : 'A ‹   CHAIN   › B';
+    this.combat.textContent =
+      s.pursuit && pursuitPhases[s.pursuit.phase].rival < 0
+        ? 'NEUTRAL ROLL'
+        : s.shield
+          ? 'SCRAP ARMOUR'
+          : s.tow
+            ? 'TOW CELL  ·  ' + Math.ceil(s.tow) + 's'
+            : s.reload
+              ? 'CHAIN · ' + Math.ceil(s.reload) + 's'
+              : 'A ‹   CHAIN   › B';
   }
   unmount() {
     this.disposed = true;

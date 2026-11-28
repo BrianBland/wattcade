@@ -556,3 +556,39 @@ it('keeps the overlapping trestle decks level at the same point in the merge', (
     }
   }
 });
+
+it('finishes a timed pursuit at rest without recording a race win or a workout best', () => {
+  const r = race();
+  const legacy = { bestPlace: 2 };
+  r.session.ctx.save(legacy);
+  r.session.fakeBike!.useScript(null);
+  r.session.fakeBike!.manual = { power: 0, cadence: 0, hr: null };
+  r.press('y');
+  r.press('a');
+  r.session.step(1080 * 30 - 1);
+  expect(r.session.sim.isOver()).toBe(false);
+  r.session.step(1);
+  expect(r.snap()).toMatchObject({
+    finished: true,
+    at: 0,
+    pursuit: { complete: true, flags: 0, workSeconds: 0 },
+  });
+  expect(r.session.ctx.load()).toEqual(legacy);
+  expect(r.session.sim.summary()).toMatchObject({ 'Duels finished': 3, 'Work ridden (s)': 360 });
+  r.session.finish();
+});
+
+it('records a three-lap race without overwriting existing pursuit results', () => {
+  const r = race(),
+    pursuits = { '3/1': { flags: 2, seconds: 328 } };
+  r.session.ctx.save({ bestPlace: 1, pursuits });
+  for (let i = 0; i < 3; i++) r.press('b');
+  r.press('a');
+  r.until((s) => s.finished, 15000);
+  const record = r.session.ctx.load<import('../sim/timing').RallySave>()!;
+  expect(record).toMatchObject({ bestPlace: 1, pursuits });
+  const best = record.records!['3/1/3'];
+  expect(best.time).toBeGreaterThan(best.lap);
+  expect(best.splits[2]).toBe(best.lap);
+  r.session.finish();
+});

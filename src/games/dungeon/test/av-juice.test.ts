@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
 import type { DungeonSnapshot } from '../sim/types';
-import { CUE_BPM, PHRASE_BEATS, beatS, cueNotes, layerGain, mtof, musicFor, type DungeonCue } from '../render/musicScore';
+import { CUE_BPM, PHRASE_BEATS, beatS, cueNotes, diatonicHarmony, layerGain, mtof, musicFor, type DungeonCue } from '../render/musicScore';
 import { DungeonMusic } from '../render/music';
 import { DungeonSound } from '../render/sound';
 import { JuiceEngine, activeBuffs } from '../render/juice';
@@ -13,8 +13,8 @@ function baseSnap(): DungeonSnapshot {
   return s.sim.snapshot() as DungeonSnapshot;
 }
 
-describe('Purgatour AV soundscape (multi-section scores, intensity & Node-safe audio)', () => {
-  it('selects camp, zone, ambush, boss (with phase acceleration), victory cues and scales intensity dynamically', () => {
+describe('Purgatour AV soundscape (32-bar studio scores, adaptive routing & Node-safe audio)', () => {
+  it('selects camp, zone, biome-locked ambush, distinct boss/wyrm/sweeper cues, Skill-Tree filter ducking, and victory', () => {
     const run = baseSnap();
     expect(musicFor(run)?.cue).toBe('keep');
 
@@ -36,14 +36,34 @@ describe('Purgatour AV soundscape (multi-section scores, intensity & Node-safe a
     const deep = { ...run, world: { ...run.world, theme: 3 } };
     expect(musicFor(deep)?.cue).toBe('deep');
 
-    const ambush = { ...run, hooks: { ...run.hooks, seg: 'ambush' } };
-    expect(musicFor(ambush)?.cue).toBe('boss');
+    // Ambush stays inside the active biome cue with overdrive flag (keeps Boss themes sacred!)
+    const ambush = musicFor({ ...run, hooks: { ...run.hooks, seg: 'ambush' } })!;
+    expect(ambush.cue).toBe('keep');
+    expect(ambush.ambush).toBe(true);
+    expect(ambush.intensity).toBeGreaterThanOrEqual(0.9);
 
+    // Skill Tree keeps the active biome cue under a low-pass filter instead of hard-cutting to Camp
+    const treeOpen = musicFor({
+      ...catacombs,
+      skillTree: {
+        ...run.skillTree,
+        offer: { mode: 'quick', sel: 0, focusNodeId: 'r_p_t1', age: 0, autoS: 18, manual: false, reason: 'Floor 2', cards: [] },
+      },
+    })!;
+    expect(treeOpen.cue).toBe('catacombs');
+    expect(treeOpen.muffled).toBe(true);
+
+    // Distinct boss identities: standard boss, Headwind Wyrm, and final-floor Grim Sweeper
     const bossP1: DungeonSnapshot = { ...run, boss: { name: 'King Gel', hp: 1000, maxHp: 1000, active: true, phase: 1, cycle: 'idle', left: 10, fightT: 15, tide: 0, splits: [0.66, 0.33] } };
     const bossP3: DungeonSnapshot = { ...run, boss: { name: 'King Gel', hp: 200, maxHp: 1000, active: true, phase: 3, cycle: 'exposed', left: 4, fightT: 60, tide: 0, splits: [0.66, 0.33] } };
+    const wyrmBoss: DungeonSnapshot = { ...run, boss: { name: 'Headwind Wyrm', hp: 1200, maxHp: 1200, active: true, phase: 2, cycle: 'idle', left: 10, fightT: 25, tide: 0, splits: [0.66, 0.33] } };
+    const sweeperBoss: DungeonSnapshot = { ...run, run: { ...run.run!, final: true }, boss: { name: 'The Grim Sweeper', hp: 1500, maxHp: 1500, active: true, phase: 3, cycle: 'idle', left: 10, fightT: 40, tide: 0, splits: [0.66, 0.33] } };
     expect(musicFor(bossP1)?.cue).toBe('boss');
     expect(musicFor(bossP3)!.tempoScale).toBeGreaterThan(musicFor(bossP1)!.tempoScale);
     expect(musicFor(bossP3)!.intensity).toBeGreaterThan(musicFor(bossP1)!.intensity);
+    expect(musicFor(bossP3)!.exposed).toBe(true);
+    expect(musicFor(wyrmBoss)?.cue).toBe('wyrm');
+    expect(musicFor(sweeperBoss)?.cue).toBe('sweeper');
 
     const camp: DungeonSnapshot = {
       ...run,
@@ -61,17 +81,20 @@ describe('Purgatour AV soundscape (multi-section scores, intensity & Node-safe a
     expect(musicFor(campWin)?.cue).toBe('victory');
   });
 
-  it('produces valid multi-section 64-beat scores with A/B evolution for every theme', () => {
-    const cues: DungeonCue[] = ['camp', 'keep', 'catacombs', 'crypt', 'deep', 'boss', 'victory'];
-    const unpitched = new Set(['snare', 'hat', 'openhat', 'shaker']);
+  it('produces valid 32-bar (128-beat) scores with A/B/C/D arcs, diatonic harmonies, and Archetype accents', () => {
+    const cues: DungeonCue[] = ['camp', 'keep', 'catacombs', 'crypt', 'deep', 'boss', 'wyrm', 'sweeper', 'victory'];
+    const unpitched = new Set(['snare', 'rim', 'hat', 'openhat', 'ride', 'crash', 'shaker']);
+    expect(PHRASE_BEATS).toBe(128);
     for (const cue of cues) {
       expect(CUE_BPM[cue]).toBeGreaterThanOrEqual(80);
       expect(beatS(cue)).toBeGreaterThan(0.3);
       let count = 0;
-      const sectionA: number[] = [];
-      const sectionB: number[] = [];
+      const secA: number[] = [];
+      const secB: number[] = [];
+      const secC: number[] = [];
+      const secD: number[] = [];
       for (let b = 0; b < PHRASE_BEATS; b++) {
-        const notes = cueNotes(cue, b);
+        const notes = cueNotes(cue, b, { archetype: 'puncheur', bossPhase: 3 });
         for (const n of notes) {
           count++;
           expect(n.dur).toBeGreaterThan(0);
@@ -83,27 +106,49 @@ describe('Purgatour AV soundscape (multi-section scores, intensity & Node-safe a
           }
           if (!unpitched.has(n.inst)) {
             expect(mtof(n.midi)).toBeGreaterThan(20);
-            if (b < 16) sectionA.push(n.midi);
-            if (b >= 32 && b < 48) sectionB.push(n.midi);
+            if (b < 32) secA.push(n.midi);
+            else if (b < 64) secB.push(n.midi);
+            else if (b < 96) secC.push(n.midi);
+            else secD.push(n.midi);
           }
         }
       }
-      expect(count).toBeGreaterThan(120);
-      // Verify genuine A vs B musical contrast (not a 4-bar loop!)
-      expect(sectionA).not.toEqual(sectionB);
+      expect(count).toBeGreaterThan(240);
+      // Verify genuine A vs B vs C (Breakdown) vs D (Climax) musical evolution!
+      expect(secA).not.toEqual(secB);
+      expect(secB).not.toEqual(secC);
+      expect(secC).not.toEqual(secD);
     }
+
+    // Diatonic harmony stays strictly inside the active scale (no parallel-4th out-of-key clashes)
+    const aMin = [9, 11, 0, 2, 4, 5, 7];
+    for (const m of [69, 71, 72, 74, 76, 77, 79, 81]) {
+      const h = diatonicHarmony(m, aMin, 2);
+      expect(aMin).toContain(((h % 12) + 12) % 12);
+      expect(h).toBeLessThan(m);
+    }
+
+    // Ambush context adds chug overdrive notes in the active biome
+    const normalKeep = cueNotes('keep', 4, {});
+    const ambushKeep = cueNotes('keep', 4, { ambush: true });
+    expect(ambushKeep.some((n) => n.inst === 'chug')).toBe(true);
+    expect(normalKeep.some((n) => n.inst === 'chug')).toBe(false);
+
     expect(layerGain(undefined, 0.2)).toBe(1);
     expect(layerGain(0.6, 0.3)).toBe(0);
     expect(layerGain(0.6, 0.6)).toBeGreaterThan(0.4);
     expect(layerGain(0.6, 0.85)).toBe(1);
   });
 
-  it('safely runs DungeonMusic and DungeonSound in Node without WebAudio', () => {
+  it('safely runs DungeonMusic (including stingers) and DungeonSound in Node without WebAudio', () => {
     const snap = baseSnap();
     const music = new DungeonMusic();
     const sound = new DungeonSound();
     expect(() => {
       music.update(musicFor(snap), true);
+      music.triggerStinger('bossExposed');
+      music.triggerStinger('bossPhase');
+      music.triggerStinger('ambushStart');
       sound.update(snap);
       sound.dispose();
       music.stop();

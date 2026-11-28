@@ -75,7 +75,7 @@ export interface SkillOfferView {
   autoS: number;
   /** True when opened from Pause Menu or manual D-pad Up (auto-pick timer paused). */
   manual: boolean;
-  reason: string;       // e.g. 'Level Up! · Room Cleared' or 'Build & Skill Tree'
+  reason: string;       // e.g. 'Floor 2 · The Peloton Crypt' or 'Build & Skill Tree'
   cards: SkillQuickCardView[];
 }
 

@@ -82,7 +82,7 @@ describe('Purgatour P0 regressions', () => {
     expect(banners).toBe(1);
   });
 
-  it('clears combat resistance grades and hides touch controls when the room-clear Level-Up skill offer opens', () => {
+  it('clears combat resistance grades and hides touch controls when the new-floor Level-Up skill offer opens', () => {
     const reg = new TuningRegistry({ profileId: 'p0-skill-grade' });
     reg.scoped('dungeon').num('baseDamage', 10, 1, 200, 1);
     reg.set('dungeon.baseDamage', 120);

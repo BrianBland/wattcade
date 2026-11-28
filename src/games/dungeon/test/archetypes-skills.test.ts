@@ -237,6 +237,36 @@ describe('Sim integration: Archetype Select, 14-Segment Snake Wyrm, Monotonic Or
     expect(checked).toBeGreaterThan(100);
   });
 
+  it('never interrupts mid-floor room clears with a skill popup, opening only manually or at the start of a new floor', () => {
+    const reg = new TuningRegistry({ profileId: 'skill-floor-gate' });
+    reg.scoped('dungeon').num('baseDamage', 10, 1, 200, 1);
+    reg.set('dungeon.baseDamage', 160);
+    reg.scoped('dungeon').num('skillOfferDelayS', 0.55, 0, 5, 0.1);
+    reg.set('dungeon.skillOfferDelayS', 0.15);
+    const s = createGameSession({
+      game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 7,
+      simOpts: { skipCamp: true, invulnerable: true }, tuningRegistry: reg,
+    });
+    let bankedOnFloor1 = false;
+    let openedOnFloor1 = false;
+    let openedOnFloor2 = false;
+    for (let i = 0; i < 30 * 60 * 6; i++) {
+      s.step(1);
+      const snap = s.sim.snapshot() as DungeonSnapshot;
+      if (snap.floor === 1) {
+        if (snap.skillTree.unspentSP > 0 && snap.stats.roomsCleared >= 2) bankedOnFloor1 = true;
+        if (snap.skillTree.offer) openedOnFloor1 = true;
+      } else if (snap.floor === 2 && snap.skillTree.offer) {
+        openedOnFloor2 = true;
+        expect(snap.skillTree.offer.reason).toContain('Floor 2');
+        break;
+      }
+    }
+    expect(bankedOnFloor1).toBe(true);
+    expect(openedOnFloor1).toBe(false);
+    expect(openedOnFloor2).toBe(true);
+  });
+
   it('exposes Pause Menu Build Inspector via menuActions() and toggles Full Tree / Quick-Pick cleanly', () => {
     const reg = new TuningRegistry({ profileId: 'skill-pause' });
     const pad = new PadInput();

@@ -141,7 +141,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const furyAfter = tn.num('bossFuryAfterS', 75, 20, 600, 10, 'boss damage starts climbing after this long in the fight (not on floor 1)');
   const furyRate = tn.num('bossFuryRate', 0.03, 0, 0.05, 0.001, 'extra boss-fight damage per second past bossFuryAfterS (max +150%)');
   const bossHpGrowth = tn.num('bossHpGrowth', 1.56, 1, 2, 0.01, 'boss HP multiplier per floor (floor 1 boss is x0.55)');
-  const floor1Ease = tn.num('floor1Ease', 0.44, 0.3, 1, 0.05, 'enemy damage multiplier on floor 1');
+  const floor1Ease = tn.num('floor1Ease', 0.40, 0.3, 1, 0.05, 'enemy damage multiplier on floor 1');
   const strikeCd = tn.num('strikeCdS', 30, 2, 120, 1, 'Strike (A) cooldown');
   const strikeMult = tn.num('strikeDamageMult', 4, 1, 30, 0.5, 'Strike damage as a multiple of one shot');
   const strikeRadius = tn.num('strikeRadius', 3.5, 1, 8, 0.25, 'tiles');
@@ -161,10 +161,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const potionHeal = tn.num('potionHeal', 0.36, 0.1, 1, 0.05, 'fraction of max HP');
   const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if rider has not drunk in 10 s');
   const maxHpT = tn.num('playerHp', 100, 20, 500, 10);
-  const enemyDmgScale = tn.num('enemyDamageScale', 1.92, 0.1, 3, 0.1);
+  const enemyDmgScale = tn.num('enemyDamageScale', 1.80, 0.1, 3, 0.1);
   const enemyHpMult = tn.num('enemyHpMult', 1.5, 0.2, 5, 0.1, 'base enemy HP multiplier');
   const enemyHpGrowth = tn.num('enemyHpGrowth', 1.36, 1, 2, 0.01, 'enemy HP multiplier per floor');
-  const bossHpT = tn.num('bossHp', 6400, 100, 30000, 100, 'base boss HP (x enemyHpMult, x bossHpGrowth per floor)');
+  const bossHpT = tn.num('bossHp', 5400, 100, 30000, 100, 'base boss HP (x enemyHpMult, x bossHpGrowth per floor)');
   const sprintMult = tn.num('bossSprintDamageMult', 2, 1, 5, 0.1, 'extra damage for sprinting (or ERG surge) while boss is exposed');
   const bossTn = {
     p2: tn.num('bossPhase2Hp', DEFAULT_BOSS.phaseSplits[0], 0.1, 0.95, 0.01), p3: tn.num('bossPhase3Hp', DEFAULT_BOSS.phaseSplits[1], 0.05, 0.9, 0.01),
@@ -224,7 +224,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const finalRooms = tn.num('finalFloorRooms', 4, 2, 12, 1);
   const winBonus = tn.num('winBonusCoins', 1500, 0, 20000, 50);
   const skillAutoS = tn.num('skillAutoPickS', 18, 3, 120, 1, 'highlighted Quick-Pick skill card auto-invests after this long');
-  const skillDelayS = tn.num('skillOfferDelayS', 0.55, 0, 5, 0.1, 'level-up auto-popup delay after room clear');
+  const skillDelayS = tn.num('skillOfferDelayS', 0.55, 0, 5, 0.1, 'skill picker popup delay at the start of a new floor');
 
   const rng = () => ctx.rng();
 
@@ -865,7 +865,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           toast(`Boss Trophy: ${ARCHETYPES[archetype].relicName} (+1 ${bName} skills)!`, '#ffd84a');
         } else {
           grantSkillPoint(`${BOSS_NAMES[e.variant]} defeated!`);
-          if (opts?.skills !== 'none' && unspentSP > 0) skillOfferDueT = t + skillDelayS();
         }
       }
       for (let k = 0; k < 5; k++) addFx({ kind: 'boom', x: e.x + Math.cos(k * 1.3) * k * 0.5, y: e.y + Math.sin(k * 1.3) * k * 0.5, life: 0.6 + k * 0.2, color: k % 2 ? '#ffe08a' : '#c77dff', r: 2 + k });
@@ -1251,7 +1250,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
   }
 
-  // ---------- skill tree modal (auto-popup on room clear, manual D-pad Up / Pause Build Inspector) ----------
+  // ---------- skill tree modal (auto-popup at start of new floor, manual D-pad Up / HUD tap / Pause Build Inspector) ----------
   function refreshTreeMods(bike: Readonly<BikeState>) {
     const climbing = dir.seg === 'ambush' || dir.seg === 'boss';
     tm = computeTreeMods(archetype, skillRanks, {
@@ -1710,7 +1709,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (skillOfferDueT >= 0 && t >= skillOfferDueT) {
       skillOfferDueT = -1;
       if (unspentSP > 0 && opts?.skills !== 'none') {
-        openSkillOffer(false, 'quick', `Level ${P.level} · Room Cleared`);
+        openSkillOffer(false, 'quick', `Floor ${floor} · ${planFor(floor).name}`);
         if (skillOffer) return;
       }
     }
@@ -2014,7 +2013,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       }
     }
 
-    // --- room clear (triggers Level-Up Auto-Popup cleanly if SP are banked!)
+    // --- room clear (SP stay banked until opened manually or at the start of the next floor)
     if (cur.locked && liveCount(cur.id) === 0 && (!cur.boss || !boss.alive)) {
       cur.locked = false; cur.cleared = true; safeRoom = cur.id;
       roomsCleared++; cue('door');
@@ -2034,11 +2033,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       if (sh) {
         sh.state = 'active'; sh.left = SHRINES[sh.kind].window; sh.s0 = bike.sprintCount; cue('shrine');
         toast(`${SHRINES[sh.kind].label} (optional)`, SHRINES[sh.kind].color);
-      }
-      // Schedule non-disruptive room-clear Level-Up popup if skill points are banked
-      const isFinalCleared = cur.boss && planFor(floor).final && !boss.alive;
-      if (unspentSP > 0 && !isFinalCleared && opts?.skills !== 'none' && skillOfferDueT < 0) {
-        skillOfferDueT = t + skillDelayS();
       }
       persist();
     }
@@ -2460,6 +2454,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     recomputeHp(true);
     const fp = planFor(floor);
     toast(fp.final ? `Floor ${floor} of ${FLOORS}: the Broom Wagon. The Grim Sweeper waits.` : `Floor ${floor} of ${FLOORS}: ${fp.name}. Potions refilled`, fp.final ? '#c77dff' : '#ffd84a');
+    if (unspentSP > 0 && opts?.skills !== 'none') skillOfferDueT = t + skillDelayS();
     persist();
   }
 

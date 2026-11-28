@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Pull, PULL_DEFAULTS as P, pullTarget, tireS } from '../sim/pull';
+import { PERSONAL_PULL_DEFAULTS, personalShare } from '../sim/pull';
+import { personalFtp, powerCurve } from '../../../progression/powerProfile';
 import { STORY } from '../sim/story';
 
 const run = (p: Pull, ftpFrac: number, maxS = 600) => {
@@ -53,5 +55,31 @@ describe('pulls (sprints)', () => {
       expect(e[1]).toBeLessThanOrEqual(1.5);
     }
     expect(STORY.filter((s) => s.kind === 'fish' && 'effortS' in s.length).flatMap((s) => s.pulls).length).toBe(6);
+  });
+});
+
+describe('personal pull targets (shared power profile)', () => {
+  const effort = (w: number) => ({ allTime: { w, at: 1, gameId: 'x' }, recent: [{ w, at: 1, gameId: 'x' }] });
+  const rider = (b5: number, b15: number, b30: number) => ({
+    ftp: 200, power: { v: 1 as const, rides: 1, lastRideAt: 1, bests: { '5': effort(b5), '15': effort(b15), '30': effort(b30) } },
+  });
+  const targets = (r: ReturnType<typeof rider> | null) => {
+    const curve = r ? powerCurve(r) : null;
+    const personal = curve ? (size: number, s: number) => personalFtp(curve, 200, s, { share: personalShare(size, PERSONAL_PULL_DEFAULTS), minFtp: 1, maxFtp: 2.2 }) : undefined;
+    return [0, 1].map((size) => pullTarget(size, { ...P, personal }).ftp);
+  };
+  it('keeps the 110–150 % FTP band for a rider with a typical curve (and with no profile)', () => {
+    const [lo, hi] = targets(rider(460, 380, 320)); // 2.3 / 1.9 / 1.6 × FTP
+    expect(lo).toBeCloseTo(1.1, 1); expect(hi).toBeCloseTo(1.5, 1);
+    expect(targets(null)).toEqual([P.minFtp, P.maxFtp]);
+  });
+  it('asks a big sprinter for more and a diesel for less', () => {
+    const [sLo, sHi] = targets(rider(800, 620, 480));
+    expect(sLo).toBeGreaterThan(1.7); expect(sHi).toBeGreaterThan(2);
+    const [dLo, dHi] = targets(rider(320, 290, 260)); // 1.6 / 1.45 / 1.3 × FTP
+    expect(dLo).toBeCloseTo(1, 5); expect(dHi).toBeLessThan(1.3);
+  });
+  it('ignores easy efforts (only lower bounds)', () => {
+    expect(targets(rider(250, 220, 200))).toEqual([P.minFtp, P.maxFtp]);
   });
 });

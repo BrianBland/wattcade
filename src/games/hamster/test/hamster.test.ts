@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Button, InputState } from '../../../contracts';
+import type { Button, InputState, Profile } from '../../../contracts';
 import { createGameSession, runHeadless, testProfile, type InputSource } from '../../../core';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
@@ -176,9 +176,9 @@ describe('wholesale seed contract', () => {
 
 describe('hamster zone & cadence targets', () => {
   const rider = (cadence: number, ftp: number) => ({ name: 't', description: '', cadence: () => cadence, powerFtp: () => ftp });
-  function ride(cadence: number, ftp: number, hr: number | null, unlocks: string[]) {
+  function ride(cadence: number, ftp: number, hr: number | null, unlocks: string[], power?: Profile['power']) {
     const events: string[] = [];
-    const profile = testProfile({ gameData: { hamster: { v: 1, gens: [10], bank: 0, unlocks } } });
+    const profile = testProfile({ gameData: { hamster: { v: 1, gens: [10], bank: 0, unlocks } }, ...(power ? { power } : {}) });
     const s = createGameSession({ game: module, profile, input: new Pad(), seed: 3, fake: { script: 'idle' }, onEmit: (e) => events.push(`${e.type}:${(e.data as any)?.completed ?? ''}`) });
     s.fakeBike!.useScript(rider(cadence, ftp));
     s.fakeBike!.manual.hr = hr;
@@ -196,6 +196,20 @@ describe('hamster zone & cadence targets', () => {
     }
     expect(sawPowerTarget).toBe(true);
     expect(events).toContain('goldenHamster:');
+  });
+  it('with a power profile, the golden hamster asks for a real sprint (personal watts)', () => {
+    const effort = (w: number) => ({ allTime: { w, at: 1, gameId: 'x' }, recent: [{ w, at: 1, gameId: 'x' }] });
+    const sprinter: Profile['power'] = { v: 1, rides: 1, lastRideAt: 1, bests: { '5': effort(700), '15': effort(600) } };
+    const go = (ftp: number) => {
+      const r = ride(90, ftp, 100, ['golden'], sprinter);
+      let label = '';
+      for (let i = 0; i < 70 && !r.events.includes('goldenHamster:'); i++) { r.s.step(secs(1)); if (r.snap().golden) label = r.s.sim.hud!().targetZone?.label ?? label; }
+      return { caught: r.events.includes('goldenHamster:'), label };
+    };
+    const easy = go(1.0); // Z4 was enough before; not for this sprinter (target capped at 1.6 FTP = 320 W)
+    expect(easy.caught).toBe(false);
+    expect(easy.label).toContain('320 W+');
+    expect(go(1.7).caught).toBe(true);
   });
   it('the Z2 grind keeps the profile zone source', () => {
     const { s } = ride(90, 0.65, 130, []);

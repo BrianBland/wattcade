@@ -1,5 +1,6 @@
 // Keeper's Light sim. Pure logic: no DOM, no three. Deterministic (ctx.rng / ctx.clock only).
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
+import { personalFtp, powerCurve } from '../../../progression/powerProfile';
 import { HARBOUR, PLOTS, PLOT_COUNT, type DistrictId } from './layout';
 import {
   BUILDINGS, BUILDING_TYPES, DISTRICTS, LENS, LENS_EFFECT, districtOpen, homeBonus, maxLevel, millBonus, orchardBonus, pierBonus, preview,
@@ -72,6 +73,16 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const stormSlack = tn.num('stormSlackS', 25, 5, 120, 1, 'Seconds below storm zone before lamp goes out');
   const surgeZone = tn.num('surgeZone', 5, 1, 5, 1);
   const surgeS = tn.num('surgeS', 15, 5, 60, 1);
+  const profileSurge = tn.bool('profileSurge', true, 'The lightning surge asks for a real sprint from the shared power profile (else surgeZone)');
+  const surgeShare = tn.num('profileSurgeShare', 0.55, 0.3, 0.9, 0.01, 'Power profile: the surge asks for this share of your best mean power for its length');
+  const surgeMinFtp = tn.num('profileSurgeMinFtp', 1.06, 0.6, 1.5, 0.01, 'Power profile: surge target never below this (FTP fraction, Z5)');
+  const surgeMaxFtp = tn.num('profileSurgeMaxFtp', 1.6, 1, 3, 0.05, 'Power profile: surge target never above this (FTP fraction)');
+  /** The shared power profile (all games); only changes between rides. */
+  const curve = powerCurve(ctx.profile);
+  /** Personal surge target (FTP fraction), or null to judge on `surgeZone` as before. */
+  const surgeFtp = (): number | null => !profileSurge() ? null
+    : personalFtp(curve, ctx.profile.ftp, surgeS(), { share: surgeShare(), minFtp: surgeMinFtp(), maxFtp: Math.max(surgeMinFtp(), surgeMaxFtp()) });
+  const surgeLabel = () => { const f = surgeFtp(); return f === null ? 'Lightning surge' : `Lightning surge ${Math.round(f * ctx.profile.ftp)} W+`; };
   const windEveryMin = tn.num('windEveryMinS', 240, 60, 3600, 10, 'Clockwork wind-up interval low (s)');
   const windEveryMax = tn.num('windEveryMaxS', 420, 60, 3600, 10, 'Clockwork wind-up interval high (s)');
   const windS = tn.num('windS', 40, 10, 180, 5, 'Clockwork wind-up window (s)');
@@ -615,7 +626,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       const wasSurge = surgeNow;
       surgeNow = phaseT >= surgeAt && phaseT < surgeAt + surgeS();
       if (surgeNow && !wasSurge) cue('surge');
-      if (surgeNow) { if (zone >= surgeZone()) surgeHeldS += dt; }
+      if (surgeNow) { const f = surgeFtp(); if (f === null ? zone >= surgeZone() : ctx.bike().ftpFraction >= f) surgeHeldS += dt; }
       else if (phaseT >= surgeAt + surgeS()) surgeDone = true;
       nextLightning -= dt;
       if (nextLightning <= 0) { lightningAt = t; cue('thunder'); nextLightning = (surgeNow ? 1.5 : 4) + ctx.rng() * (surgeNow ? 2 : 6); }
@@ -937,7 +948,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     },
     hud(): GameHud {
       const targetZone = phase === 'storm'
-        ? (surgeNow ? { min: 5 as const, max: 5 as const, label: 'Lightning surge', source: 'power' as const } : { min: 3 as const, max: 5 as const, label: 'Storm!', source: 'power' as const })
+        ? (surgeNow ? { min: 5 as const, max: 5 as const, label: surgeLabel(), source: 'power' as const } : { min: 3 as const, max: 5 as const, label: 'Storm!', source: 'power' as const })
         : phase === 'warning' ? { min: 2 as const, max: 5 as const, label: 'Storm coming', source: 'power' as const }
           : { min: 2 as const, max: 2 as const, label: 'Keep the lamp lit' };
       const controls = mode === 'build'

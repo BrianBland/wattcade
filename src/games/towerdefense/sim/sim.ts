@@ -1709,7 +1709,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         : ps.state === 'under' ? `Tier ${roman(tier)} · ${watts(ps.gapFtp)} W under`
         : ps.state === 'over' && tier < 5 ? `Tier ${roman(tier)} maxed · shift up` : `Tier ${roman(tier)} · full power`;
       const tz: GameHud['targetZone'] = boss?.exposed || boss?.telegraph
-        ? { min: 5, max: 5, label: boss.exposed ? 'Exposed · sprint!' : `Sprint in ${Math.ceil(boss.windowLeftS)}s`, source: 'power' }
+        ? { min: 5, max: 5, label: boss.exposed ? `Exposed · sprint ${watts(ctx.bike().sprintFtp ?? 1.2)} W+` : `Sprint in ${Math.ceil(boss.windowLeftS)}s`, source: 'power' }
         : lull > 0 ? { min: 1, max: 2, label: `Get ready · tier ${roman(want)}` }
         : { min: powerZoneOf(rated), max: powerZoneOf(rated * effortCap() * 0.98), label, source: 'power' };
       const tc: GameHud['targetCadence'] = phase === 'run' && lull <= 0 ? { min: gearRefRpm() - 5, max: gearRefRpm() + 15, label: `${gearRefRpm()} rpm` } : undefined;

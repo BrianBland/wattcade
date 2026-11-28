@@ -89,7 +89,9 @@ export interface BikeState {
   hrZone: 1|2|3|4|5 | null;  // %maxHr: <60,60-70,70-80,80-90,>=90
   effortZone: 1|2|3|4|5;     // per profile.zoneSource; power zones 6/7 clamp to 5
   ftpFraction: number;       // power3s / ftp
-  sprinting: boolean;        // power3s >= tuning 'core.sprintFtp' (default 1.2) × FTP for >= 2s
+  sprinting: boolean;        // power3s >= sprintFtp × FTP for >= 2s
+  /** FTP fraction (power3s) that counts as a sprint for this rider: personal from the power profile (`core.sprintProfile*`), else `core.sprintFtp` (1.2). Optional for hand-built test states. */
+  sprintFtp?: number;
   sprintCount: number;
   kj: number; activeSeconds: number; // active = cadence > 20
   gear: number;              // virtual gear index, 1..11, neutral 6

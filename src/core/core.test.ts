@@ -61,6 +61,21 @@ describe('BikeStateStore', () => {
     runStore(st, p, 10, sample(300, 100));
     expect(st.get().sprintCount).toBe(2);
   });
+  it('takes a personal sprint threshold from the power profile (share of best 15 s, clamped)', () => {
+    const effort = (w: number) => ({ allTime: { w, at: 1, gameId: 'x' }, recent: [{ w, at: 1, gameId: 'x' }] });
+    const withBest15 = (w: number) => prof({ power: { v: 1, rides: 1, lastRideAt: 1, bests: { '15': effort(w) } } });
+    const st = new BikeStateStore();
+    expect(st.sprintThreshold(prof())).toBeCloseTo(1.2); // no profile: flat core.sprintFtp
+    expect(st.sprintThreshold(withBest15(220))).toBeCloseTo(1.2); // 1.1 FTP is not a hard 15 s: flat
+    expect(st.sprintThreshold(withBest15(380))).toBeCloseTo(0.62 * 1.9); // typical sprinter ≈ today's 1.2
+    expect(st.sprintThreshold(withBest15(700))).toBeCloseTo(1.6); // big sprinter: capped
+    // a big sprinter's 260 W (1.3 FTP) surge is no longer a sprint; 330 W (1.65 FTP) is
+    const p = withBest15(700);
+    runStore(st, p, 10, sample(260, 95));
+    expect(st.get().sprintCount).toBe(0);
+    runStore(st, p, 10, sample(330, 100));
+    expect(st.get().sprintCount).toBe(1);
+  });
   it('zeroes stale trainer data', () => {
     const st = new BikeStateStore(); const p = prof();
     runStore(st, p, 1, sample(200, 90));

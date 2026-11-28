@@ -1,4 +1,5 @@
 import type { ControlHint, GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
+import { personalFtp, powerCurve } from '../../../progression/powerProfile';
 import {
   ERAS, GENS, LEGS, MONOS, NEWS, PEPTIDES, PEPTIDE_NEWS, SPECIALS, UPG_TIERS, VIBES, eraOfGen,
   type PeptideDef, type SpecialId,
@@ -75,6 +76,10 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     trialFtp: T.num('trialFtp', 0.8, 0.4, 1.2, 0.05, 'Clinical trial ERG target (FTP fraction)'),
     rageChance: T.num('rageChance', 0.3, 0, 1, 0.05, 'Trenbalone roid-rage chance'),
     rageNeedS: T.num('rageNeedS', 8, 1, 60, 1, 'Seconds of Zone 4+ to calm a roid-raging hamster'),
+    profileBursts: T.bool('profileBursts', true, 'Golden hamster and roid rage ask for a real sprint from the shared power profile (else power Z4+)'),
+    burstShare: T.num('profileBurstShare', 0.55, 0.3, 0.9, 0.01, 'Power profile: golden/rage sprints ask for this share of your best mean power for their length'),
+    burstMinFtp: T.num('profileBurstMinFtp', 0.91, 0.6, 1.5, 0.01, 'Power profile: golden/rage sprint target never below this (FTP fraction, Z4)'),
+    burstMaxFtp: T.num('profileBurstMaxFtp', 1.6, 1, 3, 0.05, 'Power profile: golden/rage sprint target never above this (FTP fraction)'),
     spinMinS: T.num('spinMinS', 360, 60, 3600, 30, 'Spin class min interval (s)'),
     spinMaxS: T.num('spinMaxS', 600, 60, 3600, 30, 'Spin class max interval (s)'),
     spinS: T.num('spinS', 45, 10, 180, 5, 'Spin class window (s)'),
@@ -84,6 +89,17 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     seedBonus: T.num('seedBonus', 0.05, 0, 1, 0.01, 'Production bonus per karmic seed'),
     seedUnitJ: T.num('seedUnitJ', 1e27, 1e15, 1e40, undefined, 'Life energy for the first karmic seed (seeds = cbrt(E/unit))'),
   };
+  /** The shared power profile (all games); only changes between rides. */
+  const curve = powerCurve(ctx.profile);
+  /** Personal sprint target (FTP fraction) for a `durS` burst, or null to judge on power Z4+ as before. */
+  const burstFtp = (durS: number): number | null => !tun.profileBursts() ? null
+    : personalFtp(curve, ctx.profile.ftp, durS, { share: tun.burstShare(), minFtp: tun.burstMinFtp(), maxFtp: Math.max(tun.burstMinFtp(), tun.burstMaxFtp()) });
+  /** Is this burst being ridden: your personal target when the profile has one, else Z4+ (power or effort). */
+  const bursting = (durS: number, hard: number, ftpFraction: number) => { const f = burstFtp(durS); return f === null ? hard >= 4 : ftpFraction >= f; };
+  /** What a burst asks for, in words: your watts when it's personal, else the zone. */
+  const burstAsk = (durS: number) => { const f = burstFtp(durS); return f === null ? 'power Z4+' : `${Math.round(f * ctx.profile.ftp)} W+`; };
+  /** HUD label for a burst, with the watts when it's personal. */
+  const burstLabel = (durS: number, text: string) => { const f = burstFtp(durS); return f === null ? text : `${text} ${Math.round(f * ctx.profile.ftp)} W+`; };
   const econ = (): EconParams => ({ out0: tun.out0(), outStep: tun.outStep(), cost0: tun.cost0(), costStep: tun.costStep(), growth: tun.growth() });
 
   // ---------- persistent state ----------
@@ -187,7 +203,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     for (const n of [1, 5]) if (S.strikes >= n) milestone(`strike${n}`, `${n} strike${n > 1 ? 's' : ''} broken`);
     for (const n of [1, 5]) if (S.trials >= n) milestone(`trial${n}`, `${n} clinical trial${n > 1 ? 's' : ''} survived`);
     // feature unlocks
-    if (S.gens[0] >= 1) unlock('golden', 'Golden hamsters now appear. SPRINT (power Z4+) to catch them!');
+    if (S.gens[0] >= 1) unlock('golden', `Golden hamsters now appear. SPRINT (${burstAsk(tun.goldenCatchS())}) to catch them!`);
     if (S.gens[0] >= 5) unlock('spin', 'Gerald signed up for spin classes. Hit the cadence when the instructor shouts.');
     if (S.life >= 3000) unlock('upgrades', 'Upgrades tab unlocked.');
     if (S.gens[1] >= 1) unlock('market', 'A man in a trench coat offers you "seeds". Black Market unlocked.');
@@ -339,7 +355,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
       case 'mk': addEffect('mk', 'MK-677: GIANT', 'leg', k(25), p.dur); break;
       case 'tren':
         addEffect('tren', 'TRENBALONE', 'all', k(15), p.dur);
-        if (ctx.rng() < tun.rageChance()) { rage = { until: t + 60, progress: 0 }; toast('😡 ROID RAGE! Gerald is running BACKWARDS. Sprint Z4+ to out-pedal him!', 'bad'); cue('curse'); }
+        if (ctx.rng() < tun.rageChance()) { rage = { until: t + 60, progress: 0 }; toast(`😡 ROID RAGE! Gerald is running BACKWARDS. Sprint (${burstAsk(tun.rageNeedS())}) to out-pedal him!`, 'bad'); cue('curse'); }
         break;
       case 'vial': {
         const r = ctx.rng();
@@ -359,12 +375,12 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
   }
 
   // ---------- events ----------
-  function updateEvents(dt: Seconds, zone: number, cadence: number) {
+  function updateEvents(dt: Seconds, zone: number, cadence: number, ftpFraction: number) {
     // golden hamster
     if (unlocks.has('golden')) {
-      if (!golden && t >= nextGolden && !strike && !trial && !rage && !spin) { golden = { until: t + tun.goldenStayS(), progress: 0, x: ctx.rng() }; toast('🌟 A GOLDEN HAMSTER appeared! Sprint (power Z4+) to catch it!', 'event'); cue('unique'); }
+      if (!golden && t >= nextGolden && !strike && !trial && !rage && !spin) { golden = { until: t + tun.goldenStayS(), progress: 0, x: ctx.rng() }; toast(`🌟 A GOLDEN HAMSTER appeared! Sprint (${burstAsk(tun.goldenCatchS())}) to catch it!`, 'event'); cue('unique'); }
       if (golden) {
-        if (zone >= 4) golden.progress += dt;
+        if (bursting(tun.goldenCatchS(), zone, ftpFraction)) golden.progress += dt;
         if (golden.progress >= tun.goldenCatchS()) { catchGolden(); golden = null; nextGolden = t + randIn(tun.goldenMinS(), tun.goldenMaxS()) * (has('seedsub') ? 0.7 : 1); }
         else if (t >= golden.until) { golden = null; toast('The golden hamster got away. It will be back.', 'info'); nextGolden = t + randIn(tun.goldenMinS(), tun.goldenMaxS()) * (has('seedsub') ? 0.7 : 1); }
       }
@@ -427,7 +443,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     }
     // roid rage
     if (rage) {
-      if (zone >= 4) rage.progress += dt;
+      if (bursting(tun.rageNeedS(), zone, ftpFraction)) rage.progress += dt;
       if (rage.progress >= tun.rageNeedS()) { rage = null; toast('😌 Gerald calmed down. You out-pedaled a hamster on tren.', 'event'); cue('reward'); }
       else if (t >= rage.until) { rage = null; toast('Gerald wore himself out. Your bank did not enjoy that.', 'info'); }
     }
@@ -464,7 +480,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
   function updateMono(dt: Seconds, zone: number, hard: number, cadence: number) {
     cadEma += (cadence - cadEma) * Math.min(1, dt / 20);
     const cap = monoCap();
-    const frozen = !!(strike?.phase === 'active' || trial?.phase === 'active' || rage || (golden && hard >= 4)) || effects.some((e) => e.kind === 'nodecay' && t >= e.from);
+    const frozen = !!(strike?.phase === 'active' || trial?.phase === 'active' || rage || (golden && bursting(tun.goldenCatchS(), hard, ctx.bike().ftpFraction))) || effects.some((e) => e.kind === 'nodecay' && t >= e.from);
     const prev = mono;
     if (zone === 2 && unionOn) {
       const steady = Math.abs(cadence - cadEma) <= tun.steadyRpm() ? 1 : 0.4;
@@ -566,7 +582,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     handleInput();
     for (let i = effects.length - 1; i >= 0; i--) if (t >= effects[i].until) effects.splice(i, 1);
     for (const k of Object.keys(tol)) tol[k] = Math.max(0, tol[k] - dt / 480);
-    updateEvents(dt, hard, cadence);
+    updateEvents(dt, hard, cadence, b.ftpFraction);
     computeRate(b);
     updateMono(dt, zone, hard, cadence);
     const gain = rate * dt;
@@ -628,8 +644,8 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
       { button: 'shiftersL', label: 'Gear' }, { button: 'shiftersR', label: 'Gear' },
     ];
     // short efforts are judged on power (HR can't climb in time); the Z2 grind uses the profile's zone source
-    const tz: GameHud['targetZone'] = rage ? { min: 4, max: 5, label: 'Out-pedal Gerald!', source: 'power' }
-      : golden ? { min: 4, max: 5, label: 'Catch the golden hamster!', source: 'power' }
+    const tz: GameHud['targetZone'] = rage ? { min: 4, max: 5, label: burstLabel(tun.rageNeedS(), 'Out-pedal Gerald!'), source: 'power' }
+      : golden ? { min: 4, max: 5, label: burstLabel(tun.goldenCatchS(), 'Catch the golden hamster!'), source: 'power' }
       : strike?.phase === 'active' ? { min: 3, max: 5, label: 'Carry the grid!', source: 'power' }
       : trial?.phase === 'active' ? { min: 1, max: 5, label: 'Clinical trial (ERG)' }
       : { min: 2, max: 2, label: `Mind-numbing ×${mono.toFixed(1)}` };

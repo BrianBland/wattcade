@@ -1,4 +1,5 @@
 import type { BikeState, DeviceSample, Profile, Seconds, TrainerMode, Tuning } from '../contracts';
+import { personalFtp, powerCurve } from '../progression/powerProfile';
 
 class RollAvg {
   private buf: number[] = []; private i = 0; private sum = 0;
@@ -36,6 +37,11 @@ export class BikeStateStore {
   private trnHr: number | null = null; private trnHrAge = Infinity;
   private sprintT = 0;
   private sprintFtp: () => number = () => 1.2;
+  private sprintProfile: () => boolean = () => true;
+  private sprintShare: () => number = () => 0.62;
+  private sprintMin: () => number = () => 1.1;
+  private sprintMax: () => number = () => 1.6;
+  private sprintCache: { power: Profile['power']; ftp: number; key: string; v: number } | null = null;
   private dt0 = 1 / 30;
 
   constructor(dt = 1 / 30) {
@@ -46,12 +52,35 @@ export class BikeStateStore {
       t: 0, connected: { trainer: false, hr: false, controller: false, fake: false },
       raw: { power: 0, cadence: 0, speedKph: 0, hr: null, resistanceLevel: null, lastPacketAgeS: Infinity },
       power3s: 0, power10s: 0, cadence3s: 0, hr5s: null, crankRevs: 0,
-      powerZone: 1, hrZone: null, effortZone: 1, ftpFraction: 0, sprinting: false, sprintCount: 0,
+      powerZone: 1, hrZone: null, effortZone: 1, ftpFraction: 0, sprinting: false, sprintFtp: 1.2, sprintCount: 0,
       kj: 0, activeSeconds: 0, gear: 6, trainerMode: 'none',
     };
   }
 
-  bindTuning(t: Tuning): void { this.sprintFtp = t.num('sprintFtp', 1.2, 0.8, 3, 0.05, 'Sprint threshold as FTP fraction (power3s)'); }
+  bindTuning(t: Tuning): void {
+    this.sprintFtp = t.num('sprintFtp', 1.2, 0.8, 3, 0.05, 'Sprint threshold as FTP fraction (power3s); used when the power profile has no hard short effort');
+    this.sprintProfile = t.bool('sprintFromProfile', true, 'Personal sprint threshold from the shared power profile (best 15 s)');
+    this.sprintShare = t.num('sprintProfileShare', 0.62, 0.3, 0.9, 0.01, 'Personal sprint threshold: this share of your best 15 s power');
+    this.sprintMin = t.num('sprintProfileMinFtp', 1.1, 0.8, 2, 0.05, 'Personal sprint threshold never below this FTP fraction');
+    this.sprintMax = t.num('sprintProfileMaxFtp', 1.6, 1, 3, 0.05, 'Personal sprint threshold never above this FTP fraction');
+  }
+
+  /**
+   * The FTP fraction (power3s) that counts as a sprint for this rider: `sprintProfileShare` × best 15 s from the shared
+   * power profile, clamped, when it holds a hard 5 s–1 min effort; else the flat `sprintFtp`.
+   */
+  sprintThreshold(profile: Readonly<Profile>): number {
+    const flat = this.sprintFtp();
+    if (!this.sprintProfile() || !profile.power) return flat;
+    const share = this.sprintShare(), lo = this.sprintMin(), hi = this.sprintMax();
+    const key = `${share}|${lo}|${hi}|${flat}`;
+    const c = this.sprintCache;
+    if (c && c.power === profile.power && c.ftp === profile.ftp && c.key === key) return c.v;
+    const curve = powerCurve(profile);
+    const v = curve.hasHard(5, 60) ? personalFtp(curve, profile.ftp, 15, { share, minFtp: lo, maxFtp: Math.max(lo, hi), reach: 4 }) ?? flat : flat;
+    this.sprintCache = { power: profile.power, ftp: profile.ftp, key, v };
+    return v;
+  }
 
   get(): Readonly<BikeState> { return this.s; }
   setConnected(c: Partial<BikeState['connected']>): void { Object.assign(this.s.connected, c); }
@@ -98,7 +127,8 @@ export class BikeStateStore {
     const src = profile.settings.zoneSource;
     s.effortZone = src === 'power' ? pz : src === 'hr' ? (s.hrZone ?? pz) : (hrFresh && s.hrZone !== null ? s.hrZone : pz);
 
-    if (s.ftpFraction >= this.sprintFtp()) {
+    s.sprintFtp = this.sprintThreshold(profile);
+    if (s.ftpFraction >= s.sprintFtp) {
       this.sprintT += dt;
       if (!s.sprinting && this.sprintT >= 2) { s.sprinting = true; s.sprintCount++; }
     } else { this.sprintT = 0; s.sprinting = false; }

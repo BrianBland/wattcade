@@ -12,6 +12,9 @@ export interface PullTuning {
   pedalFtp: number;
   /** A fish that is still fighting after this long slips the hook, so a stopped rider never soft-locks. */
   giveUpS: number;
+  /** Personal target (fraction of FTP) for a sprint of `size` lasting `durS`, from the shared power profile; null
+   *  (or absent) keeps the FTP band above. */
+  personal?: (size: number, durS: number) => number | null;
 }
 
 /** Storyboard defaults (110–150 % FTP × 6–25 s); story.ts sizes its effort plan with these. */
@@ -23,8 +26,21 @@ const lerp = (a: number, b: number, k: number) => a + (b - a) * Math.max(0, Math
 export const tireS = (size: number, t: Pick<PullTuning, 'tireMinS' | 'tireMaxS'>) => lerp(t.tireMinS, t.tireMaxS, size);
 
 /** A sprint's target for a fish (or set piece) of `size` 0..1. */
-export const pullTarget = (size: number, t: Pick<PullTuning, 'minFtp' | 'maxFtp' | 'minS' | 'maxS'>) =>
-  ({ ftp: lerp(t.minFtp, t.maxFtp, size), s: lerp(t.minS, t.maxS, size) });
+export const pullTarget = (size: number, t: Pick<PullTuning, 'minFtp' | 'maxFtp' | 'minS' | 'maxS' | 'personal'>) => {
+  const s = lerp(t.minS, t.maxS, size);
+  return { ftp: t.personal?.(size, s) ?? lerp(t.minFtp, t.maxFtp, size), s };
+};
+
+export interface PersonalPullTuning {
+  /** Share of your best mean power for the sprint's length that the smallest / largest fish asks for. */
+  shareMin: number; shareMax: number;
+  /** Personal targets stay inside this band (fraction of FTP). */
+  floorFtp: number; ceilFtp: number;
+}
+/** Defaults chosen so a rider with a typical curve gets the storyboard 110–150 % FTP targets back. */
+export const PERSONAL_PULL_DEFAULTS: PersonalPullTuning = { shareMin: 0.49, shareMax: 0.9, floorFtp: 1, ceilFtp: 2.2 };
+/** The personal share of your best for a fish of `size`. */
+export const personalShare = (size: number, t: Pick<PersonalPullTuning, 'shareMin' | 'shareMax'>) => lerp(t.shareMin, t.shareMax, size);
 
 export type PullResult = 'pulling' | 'landed' | 'escaped';
 

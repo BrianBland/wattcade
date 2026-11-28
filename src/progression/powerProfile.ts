@@ -230,3 +230,31 @@ export function powerCurve(profile: Pick<Profile, 'ftp' | 'power'> | Readonly<Pi
 
 /** "5 s", "1 min", "20 min". */
 export const durationLabel = (d: number): string => (d < 60 ? `${d} s` : `${Math.round(d / 60)} min`);
+
+/**
+ * A personal target for an effort of `durationS`, as an FTP fraction: `share` × your best mean power for that length,
+ * clamped to [`minFtp`, `maxFtp`]. Null when the profile has no hard effort within `reach`× of the length (or no FTP);
+ * the caller then keeps its own FTP-based default. Games keep `share`, the clamps and `reach` in their own tunables.
+ */
+export function personalFtp(
+  curve: PowerCurve, ftpW: number, durationS: number,
+  o: { share: number; minFtp?: number; maxFtp?: number; reach?: number },
+): number | null {
+  const reach = o.reach ?? 3;
+  if (!(ftpW > 0) || !(durationS > 0) || !curve.hasHard(durationS / reach, durationS * reach)) return null;
+  const e = curve.at(durationS);
+  if (!e.hard) return null;
+  const f = (e.w / ftpW) * o.share;
+  return Math.min(o.maxFtp ?? Infinity, Math.max(o.minFtp ?? 0, f));
+}
+
+/**
+ * Your best mean power for `durationS` over what the typical curve makes of your FTP (1 = a typical rider; 1.3 = a
+ * sprinter 30 % above it). Null without a hard effort within `reach`× of the length, or with no FTP. Useful for
+ * "never easier than the zone, harder if you're strong" floors and for evening out sprint payoffs between riders.
+ */
+export function shapeRatio(curve: PowerCurve, ftpW: number, durationS: number, reach = 3): number | null {
+  if (!(ftpW > 0) || !(durationS > 0) || !curve.hasHard(durationS / reach, durationS * reach)) return null;
+  const e = curve.at(durationS);
+  return e.hard ? e.w / (ftpW * typicalShape(durationS)) : null;
+}

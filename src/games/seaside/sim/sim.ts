@@ -5,7 +5,8 @@ import { ESCAPE_LINES, fishHeft, type FishCatch } from './catalogue';
 import { FISHING_DEFAULTS, FishingStop, type FishingEvent, type FishingTuning } from './fishing';
 import { bankCatch, buy, canHookBigOne, ensureRod, equipForScene, migrateEconomy, owns, receipt, requiredRod, saleCents, sellCreel, shortForRod, stock, type ShopId, type ShopView } from './economy';
 import { effortRate, railSpeed } from './pace';
-import { Pull, PULL_DEFAULTS, pullTarget, type PullResult, type PullTuning } from './pull';
+import { PERSONAL_PULL_DEFAULTS, personalShare, Pull, PULL_DEFAULTS, pullTarget, type PersonalPullTuning, type PullResult, type PullTuning } from './pull';
+import { personalFtp, powerCurve } from '../../../progression/powerProfile';
 import { migrateSave } from './save';
 import { STORY } from './story';
 import { CHAPTER_NAMES, type ChapterId, type FlightView, type MenuView, type PartsView, type PullPlan, type Scene, type SeasideSave, type SeasideSnapshot } from './types';
@@ -85,6 +86,22 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     pedalFtp: num('fishPedalFtp', P.pedalFtp, 0, 1, 0.05, 'A fish only tires on its own while power is at least this (fraction of FTP)'),
     giveUpS: num('pullGiveUpS', P.giveUpS, 30, 600, 10, 'A fish still fighting after this long slips the hook'),
   };
+  const PP = PERSONAL_PULL_DEFAULTS;
+  const pptun = {
+    shareMin: num('profileShareMin', PP.shareMin, 0.3, 1, 0.01, 'Power profile: the smallest fish asks for this share of your best mean power for its sprint length'),
+    shareMax: num('profileShareMax', PP.shareMax, 0.3, 1, 0.01, 'Power profile: the largest fish / set pieces ask for this share of your best for their length'),
+    floorFtp: num('profileFloorFtp', PP.floorFtp, 0.6, 1.5, 0.05, 'Power profile: personal sprint targets never below this (fraction of FTP)'),
+    ceilFtp: num('profileCeilFtp', PP.ceilFtp, 1, 3, 0.05, 'Power profile: personal sprint targets never above this (fraction of FTP)'),
+    reach: num('profileReach', 3, 1, 6, 0.5, 'Power profile: use it for a sprint only with a hard effort within this factor of its length (else the FTP band)'),
+  };
+  const fromProfile = ctx.tuning.bool('profileTargets', true, 'Fish and set-piece sprint targets from the shared power profile (else the FTP band)');
+  /** The shared power profile (all games). Read once: it only changes between rides. */
+  const curve = powerCurve(ctx.profile);
+  const personal = (size: number, durS: number): number | null => {
+    if (!fromProfile()) return null;
+    const p = read<PersonalPullTuning>(pptun);
+    return personalFtp(curve, ctx.profile.ftp, durS, { share: personalShare(size, p), minFtp: p.floorFtp, maxFtp: Math.max(p.floorFtp, p.ceilFtp), reach: pptun.reach() });
+  };
   const F = FISHING_DEFAULTS;
   const ftun = {
     autoCastS: num('fishAutoCastS', F.autoCastS, 2, 60, 1, 'The rod casts itself after this long at the spot picker'),
@@ -139,7 +156,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     if (fishingScene().fishing === 'lava') { w.runPeriodS = magmaRunPeriodS(); w.runOn = magmaRunOn(); }
     return w;
   };
-  const pt = (): PullTuning => read<PullTuning>(ptun);
+  const pt = (): PullTuning => ({ ...read<Omit<PullTuning, 'personal'>>(ptun), personal });
   const ft = (): FishingTuning => read<FishingTuning>(ftun);
   const bonusS = num('shopBonusS', 180, 60, 180, 10, 'Maximum extra fishing time offered for short money (s)');
   const g = makeGraph(STORY);

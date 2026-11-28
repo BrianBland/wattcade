@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOSS_CARD_SLAM, bossCard, fieldClearsHud, layout, type Box } from '../render/layout';
+import { BOSS_CARD_SLAM, bossCard, fieldClearsHud, layout, layoutStillFits, type Box } from '../render/layout';
 import { radialLayout } from '../render/construction';
 import { fieldRect } from '../render/fieldView';
 import { BASE_X, BASE_Y } from '../sim/defs';
@@ -129,5 +129,25 @@ describe('Dynamo Defense boss name card', () => {
       if (L.column) expect(c.x - half, 'right of the status column').toBeGreaterThan(L.status.x + L.status.w);
       expect(c.y).toBeLessThan(H - inset);
     }
+  });
+});
+
+describe('Dynamo Defense layout while the build menu changes the HUD', () => {
+  // In play the touch weapon keys stand above the bottom band; the build menu hides them.
+  const W = 820, H = 1180, band = { x: 8, y: 1075, w: 804, h: 101 };
+  const play: Insets = { top: 0, right: 0, left: 0, bottom: 230, occlusions: [band, { x: 600, y: 950, w: 212, h: 120 }] };
+  const menu: Insets = { top: 0, right: 0, left: 0, bottom: 105, occlusions: [band] };
+  it('a fresh layout for the menu HUD would move the field, so the renderer keeps the in-play one', () => {
+    const inPlay = layout(W, H, play, true), forMenu = layout(W, H, menu, true);
+    expect(forMenu.field).not.toEqual(inPlay.field);
+    expect(layoutStillFits(inPlay, W, H, menu)).toBe(true);
+    expect(fieldClearsHud(inPlay.field, menu.occlusions!)).toBe(true);
+  });
+  it('a taller HUD or one over the combat sprites re-lays the field', () => {
+    const inPlay = layout(W, H, menu, true);
+    expect(layoutStillFits(inPlay, W, H, play)).toBe(false);
+    expect(layoutStillFits(inPlay, W, H, 300)).toBe(false);
+    const c = fieldRect(inPlay.field);
+    expect(layoutStillFits(inPlay, W, H, { ...menu, occlusions: [band, { x: c.x + c.w / 2 - 40, y: c.y + c.h - 60, w: 80, h: 60 }] })).toBe(false);
   });
 });

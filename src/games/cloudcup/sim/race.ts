@@ -1,3 +1,5 @@
+import { crossTiming, lapTime, timingSheet, type RallySave } from './timing';
+import { kickSeconds, pursuitClock, pursuitPhases, scorePursuit, workBand } from './pursuit';
 import { valley, saddle, onClimb, passGrade, passRate } from './pass';
 import type { GameContext, GameSim } from '../../../contracts';
 import {
@@ -104,6 +106,10 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
     doubleCharge: 0,
     bell: false,
     menu: true,
+    finished: false,
+    pursuit: null as ReturnType<typeof pursuitClock> | null,
+    watts: 0,
+    ftp: ctx.profile.ftp,
     cupStage: entry?.stage ?? -1,
     cupPoints: entry?.points.slice() ?? [0, 0, 0, 0],
     lastPlace: entry?.lastPlace ?? 0,
@@ -146,6 +152,10 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
     next: 0,
     rivals,
   };
+  const saved = ctx.load<RallySave>() ?? {};
+  const timing = timingSheet();
+  const recordKey = () => [s.course, s.tier, s.laps].join('/');
+  const pursuitKey = () => [s.course, s.tier].join('/');
   const climbLoad = ctx.tuning.num('climbDrag', 0.082, 0, 0.15, 0.005);
   const gradeScale = ctx.tuning.num('terrainGradeScale', 1, 0, 1, 0.05);
   let entryPlace = 4,
@@ -185,7 +195,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
       return;
     }
     s.shove = side * 3.6;
-    s.slow = 7;
+    s.slow = s.pursuit ? 4 : 7;
     s.purge = 0;
     pointRider = attacker;
     exitLine = clamp(s.x, -0.75, 0.75);
@@ -200,11 +210,11 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
     s.impactX = 0;
     ctx.resistance.clear('cablehead');
     s.grade = 0;
-    ctx.resistance.set({ id: 'overload', mode: 'sim', gradePct: grade(), ttl: s.slow });
+    if (!s.pursuit) ctx.resistance.set({ id: 'overload', mode: 'sim', gradePct: grade(), ttl: s.slow });
     say('JET OVERLOAD');
   }
   function update(dt: number) {
-    if (s.at >= s.finishAt) return;
+    if (s.finished) return;
     const input = ctx.input(),
       pd = Math.abs(input.paddleR) - Math.abs(input.paddleL);
     const edge = Number(input.pressed.has('right')) - Number(input.pressed.has('left'));
@@ -216,22 +226,28 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
         paddleReady = false;
       }
       if (s.cupStage <= 0) s.tier = clamp(s.tier + delta, 0, 2);
+      if (s.cupStage < 0 && input.pressed.has('y')) s.pursuit = s.pursuit ? null : pursuitClock();
       if (s.cupStage <= 0 && input.pressed.has('down')) {
         s.cupStage = s.cupStage < 0 ? 0 : -1;
         if (s.cupStage === 0) {
+          s.pursuit = null;
           s.course = cupOrder[0];
           s.laps = 3;
           s.finishAt = FINISH;
         }
       }
       if (s.cupStage < 0 && input.pressed.has('b')) s.course = (s.course + 1) % courses.length;
-      if (s.cupStage < 0 && input.pressed.has('up')) {
+      if (!s.pursuit && s.cupStage < 0 && input.pressed.has('up')) {
         s.laps = distances[(distances.findIndex((n) => n === s.laps) + 1) % distances.length];
         s.finishAt = LAP * s.laps;
       }
       if (input.pressed.has('a')) s.menu = false;
       return;
     }
+    const pursuit = s.pursuit;
+    const neutral = pursuit !== null && pursuitPhases[pursuit.phase].rival < 0;
+    const raceLine = pursuit ? Infinity : s.finishAt;
+    const racePace = pursuit ? (workBand(s.tier)[0] + workBand(s.tier)[1]) / 2 : pace[s.tier]();
     previous = capturePose();
     s.time += dt;
     s.notice -= dt;
@@ -256,10 +272,10 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
     s.shield = Math.max(0, s.shield - dt);
     s.tow = Math.max(0, s.tow - dt);
     const attack = Number(input.pressed.has('b')) - Number(input.pressed.has('a'));
-    if (attack && !s.reload && !rescuing && !s.flight) {
+    if (!neutral && attack && !s.reload && !rescuing && !s.flight) {
       s.side = attack;
       s.swing = SWING;
-      s.reload = 0.96;
+      s.reload = 3.2;
       s.contact = false;
       s.swings++;
     }
@@ -270,7 +286,9 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
       keys ||
       edge ||
       (Math.abs(pd) > 0.18 ? Math.sign(pd) * clamp(0.38 + (Math.abs(pd) - 0.18) * 1.45, 0, 1) : 0);
-    const effort = clamp(ctx.bike().ftpFraction, 0, 2);
+    const bike = ctx.bike();
+    const effort = clamp(bike.ftpFraction, 0, 2);
+    s.watts = Math.round(bike.power3s);
     s.seamPowered = kiln && effort >= pace[s.tier]() * seamPace();
     const speedLoad = Math.pow(s.speed / cruise(), 2);
     const support = kiln ? flumeCamber(lapAt(s.at)) / 0.25 : 0;
@@ -287,9 +305,9 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
       s.x = clamp(s.x, -2.25, 2.25) - Math.sign(s.x) * dt * 0.84;
     }
     if (pass) {
-      const demand = rescuing || s.slow ? 0 : passGrade(s.at, s.cut) * gradeScale();
+      const demand = neutral || rescuing || s.slow ? 0 : passGrade(s.at, s.cut) * gradeScale();
       s.grade += clamp(demand - s.grade, -dt, dt);
-      if (demand === 0 && (rescuing || s.slow)) s.grade = 0;
+      if (demand === 0 && (neutral || rescuing || s.slow)) s.grade = 0;
       if (s.grade > 0.01) ctx.resistance.set({ id: 'cablehead', mode: 'sim', gradePct: s.grade, ttl: 0.45 });
       else ctx.resistance.clear('cablehead');
     }
@@ -330,7 +348,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
     if (rescuing) s.speed = s.fall ? 0 : target * 0.45;
     else if (s.flight) s.speed = s.launchSpeed;
     const last = s.at;
-    s.at = Math.min(s.finishAt, s.at + (rescuing ? 0 : s.speed * dt * (pass ? passRate(last, s.cut) : 1)));
+    s.at = Math.min(raceLine, s.at + (rescuing ? 0 : s.speed * dt * (pass ? passRate(last, s.cut) : 1)));
     const crossed = (marker: number) => lapAt(last) < marker && last + (marker - lapAt(last)) <= s.at;
     if (pass && crossed(valley)) {
       s.cut = s.x > 0.25;
@@ -361,7 +379,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
     if (bowl && crossed(910)) entryPlace = s.place;
     if (!rescuing) crossDeck(s, last, s.speed, dt, solidWidth?.(s.at));
     if (s.fall && !rescuing) {
-      if (s.at === s.finishAt) s.at = last;
+      if (s.at === raceLine) s.at = last;
       s.boost = 0;
       s.draft = 0;
       s.swing = 0;
@@ -396,11 +414,11 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
       s.boost = 2.8;
       say('Gap cleared · landing boost');
     }
-    const finishTime = s.time - dt + (s.finishAt - last) / Math.max(0.001, s.speed);
-    s.lap = Math.min(s.laps, 1 + Math.floor(s.at / LAP));
+    const finishTime = s.time - dt + (raceLine - last) / Math.max(0.001, s.speed);
+    s.lap = Math.min(pursuit ? Infinity : s.laps, 1 + Math.floor(s.at / LAP));
     s.boost = Math.max(0, s.boost - dt);
     if (s.slow) {
-      s.purge = effort >= purge() ? s.purge + dt / purgeSeconds() : 0;
+      s.purge = effort >= (pursuit ? workBand(s.tier)[0] : purge()) ? s.purge + dt / purgeSeconds() : 0;
       s.slow = s.purge >= 1 ? 0 : Math.max(0, s.slow - dt);
       if (!s.slow) {
         s.purge = 0;
@@ -431,6 +449,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
       if (!s.fall && Math.abs(s.x - crate.x) < 0.35) {
         const reward = prize(Math.max(...rivals.map((r) => r.at)) - s.at, ctx.rng());
         s.crates++;
+        s.reload = Math.min(s.reload, s.swing);
         if (reward === 'tow') {
           s.tow = 6;
           say('Tow cell · pedal for boost');
@@ -453,7 +472,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
         flank = i !== lead,
         flankSide = (i + 3 - lead) % 3 === 1 ? -1 : 1;
       const paceSpeed =
-        cruise() * Math.sqrt(pace[s.tier]()) * (0.97 + 0.025 * i + 0.045 * Math.sin(s.time / 5 + i));
+        cruise() * Math.sqrt(racePace) * (0.97 + 0.025 * i + 0.045 * Math.sin(s.time / 5 + i));
       // The point rider contests the wake. Wing riders try to draw level, within
       // a bounded pace envelope: actual rider effort can break the formation.
       const nearby = Math.abs(gap) < 32 && sameRoad(s, r);
@@ -511,24 +530,29 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
         dt *
         5;
       const wantedGap = regrouping && flank ? 16 + flankSide * 3 : flank ? 1.5 : 9;
-      const tactical = nearby
-        ? clamp(s.speed + (wantedGap - gap) * 0.85, paceSpeed * 0.8, paceSpeed * 1.13)
-        : paceSpeed;
+      const marked = pursuit && pursuitPhases[pursuit.phase].rival === i;
+      const tactical =
+        nearby && !marked
+          ? clamp(s.speed + (wantedGap - gap) * 0.85, paceSpeed * 0.8, paceSpeed * 1.13)
+          : paceSpeed;
       r.release = Math.max(0, r.release - dt);
-      const packSpeed = tactical * packPace(gap) * (r.release ? 1.36 : 1);
+      const kick = marked
+        ? clamp((pursuit.elapsed - pursuitPhases[pursuit.phase].seconds + kickSeconds) / 3, 0, 1)
+        : 0;
+      const packSpeed =
+        (1 + kick * [0.045, 0.095, 0.12][s.tier]) * tactical * packPace(gap) * (r.release ? 1.36 : 1);
       const speed = r.flight
         ? r.launchSpeed
         : packSpeed * (r.stun ? 0.54 : 1) * (r.collector.drag ? 0.7 : 1) * Math.min(1, s.time * 1.35);
 
-      r.at = Math.min(
-        s.finishAt,
-        r.at +
-          speed *
-            dt *
-            (pass
-              ? passRate(oldAt, r.cut) / (1 + (climbLoad() * passGrade(oldAt, r.cut) ** 2) / pace[s.tier]())
-              : 1),
-      );
+      const routeRate = pass
+        ? passRate(oldAt, r.cut) / (1 + (climbLoad() * passGrade(oldAt, r.cut) ** 2) / racePace)
+        : 1;
+      // A neutral convoy rolls with the rider and waits if they stop.
+      const stationSpeed = neutral
+        ? clamp((s.at - last) / dt + (5 + 3 * i - gap) * 0.48, 0, cruise() * 1.4)
+        : speed * routeRate;
+      r.at = Math.min(raceLine, r.at + stationSpeed * dt);
       if (pass) {
         const dist = lapAt(oldAt);
         if (dist < valley && dist + r.at - oldAt >= valley) r.cut = r.x > 0.25;
@@ -546,7 +570,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
         r.release = 2.4;
       if (kiln && rideSeam(r.firing, oldAt, r.at, r.x, !r.fall && !r.stun)) r.release = 3.8;
       if (r.fall) {
-        if (r.at === s.finishAt) r.at = oldAt;
+        if (r.at === raceLine) r.at = oldAt;
         if (r.stun > 0) {
           s.ringOuts++;
           say(pilots[i] + ' went over!');
@@ -556,7 +580,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
         r.stun = 0;
         return;
       }
-      if (r.at === s.finishAt) r.finish = s.time - dt + (s.finishAt - oldAt) / Math.max(0.001, speed);
+      if (r.at === raceLine) r.finish = s.time - dt + (raceLine - oldAt) / Math.max(0.001, stationSpeed);
       if (r.jumps > oldJumps) r.cooldown = 1;
       r.strike = Math.max(0, r.strike - dt);
       r.stun = Math.max(0, r.stun - dt);
@@ -575,6 +599,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
       ) {
         s.contact = true;
         s.strikes++;
+        s.reload = r.windup > 0 ? 0.95 : 1.65;
         if (r.windup > 0) s.counters++;
         say(r.windup ? 'Counter!' : pilots[i] + ' staggered');
         r.windup = 0;
@@ -609,6 +634,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
         !r.flight &&
         sameRoad(s, r) &&
         flank &&
+        !neutral &&
         !jumpRun &&
         s.time >= regroupUntil &&
         !s.slow &&
@@ -636,7 +662,7 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
     }
     s.place =
       1 +
-      rivals.filter((r) => (s.at === s.finishAt ? r.finish !== null && r.finish < finishTime : r.at > s.at))
+      rivals.filter((r) => (s.at === raceLine ? r.finish !== null && r.finish < finishTime : r.at > s.at))
         .length;
     if (Math.floor(last / LAP) !== Math.floor(s.at / LAP)) {
       if (kiln && s.firing.releases - lapReleases === 2) s.doubleFiring++;
@@ -644,8 +670,23 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
       lapReleases = s.firing.releases;
       lapCharges = s.collector.clears;
     }
-    if (s.at === s.finishAt) {
-      s.bell = bowl && s.place < entryPlace;
+    if (!pursuit) {
+      const crossedAt = s.at === raceLine ? finishTime : s.time;
+      crossTiming(timing, saved.records?.[recordKey()], last, s.at, crossedAt, dt - (s.time - crossedAt));
+    }
+    if (pursuit) {
+      const phase = pursuit.phase;
+      scorePursuit(pursuit, dt, s.watts, s.at, rivals, s.tier, s.ftp);
+      if (phase !== pursuit.phase && pursuitPhases[pursuit.phase].rival < 0) {
+        s.slow = s.purge = s.grade = s.swing = 0;
+        for (const r of rivals) r.windup = r.strike = 0;
+        ctx.resistance.clear('cablehead');
+        ctx.resistance.clear('overload');
+      }
+    }
+    if (s.at === raceLine || pursuit?.complete) {
+      s.finished = true;
+      s.bell = !pursuit && bowl && s.place < entryPlace;
       if (s.cupStage >= 0) {
         const order = rivals
           .map((r, i) => ({ id: i + 1, finish: r.finish ?? Infinity, at: r.at }))
@@ -656,14 +697,39 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
       }
       ctx.resistance.clear('cablehead');
       ctx.resistance.clear('overload');
-      ctx.save({ bestPlace: Math.min(s.place, ctx.load<{ bestPlace: number }>()?.bestPlace ?? 4) });
-      ctx.emit({ type: 'cloudcup.finish', data: { place: s.place, class: classes[s.tier] } });
+      const latest = ctx.load<RallySave>() ?? {};
+      if (pursuit) {
+        const key = pursuitKey(),
+          old = latest.pursuits?.[key];
+        const result = { flags: pursuit.flags, seconds: Math.round(pursuit.workSeconds) };
+        if (
+          result.seconds > 0 &&
+          (!old || result.flags > old.flags || (result.flags === old.flags && result.seconds > old.seconds))
+        )
+          ctx.save({ ...latest, pursuits: { ...latest.pursuits, [key]: result } });
+        ctx.emit({ type: 'cloudcup.pursuit', data: { flags: result.flags, workSeconds: result.seconds } });
+      } else {
+        const key = recordKey(),
+          old = latest.records?.[key];
+        const useLap = !old?.lap || timing.fastest < old.lap;
+        const record = {
+          time: Math.min(old?.time ?? Infinity, finishTime),
+          lap: useLap ? timing.fastest : old.lap,
+          splits: useLap ? timing.fastestSplits : old.splits,
+        };
+        ctx.save({
+          ...latest,
+          bestPlace: Math.min(s.place, latest.bestPlace ?? 4),
+          records: { ...latest.records, [key]: record },
+        });
+        ctx.emit({ type: 'cloudcup.finish', data: { place: s.place, class: classes[s.tier] } });
+      }
     }
   }
   return {
     update,
     inMenu: () => s.menu,
-    isOver: () => s.at >= s.finishAt,
+    isOver: () => s.finished,
     hud: () => ({
       controls: [
         { button: 'paddles', label: s.menu ? 'Choose class' : 'Lean' },
@@ -671,7 +737,10 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
         { button: 'right', label: 'Right' },
         { button: 'a', label: s.menu ? 'Race' : 'Sweep left' },
         { button: 'b', label: s.menu ? 'Change course' : 'Sweep right' },
-        ...(s.menu && s.cupStage < 0 ? [{ button: 'up' as const, label: 'Race distance' }] : []),
+        ...(s.menu && !s.pursuit && s.cupStage < 0
+          ? [{ button: 'up' as const, label: 'Race distance' }]
+          : []),
+        ...(s.menu && s.cupStage < 0 ? [{ button: 'y' as const, label: 'Toggle pursuit' }] : []),
         ...(s.menu && s.cupStage <= 0 ? [{ button: 'down' as const, label: 'Toggle Breaker Cup' }] : []),
       ],
       touchControls: s.menu
@@ -679,20 +748,42 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
           ? ['a']
           : s.cupStage === 0
             ? ['left', 'right', 'down', 'a']
-            : ['left', 'right', 'up', 'down', 'b', 'a']
+            : s.pursuit
+              ? ['left', 'right', 'down', 'b', 'y', 'a']
+              : ['left', 'right', 'up', 'down', 'b', 'y', 'a']
         : ['left', 'right', 'a', 'b'],
     }),
     snapshot: () => ({
       ...s,
       previous,
+      pursuit: s.pursuit ? { ...s.pursuit } : null,
       firing: { ...s.firing },
       collector: { ...s.collector },
       paceFtp: pace[s.tier](),
       seamFtp: pace[s.tier]() * seamPace(),
-      purgeFtp: purge(),
+      splitSector: timing.sector,
+      splitReading: timing.reading,
+      splitDelta: timing.delta,
+      splitUntil: timing.visibleUntil,
+      previousBest: saved.records?.[recordKey()]?.time ?? 0,
+      bestPursuit: saved.pursuits?.[pursuitKey()],
+      cruise: cruise(),
+      purgeFtp: s.pursuit ? workBand(s.tier)[0] : purge(),
     }),
     summary: () => ({
-      Place: s.place,
+      ...(s.pursuit
+        ? {
+            Event: 'Pursuit',
+            'Duels won': s.pursuit.flags,
+            'Duels finished': Math.floor(s.pursuit.phase / 2),
+            'Work in range (s)': Math.round(s.pursuit.workSeconds),
+            'Work ridden (s)': Math.round(s.pursuit.totalWork),
+          }
+        : {
+            Place: s.place,
+            ...(timing.fastest ? { 'Fastest lap': lapTime(timing.fastest) } : {}),
+            ...(s.finished ? { 'Race time': lapTime(timing.lapStart) } : {}),
+          }),
       ...(s.cupStage >= 0
         ? {
             'Cup heats': s.cupStage + Number(s.at === s.finishAt),
@@ -711,7 +802,9 @@ function createHeat(ctx: GameContext, entry?: CupEntry) {
         ? { Releases: s.firing.releases }
         : s.course === 2
           ? { Charges: s.collector.clears, Faults: s.collector.hits }
-          : { Jumps: s.jumps }),
+          : s.course === 0
+            ? { Jumps: s.jumps }
+            : {}),
       ...(s.course === 4
         ? { 'Carriage best (s)': +s.bestCarriage.toFixed(1), 'Cut best (s)': +s.bestCut.toFixed(1) }
         : {}),

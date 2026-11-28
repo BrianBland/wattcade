@@ -15,6 +15,7 @@ const keys: Record<string, Button> = {
   ArrowRight: 'right',
   KeyZ: 'a',
   KeyX: 'b',
+  KeyV: 'y',
 };
 const cupButton = document.querySelector<HTMLButtonElement>('[data-key="ArrowDown"]')!;
 const sources = new Map<string, string>(),
@@ -61,6 +62,10 @@ for (let i = 0; i < courseSteps; i++) {
   edges.add('b');
   session.step(1);
 }
+if (gridCourse !== 'cup' && new URLSearchParams(location.search).get('event') === 'pursuit') {
+  edges.add('y');
+  session.step(1);
+}
 const renderer = await game.loadRenderer();
 renderer.mount(host, { profile });
 await renderer.ready?.();
@@ -74,7 +79,22 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-k
   });
   button.addEventListener('lostpointercapture', (e) => sources.delete('pointer' + e.pointerId));
 }
+const pursuitButton = document.querySelector<HTMLButtonElement>('[data-key="KeyV"]')!;
+const powerButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-power]'));
+const powerReadout = document.querySelector('output')!;
+let manualFtp = 0.5,
+  coached = false;
+function trimPower(direction: number) {
+  manualFtp = Math.max(0.25, Math.min(1.5, Math.round((manualFtp + direction * 0.05) * 100) / 100));
+}
+for (const button of powerButtons)
+  button.addEventListener('click', () => trimPower(Number(button.dataset.power)));
 window.addEventListener('keydown', (e) => {
+  if (coached && (e.code === 'BracketLeft' || e.code === 'BracketRight')) {
+    e.preventDefault();
+    trimPower(e.code === 'BracketLeft' ? -1 : 1);
+    return;
+  }
   if (keys[e.code] || e.code === 'Space' || e.code === 'KeyC') {
     e.preventDefault();
     down(e.code, e.code);
@@ -95,18 +115,24 @@ function draw(time: number) {
   const sprint = controls.includes('Space'),
     coast = controls.includes('KeyC');
   session.fakeBike!.manual = {
-    power: coast ? 0 : profile.ftp * (sprint ? 1.35 : 0.78),
+    power: coast ? 0 : profile.ftp * (sprint ? 1.35 : coached ? manualFtp : 0.78),
     cadence: coast ? 0 : sprint ? 105 : 86,
     hr: null,
   };
   session.frame(Math.min(0.1, (time - previous) / 1000));
   previous = time;
   const state = session.sim.snapshot() as import('../src/games/cloudcup/sim/race').RaceView;
+  coached = !!state.pursuit;
+  pursuitButton.hidden = !state.menu || state.cupStage >= 0;
+  pursuitButton.textContent = coached ? 'Single race · V' : 'Pursuit · V';
+  for (const button of powerButtons) button.hidden = !coached;
+  powerReadout.hidden = !coached;
+  powerReadout.textContent = Math.round(manualFtp * 100) + '% FTP';
   renderer.render(state, session.ctx.bike(), session.ctx.input(), session.loop.frameFraction);
   leftAction.textContent = state.menu ? 'Start · Z' : 'Left sweep · Z';
   courseButton.textContent = state.menu ? 'Course · X' : 'Right sweep · X';
   courseButton.hidden = state.menu && state.cupStage >= 0;
-  distanceButton.hidden = !state.menu || state.cupStage >= 0;
+  distanceButton.hidden = !state.menu || state.cupStage >= 0 || coached;
   cupButton.hidden = !state.menu || state.cupStage > 0;
   cupButton.textContent = state.cupStage === 0 ? 'Single race · ↓' : 'Cup · ↓';
   if (session.sim.isOver()) {
@@ -115,6 +141,7 @@ function draw(time: number) {
       again.textContent =
         'Cup ' + ['1st', '2nd', '3rd', '4th'][place - 1] + ' · ' + state.cupPoints[0] + ' pts · Race again';
     }
+    if (state.pursuit) again.textContent = state.pursuit.flags + '/3 flags · Ride again';
     again.hidden = false;
     return;
   }

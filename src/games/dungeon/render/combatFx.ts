@@ -107,8 +107,8 @@ export function drawHeroEffortFx(
   const rx = Math.round(p.r * TS * 1.45), ry = Math.round(p.r * TS * 0.75);
 
   g.save();
-  // 1. High-effort / Surge rhythm: subtle rotating archetype-tinted cadence ring pips at the hero's feet
-  if (s.paceBias.bias === 1 || p.bulletTime || p.mountainKing) {
+  // 1. Climb / Surge rhythm: subtle rotating archetype-tinted cadence ring pips at the hero's feet
+  if ((s.terrain?.extraGrade ?? 0) >= 2 || p.bulletTime || p.mountainKing) {
     g.fillStyle = s.archetype.color;
     for (let i = 0; i < 6; i++) {
       const ang = t * 3.4 + (i * Math.PI) / 3;
@@ -159,6 +159,43 @@ export function drawHeroEffortFx(
       g.fillRect(px, py, 1, 2);
     }
     g.globalAlpha = 1;
+  }
+
+  // 5. Diegetic status debuff VFX on hero (Slimed drips, Headwind gusts, Crippled leg sparks)
+  for (const st of s.statuses ?? []) {
+    if (st.kind === 'slimed') {
+      // Sticky neon-green gel puddles and falling droplets
+      g.fillStyle = '#4ad858';
+      g.globalAlpha = 0.55;
+      g.fillRect(hx - rx + 2, footY - 1, rx * 2 - 4, 3);
+      for (let i = 0; i < 4; i++) {
+        const ph = (t * 1.6 + i * 0.27) % 1;
+        const dx = Math.round(Math.sin(i * 2.4 + 1) * rx * 0.65);
+        g.globalAlpha = (1 - ph) * 0.9;
+        g.fillStyle = i % 2 ? '#8eff8e' : '#4ad858';
+        g.fillRect(hx + dx, Math.round(hy - TS * 0.35 + ph * TS * 0.95), 2, 2);
+      }
+      g.globalAlpha = 1;
+    } else if (st.kind === 'headwind') {
+      // Sweeping cyan-white gale wind streaks whipping across the rider
+      for (let i = 0; i < 4; i++) {
+        const ph = (t * 2.8 + i * 0.25) % 1;
+        const sx = Math.round(hx + rx * 1.4 - ph * rx * 2.8);
+        const sy = Math.round(hy - TS * 0.4 + (i - 1.5) * 6);
+        g.globalAlpha = Math.sin(ph * Math.PI) * 0.85;
+        g.fillStyle = i % 2 ? '#d6f7ff' : '#78d8ff';
+        g.fillRect(sx, sy, Math.max(5, Math.round(TS * 0.28)), 1);
+      }
+      g.globalAlpha = 1;
+    } else if (st.kind === 'crippled') {
+      // Heavy crimson drag shackles pulsing at feet
+      g.fillStyle = Math.sin(t * 10) > 0 ? '#ff6e7a' : '#c82a3e';
+      g.globalAlpha = 0.78;
+      g.fillRect(hx - rx, footY - 1, 4, 2);
+      g.fillRect(hx + rx - 4, footY - 1, 4, 2);
+      g.fillRect(hx - 2, footY + 2, 4, 2);
+      g.globalAlpha = 1;
+    }
   }
   g.restore();
 }

@@ -368,7 +368,8 @@ function drawFullTreeOverlay(
   fillTextShadow(g, titleLine, hx, L.header.y + 16 * u, hMaxW);
 
   g.font = pixelFont(Math.round(9.5 * u)); g.fillStyle = st.unspentSP > 0 ? '#ffd84a' : '#a8c8e8';
-  const sub = `${st.unspentSP} SP ready · ${st.spentSP} spent${st.relicName ? ` · Relic: ${st.relicName}` : ''} · Flat road`;
+  const par = (st.paragonRanks ?? 0) > 0 ? ` · Paragon +${st.paragonRanks}` : '';
+  const sub = `${st.unspentSP} SP ready · ${st.spentSP} spent${par}${st.relicName ? ` · Relic: ${st.relicName}` : ''} · Flat road`;
   fillText(g, sub, hx, L.header.y + 31 * u, hMaxW);
 
   if (o.cards.length > 0) {
@@ -498,27 +499,27 @@ function drawFullTreeOverlay(
       const tallNarrow = R.w < 140 * u && R.h >= 62 * u;
       if (tallNarrow) {
         // Portrait phone / narrow column: clean centered icon-first medallion card (full copy in bottom inspector)
-        const sock = Math.round(Math.min(R.w - 10 * u, R.h * 0.44, 38 * u));
+        const sock = Math.round(Math.min(R.w - 10 * u, R.h * (isFork ? 0.34 : 0.42), (isFork ? 30 : 38) * u));
         const cx = R.x + R.w / 2;
-        const sy = R.y + (isFork ? 18 : 10) * u;
+        const sy = R.y + (isFork ? 16 : 9) * u;
         if (isFork) {
-          g.textAlign = 'center'; g.font = pixelFont(Math.round(8.5 * u));
+          g.textAlign = 'center'; g.font = pixelFont(Math.round(8 * u));
           g.fillStyle = isLockedOut ? '#c85860' : b.color;
-          fillTextShadow(g, `FORK ${n.fork}`, cx, R.y + 13 * u, R.w - 6 * u);
+          fillTextShadow(g, `FORK ${n.fork}`, cx, R.y + 12 * u, R.w - 6 * u);
         }
         pixelSocket(g, cx - sock / 2, sy, sock, sock, q);
         if (isKey && !isLocked) { g.strokeStyle = '#ffd84a'; g.lineWidth = q; g.strokeRect(cx - sock / 2 - q, sy - q, sock + 2 * q, sock + 2 * q); }
         drawSkillIcon(g, n.id, cx, sy + sock / 2, sock - 4 * q, b.color, { dim: isLocked, lockedOut: isLockedOut });
 
-        const labelY = sy + sock + 14 * u;
+        const rankY = R.y + R.h - 7 * u;
+        const labelY = Math.min(sy + sock + 12 * u, rankY - 11 * u);
         g.textAlign = 'center'; g.font = pixelFont(Math.round((isFork ? 8 : 9) * u));
         g.fillStyle = isLockedOut ? '#8e555e' : isLocked ? '#9a90ad' : isKey ? '#ffd84a' : '#ffffff';
         const shortName = isFork ? n.name.split(' ')[0] : n.name;
         fillTextShadow(g, shortName, cx, labelY, R.w - 8 * u);
 
-        const rankY = R.y + R.h - 10 * u;
         if (isLockedOut) {
-          g.font = pixelFont(Math.round(8 * u)); g.fillStyle = '#d45a64';
+          g.font = pixelFont(Math.round(7.5 * u)); g.fillStyle = '#d45a64';
           fillText(g, 'LOCKED', cx, rankY, R.w - 6 * u);
         } else {
           const pipW = (n.maxRank - 1) * Math.round(10 * q);
@@ -598,14 +599,14 @@ function drawFullTreeOverlay(
     g.font = pixelFont(Math.round(9 * u)); g.fillStyle = isLockedOut ? '#ff6b6b' : fn.fork ? '#ffb88a' : '#9fe8ff';
     const line3 = isLockedOut
       ? 'Locked out for this run - sibling Fork already chosen.'
-      : `${fn.cycling}${fn.fork ? ` · Exclusive Fork: locks Fork ${fn.fork === 'A' ? 'B' : 'A'} for this run.` : ''}`;
+      : `${fn.cycling}${fn.fork && fn.rank === 0 ? ` · Exclusive Fork: locks Fork ${fn.fork === 'A' ? 'B' : 'A'} for this run.` : ''}`;
     fillText(g, line3, textX, L.inspector.y + L.inspector.h - 10 * u, textWMax);
 
     const canBuy = st.unspentSP > 0 && (fn.state === 'available' || fn.state === 'invested');
-    const confirmWarn = canBuy && !!fn.fork;
+    const confirmWarn = canBuy && !!fn.fork && fn.rank === 0;
     pixelPanel(g, L.investBtn.x, L.investBtn.y, L.investBtn.w, L.investBtn.h, canBuy ? (confirmWarn ? '#ff9a3c' : '#ffd84a') : '#4a4258', canBuy ? '#3d2f14f6' : '#1b1626f0', q);
     g.textAlign = 'center'; g.font = pixelFont(Math.round(10 * u)); g.fillStyle = canBuy ? (confirmWarn ? '#ffd088' : '#ffd84a') : '#888';
-    const bTxt = fn.state === 'maxed' ? 'MAXED ✓' : isLockedOut ? 'LOCKED OUT' : isLocked ? `NEED TIER ${fn.tier - 1}` : canBuy ? (fn.fork ? '[A] LOCK FORK' : '[A] INVEST 1 SP') : '0 SP LEFT';
+    const bTxt = fn.state === 'maxed' ? 'MAXED ✓' : isLockedOut ? 'LOCKED OUT' : isLocked ? `NEED TIER ${fn.tier - 1}` : canBuy ? (confirmWarn ? '[A] LOCK FORK' : '[A] INVEST 1 SP') : '0 SP LEFT';
     fillTextShadow(g, bTxt, L.investBtn.x + L.investBtn.w / 2, L.investBtn.y + L.investBtn.h * 0.65, L.investBtn.w - 8 * u);
     if (canBuy) hits.push({ rect: L.investBtn, action: { type: 'skillPick', nodeId: fn.id, confirm: true } });
   }

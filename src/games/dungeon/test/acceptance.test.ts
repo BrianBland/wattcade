@@ -9,7 +9,7 @@ describe('#89 interval pacing', () => {
   it('ERG holds the segment target for every segment it visits', () => {
     const profile = testProfile(), ftp = profile.ftp;
     const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'target-follow' }, seed: 12, simOpts: { autopilot: true, erg: true, skipCamp: true } });
-    const expectedTargets = archetypeDirectorCfg(DEFAULT_CFG, 'rouleur', 0).targets;
+    const expectedTargets = archetypeDirectorCfg(DEFAULT_CFG, 'rouleur').targets;
     const seen = new Map<Seg, Set<number>>();
     for (let sec = 0; sec < 25 * 60; sec++) {
       s.step(30);

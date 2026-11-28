@@ -2,10 +2,11 @@ import type { World, EnemyKind, ShrineKind } from './world';
 import type { Element, Gear, Rarity, Slot, UniqueFx, Weapon, WeaponStyle } from './loot';
 import type { UpgradeId } from './meta';
 import type { RunResult } from './descent';
-import type { ArchetypeId, HeroChassis, JerseyKit, PaceBias } from './archetypes';
+import type { ArchetypeId, HeroChassis, JerseyKit } from './archetypes';
 import type { NodeState, SkillTier } from './skillTree';
 import type { LootOfferView, StatDelta } from './lootOffer';
-export type { LootOfferView, StatDelta };
+import type { StatusEffectView, StatusKind } from './statusEffects';
+export type { LootOfferView, StatDelta, StatusEffectView, StatusKind };
 
 export type EliteMod = 'undying' | 'splitting' | 'shielded' | 'swift' | 'volatile';
 export interface EnemyView {
@@ -81,6 +82,7 @@ export interface SkillOfferView {
 export interface SkillTreeView {
   unspentSP: number;
   spentSP: number;
+  paragonRanks?: number;
   buildTitle: string;
   forks: string[];
   capstones: string[];
@@ -101,15 +103,6 @@ export interface ArchetypeView {
   overlays: string[];
   workoutTag: string;
   cadenceSweet: [number, number];
-}
-
-export interface PaceBiasView {
-  bias: PaceBias;
-  id: 'cool' | 'cruise' | 'push';
-  label: string;
-  shortLabel: string;
-  color: string;
-  desc: string;
 }
 
 export interface CampArchetypeCard {
@@ -166,7 +159,8 @@ export interface DungeonSnapshot {
   gear: Partial<Record<Slot, Gear>>;
   aim: { angle: number };
   archetype: ArchetypeView;
-  paceBias: PaceBiasView;
+  statuses: StatusEffectView[];
+  terrain: { extraGrade: number; demandedFtp: number; bogged: boolean };
   skillTree: SkillTreeView;
   pace: { seg: string; label: string; erg: boolean; segT: number };
   /** Current cooldown refill speed (x base) and the power zone driving it (1..5). */
@@ -189,6 +183,8 @@ export interface DungeonSnapshot {
   frozen: boolean;
   /** The Gear Masher's chainring on its chain (tiles); null for every other boss. tx/ty = where a throw or slam lands. */
   flail: { x: number; y: number; mode: 'hand' | 'out' | 'back' | 'whirl' | 'slam' | 'rest'; t: number; ang: number; tx: number; ty: number } | null;
+  /** The Headwind Wyrm's 14-segment articulated snake body (tiles); null for every other boss. */
+  wyrmSegs?: Array<{ x: number; y: number; ang: number }> | null;
   boss: { active: boolean; name: string; hp: number; maxHp: number; phase: 1 | 2 | 3; cycle: 'idle' | 'windup' | 'exposed' | 'stagger'; left: number; fightT: number; tide: number; splits: [number, number] } | null;
   /** Active non-blocking loot choice prompt (default auto-resolves; Y flips). */
   lootOffer?: LootOfferView | null;

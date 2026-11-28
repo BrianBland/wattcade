@@ -24,7 +24,7 @@ it('preserves every mapped button and game-specific shifter across all eight gam
         if (cluster.kind === 'face') expect(actual.every(b => ['a','b','y','z'].includes(b.id))).toBe(true);
       }
       if (playing && ['cadenza','watershed','starfighter'].includes(game.id)) expect(compactButtons(pad.left.stick).map(b => b.id)).toEqual(['left','right']);
-      if (playing && game.id === 'dungeon') expect(compactButtons(pad.left.stick).map(b => b.id)).toEqual(['left','right','up']); // ▲ opens the Skill Tree (#342)
+      if (playing && game.id === 'dungeon') expect(compactButtons(pad.left.stick).map(b => b.id)).toEqual(['up']); // ▲ opens the Skill Tree
       if (hud.controls?.some(h => h.button === 'paddles')) expect(pad.left.paddle.mapped).toBe(true);
       if (game.id === 'cadenza' && playing) expect(compactButtons(pad.right.stick).map(b => [b.id, b.label])).toEqual([['z','Left'],['a','Right']]);
     } finally { s.sim.dispose?.(); }

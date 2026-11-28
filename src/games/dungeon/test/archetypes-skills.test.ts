@@ -4,11 +4,12 @@ import type { Button, InputState } from '../../../contracts';
 import { module } from '../index';
 import { DEFAULT_CFG } from '../sim/director';
 import {
-  ARCHETYPES, ARCHETYPE_ORDER, PACE_MODES, archetypeDirectorCfg, grimpeurProgress, isArchetypeUnlocked,
+  ARCHETYPES, ARCHETYPE_ORDER, archetypeDirectorCfg, grimpeurProgress, isArchetypeUnlocked,
 } from '../sim/archetypes';
 import {
-  SKILL_TREES, computeTreeMods, deriveBuildTitle, investSkillNode, nodeState, quickPickCards, type SkillRanks,
+  SKILL_TREES, computeTreeMods, deriveBuildTitle, investSkillNode, maxTreePoints, nodeState, quickPickCards, type SkillRanks,
 } from '../sim/skillTree';
+import { applyStatus, emptyStatuses, evaluateTerrainLoad, tickStatuses } from '../sim/statusEffects';
 import { quickPickLayout, fullTreeLayout } from '../render/skillTreeUi';
 import { campLayout } from '../render/campUi';
 import type { DungeonSnapshot } from '../sim/types';
@@ -24,7 +25,7 @@ class PadInput {
   state(): InputState { return this.st; }
 }
 
-describe('Hero Archetypes & Workout Control', () => {
+describe('Hero Archetypes & Diegetic Terrain / Status Effects', () => {
   it('starts with Rouleur and Puncheur unlocked and locks Grimpeur until Floor 4 or 10 climbs', () => {
     expect(isArchetypeUnlocked('rouleur', { bestFloor: 1, climbs: 0 })).toBe(true);
     expect(isArchetypeUnlocked('puncheur', { bestFloor: 1, climbs: 0 })).toBe(true);
@@ -34,37 +35,65 @@ describe('Hero Archetypes & Workout Control', () => {
     expect(grimpeurProgress({ bestFloor: 1, climbs: 5 }).pct).toBeCloseTo(0.5, 2);
   });
 
-  it('produces genuinely distinct ERG and Grade workout profiles per archetype and respects mid-ride Pace Bias', () => {
-    const r = archetypeDirectorCfg(DEFAULT_CFG, 'rouleur', 0);
-    const p = archetypeDirectorCfg(DEFAULT_CFG, 'puncheur', 0);
-    const g = archetypeDirectorCfg(DEFAULT_CFG, 'grimpeur', 0);
+  it('produces genuinely distinct ERG and Grade workout profiles per archetype', () => {
+    const r = archetypeDirectorCfg(DEFAULT_CFG, 'rouleur');
+    const p = archetypeDirectorCfg(DEFAULT_CFG, 'puncheur');
+    const g = archetypeDirectorCfg(DEFAULT_CFG, 'grimpeur');
 
     // Puncheur has punchier shorter sprints; Grimpeur has steepest sustained climbs; Rouleur has smooth aerobic base
     expect(p.targets.ambush.erg).toBeGreaterThan(r.targets.ambush.erg);
     expect(p.ambushS).toBeLessThan(r.ambushS);
     expect(g.targets.boss.grade).toBeGreaterThan(r.targets.boss.grade);
     expect(g.targets.explore.grade).toBeGreaterThan(p.targets.explore.grade);
+  });
 
-    // Pace Bias shifts active segments (both ERG & Grade) while keeping warmup/cooldown safe
-    const rCool = archetypeDirectorCfg(DEFAULT_CFG, 'rouleur', -1);
-    const rPush = archetypeDirectorCfg(DEFAULT_CFG, 'rouleur', 1);
-    expect(rCool.targets.explore.erg).toBeLessThan(r.targets.explore.erg);
-    expect(rPush.targets.explore.erg).toBeGreaterThan(r.targets.explore.erg);
-    expect(rCool.targets.ambush.grade).toBeLessThan(r.targets.ambush.grade);
-    expect(rPush.targets.ambush.grade).toBeGreaterThan(r.targets.ambush.grade);
-    expect(rPush.targets.warmup.erg).toBe(r.targets.warmup.erg);
-    expect(rCool.targets.cooldown.erg).toBe(r.targets.cooldown.erg);
+  it('turns status debuffs and heavy encounters into real trainer load that soft-pedaling bogs down on and wattage overcomes', () => {
+    const st = emptyStatuses();
+    expect(applyStatus(st, 'slimed', 4)).toBe(true);
+    expect(applyStatus(st, 'headwind', 3)).toBe(true);
+
+    const soft = evaluateTerrainLoad({
+      statuses: st, baseErg: 0.65, inCombat: true, hasElite: false, isAmbush: false, bossActive: false, bossPhase: 1, ftpFraction: 0.5,
+    });
+    const push = evaluateTerrainLoad({
+      statuses: st, baseErg: 0.65, inCombat: true, hasElite: false, isAmbush: false, bossActive: false, bossPhase: 1, ftpFraction: 1.15,
+    });
+
+    expect(soft.extraGrade).toBeGreaterThanOrEqual(5);
+    expect(soft.extraErg).toBeGreaterThanOrEqual(0.15);
+    expect(soft.bogged).toBe(true);
+    expect(soft.moveMult).toBeLessThan(0.75);
+    expect(soft.dmgMult).toBeLessThan(0.9);
+
+    expect(push.bogged).toBe(false);
+    expect(push.moveMult).toBeGreaterThan(soft.moveMult);
+    expect(push.dmgMult).toBeGreaterThan(1);
+
+    // Boss phases escalate mountain-climb grade
+    const p1 = evaluateTerrainLoad({ statuses: emptyStatuses(), baseErg: 0.7, inCombat: true, hasElite: false, isAmbush: false, bossActive: true, bossPhase: 1, ftpFraction: 0.85 });
+    const p3 = evaluateTerrainLoad({ statuses: emptyStatuses(), baseErg: 0.7, inCombat: true, hasElite: false, isAmbush: false, bossActive: true, bossPhase: 3, ftpFraction: 0.85 });
+    expect(p3.extraGrade).toBeGreaterThan(p1.extraGrade);
+
+    tickStatuses(st, 5);
+    expect(st.slimed.left).toBe(0);
+    expect(st.headwind.left).toBe(0);
   });
 });
 
-describe('Diablo-Style 3-Branch Skill Trees & Mutually Exclusive Forks', () => {
-  it('defines 3 branches x 5 nodes for every launch archetype and strictly locks sibling forks for the run', () => {
+describe('Diablo-Style 3-Branch Skill Trees (27 SP depth) & Mutually Exclusive Forks', () => {
+  it('defines 3 branches x 5 nodes (27 SP total per archetype) and strictly locks sibling forks for the run', () => {
     for (const id of ARCHETYPE_ORDER) {
       const branches = SKILL_TREES[id];
       expect(branches).toHaveLength(3);
+      expect(maxTreePoints(id)).toBe(27);
       for (const b of branches) {
         expect(b.nodes).toHaveLength(5);
         const [t1, t2, fa, fb, t4] = b.nodes;
+        expect(t1.maxRank).toBe(3);
+        expect(t2.maxRank).toBe(3);
+        expect(fa.maxRank).toBe(2);
+        expect(fb.maxRank).toBe(2);
+        expect(t4.maxRank).toBe(1);
         const ranks: SkillRanks = {};
 
         // Tier prerequisites enforced
@@ -80,11 +109,13 @@ describe('Diablo-Style 3-Branch Skill Trees & Mutually Exclusive Forks', () => {
         expect(nodeState(id, ranks, fa.id)).toBe('available');
         expect(nodeState(id, ranks, fb.id)).toBe('available');
 
-        // Picking Fork A permanently locks out Fork B and unlocks Capstone T4
+        // Picking Fork A (2 ranks) permanently locks out Fork B on rank 1 and unlocks Capstone T4
         expect(investSkillNode(id, ranks, fa.id)).toBe(true);
-        expect(nodeState(id, ranks, fa.id)).toBe('maxed');
+        expect(nodeState(id, ranks, fa.id)).toBe('invested');
         expect(nodeState(id, ranks, fb.id)).toBe('locked-out');
         expect(investSkillNode(id, ranks, fb.id)).toBe(false);
+        expect(investSkillNode(id, ranks, fa.id)).toBe(true);
+        expect(nodeState(id, ranks, fa.id)).toBe('maxed');
         expect(nodeState(id, ranks, t4.id)).toBe('available');
         expect(investSkillNode(id, ranks, t4.id)).toBe(true);
         expect(nodeState(id, ranks, t4.id)).toBe('maxed');
@@ -111,8 +142,8 @@ describe('Diablo-Style 3-Branch Skill Trees & Mutually Exclusive Forks', () => {
   });
 });
 
-describe('Sim integration: Archetype Select, Pace Control, Room-Clear Auto-Popup & Pause Build Inspector', () => {
-  it('lets the rider switch unlocked archetypes in Camp, blocks locked Grimpeur, and adjusts Pace Bias mid-ride via D-pad L/R', () => {
+describe('Sim integration: Archetype Select, 14-Segment Snake Wyrm, Monotonic Orbit Blades & Pause Build Inspector', () => {
+  it('lets the rider switch unlocked archetypes in Camp and blocks locked Grimpeur', () => {
     const pad = new PadInput();
     const s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 5 });
     const snap = () => s.sim.snapshot() as DungeonSnapshot;
@@ -128,20 +159,82 @@ describe('Sim integration: Archetype Select, Pace Control, Room-Clear Auto-Popup
     s.step(1);
     expect(snap().archetype.id).toBe('puncheur');
 
-    // Begin run
+    // Begin run — no manual left/right pace buttons
     pad.press('b');
     s.step(1);
     expect(snap().phase).toBe('run');
-    expect(snap().paceBias.bias).toBe(0);
+    expect(s.sim.hud!().touchControls).toEqual(['a', 'b', 'y', 'z']);
+  });
 
-    // D-pad Right -> Push Hard (+1); D-pad Left twice -> Cool Off (-1)
-    pad.press('right'); s.step(1);
-    expect(snap().paceBias.bias).toBe(1);
-    expect(snap().paceBias.id).toBe(PACE_MODES[1].id);
-    pad.press('left'); s.step(1);
-    pad.press('left'); s.step(1);
-    expect(snap().paceBias.bias).toBe(-1);
-    expect(snap().paceBias.id).toBe(PACE_MODES[-1].id);
+  it('spawns the 14-segment articulated Snake Wyrm on Floor 6 (Headwind Wyrm) that slithers smoothly around the arena', () => {
+    const reg = new TuningRegistry({ profileId: 'wyrm-test' });
+    reg.scoped('dungeon').num('baseDamage', 10, 1, 200, 1);
+    reg.set('dungeon.baseDamage', 120);
+    const s = createGameSession({
+      game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 7,
+      simOpts: { floor: 6, skipCamp: true, invulnerable: true, skills: 'none' }, tuningRegistry: reg,
+    });
+    let sawWyrm = false;
+    let firstHead: { x: number; y: number } | null = null;
+    let movedHead = false;
+    for (let i = 0; i < 30 * 60 * 6; i++) {
+      s.step(1);
+      const snap = s.sim.snapshot() as DungeonSnapshot;
+      if (snap.wyrmSegs && snap.wyrmSegs.length === 14) {
+        sawWyrm = true;
+        if (!firstHead) firstHead = { x: snap.wyrmSegs[0].x, y: snap.wyrmSegs[0].y };
+        else if (Math.hypot(snap.wyrmSegs[0].x - firstHead.x, snap.wyrmSegs[0].y - firstHead.y) > 1.5) {
+          movedHead = true;
+          break;
+        }
+      }
+    }
+    expect(sawWyrm).toBe(true);
+    expect(movedHead).toBe(true);
+  });
+
+  it('spins orbiting chainring sawblades monotonically forward even when cadence fluctuates', () => {
+    const reg = new TuningRegistry({ profileId: 'orbit-mono' });
+    reg.scoped('dungeon').num('baseDamage', 10, 1, 200, 1);
+    reg.set('dungeon.baseDamage', 140);
+    const s = createGameSession({
+      game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'intervals' }, seed: 5,
+      simOpts: { skipCamp: true, invulnerable: true, skills: 'none' }, tuningRegistry: reg,
+    });
+    // Earn 2 SP and invest Rouleur Drafting Blades (r_m_t1 -> r_m_t2)
+    for (let i = 0; i < 30 * 60 * 4; i++) {
+      s.step(1);
+      if ((s.sim.snapshot() as DungeonSnapshot).skillTree.unspentSP >= 2) break;
+    }
+    s.sim.receive?.({ type: 'openSkillTree' });
+    s.step(1);
+    s.sim.receive?.({ type: 'skillPick', nodeId: 'r_m_t1', confirm: true });
+    s.step(1);
+    s.sim.receive?.({ type: 'skillPick', nodeId: 'r_m_t2', confirm: true });
+    s.step(1);
+    s.sim.receive?.({ type: 'skillClose' });
+    s.step(1);
+
+    let prevAng: number | null = null;
+    let checked = 0;
+    for (let i = 0; i < 180; i++) {
+      s.step(1);
+      const snap = s.sim.snapshot() as DungeonSnapshot;
+      if (!snap.frozen && snap.orbit.length > 0) {
+        const ang = Math.atan2(snap.orbit[0].y - snap.player.y, snap.orbit[0].x - snap.player.x);
+        if (prevAng !== null) {
+          let delta = ang - prevAng;
+          while (delta > Math.PI) delta -= Math.PI * 2;
+          while (delta < -Math.PI) delta += Math.PI * 2;
+          // Strictly forward, smooth per-tick step (no wild reversals or multi-radian jumps)
+          expect(delta).toBeGreaterThanOrEqual(0);
+          expect(delta).toBeLessThan(0.35);
+          if (delta > 0) checked++;
+        }
+        prevAng = ang;
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
   });
 
   it('exposes Pause Menu Build Inspector via menuActions() and toggles Full Tree / Quick-Pick cleanly', () => {
@@ -166,7 +259,7 @@ describe('Sim integration: Archetype Select, Pace Control, Room-Clear Auto-Popup
     pad.press('b');
     s.step(1);
     expect(snap().skillTree.offer).toBeNull();
-    expect(s.sim.hud!().touchControls).toEqual(['left', 'right', 'a', 'b', 'y', 'z']);
+    expect(s.sim.hud!().touchControls).toEqual(['a', 'b', 'y', 'z']);
   });
 });
 

@@ -17,7 +17,7 @@ import { pixelPanel, pixelMeter, pixelText, pixelSocket, pixelGem, mixHex } from
 import { fillText, fillTextShadow, displayText, displayWidth, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
 import { drawFlagstone, drawMarsh } from './terrain';
 import { loadArt, artReady, clearDerivedArtCache, ATLAS, hexRgb, sheetImage, zoneRect, cut, charFrame, anim as anim32 } from './art32';
-import { drawStanceSwap, drawPoolLights, drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
+import { drawPoolLights, drawFog, drawGrit, drawEmbers, drawRefracting, drawCrystalFloor, drawNumber32, isNumberText } from './fx32';
 import { buildBackground32, floorInfo, drawLava, drawPoolGlints, PROP_LIGHT, type FloorBg32, type FloorInfo } from './world32';
 import { muzzleTip, drawMuzzle32, wicks, drawItem32, drawHero32, drawEnemy32, drawFlail32, weaponArt, FLAIL_HAND, drawShot32, drawWeaponIcon32, drawCoin32, drawPuff, drawShrine32, drawSigil, drawZoneProp, zonePropSize } from './actors32';
 import { drawSkillOverlay, type SkillUiHit } from './skillTreeUi';
@@ -25,7 +25,7 @@ import { clearSkillArtCache } from './skillArt';
 import { drawCampUi, type CampUiHit } from './campUi';
 import { lineOfSight, shade, LIGHT_SCALE, type Light, type Los } from './light32';
 import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
-import { PACE_MODES, type PaceBias } from '../sim/archetypes';
+import { drawWyrm32 } from './wyrm32';
 import { drawFinishBike, drawFinishLine } from './finish32';
 
 const DNF_S = 2.1;
@@ -173,7 +173,6 @@ export function createRenderer(): GameRenderer {
   const flashAt = new Map<number, number>(), hpSeen = new Map<number, number>();
   let lastFlail: DungeonSnapshot['flail'] = null;
   let hideHero = false, lastRun: { s: DungeonSnapshot; bike: Readonly<BikeState>; input: Readonly<InputState> } | null = null;
-  let swapFx: { t0: number; c: string; from: string } | null = null, lastPaceBias: PaceBias = 0;
   let lastHero: HeroPin | null = null, prevPhase = '', dnf: { t0: number; img: HTMLCanvasElement; hero: HeroPin } | null = null;
   let lightC: HTMLCanvasElement | null = null;
   let campSnap: HTMLCanvasElement | null = null;
@@ -419,11 +418,6 @@ export function createRenderer(): GameRenderer {
         dnf = { t0: s.t, img, hero: lastHero };
       }
       prevPhase = s.phase; if (s.phase === 'run') lastRun = { s, bike, input }; else if (!dnf) lastRun = null;
-      if (s.phase === 'run' && s.paceBias.bias !== lastPaceBias) {
-        swapFx = { t0: s.t, c: s.paceBias.color, from: PACE_MODES[lastPaceBias].color };
-        pulses.push({ label: s.paceBias.label.toUpperCase(), color: s.paceBias.color, t0: s.t });
-      }
-      lastPaceBias = s.phase === 'run' ? s.paceBias.bias : 0;
       if (s.phase !== 'camp') dnf = null;
       if (dnf && s.phase === 'camp' && s.t - dnf.t0 < DNF_S) { drawDnf(s.t - dnf.t0); return; }
       if (s.phase === 'camp' && s.camp) {
@@ -645,7 +639,16 @@ export function createRenderer(): GameRenderer {
       // y-sorted actors
       type A = { y: number; d: () => void };
       eliteLabels.length = 0;
-      const actors: A[] = s.enemies.map((e) => ({ y: e.y, d: () => drawEnemy(e, TS, t) }));
+      const actors: A[] = s.enemies.map((e) => ({
+        y: e.y,
+        d: () => {
+          if (e.kind === 'boss' && e.variant === 5 && s.wyrmSegs?.length) {
+            drawWyrm32(gg, s.wyrmSegs, TS, t, { windup: bossCycle === 'windup', exposed: e.exposed, flash: e.hurt < 0.08 });
+            return;
+          }
+          drawEnemy(e, TS, t);
+        },
+      }));
       lastFlail = s.flail;
       const fb = s.flail && s.enemies.find((e) => e.kind === 'boss');
       if (s.flail && fb && artReady() && s.flail.mode !== 'hand') { const f = s.flail; actors.push({ y: Math.max(f.y, fb.y + 0.01), d: () => drawFlail(f, fb, TS) }); }
@@ -669,7 +672,7 @@ export function createRenderer(): GameRenderer {
           }
           drawHero32(gg, px, py + bob, { angle: s.aim.angle, moving: p.moving, t, stance: s.archetype.chassis, hurt: p.hurt < 0.08, weapon: s.weapon, kick, alpha: p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1, ...hKit });
           if (p.shield > 0.5) {
-            const shFrac = Math.min(1, p.shield / Math.max(1, p.maxHp * 0.35));
+            const shFrac = Math.min(1, p.shield / Math.max(1, p.maxHp * 0.25));
             pixelRing(gg, p.x * TS, p.y * TS - 8, TS * (0.58 + Math.sin(t * 6) * 0.03), '#66e0ff', true, 0.72, shFrac);
           }
           if (p.warded) pixelRing(gg, p.x * TS, p.y * TS - 10, TS * 0.72, '#7fe7ff', false);
@@ -719,7 +722,6 @@ export function createRenderer(): GameRenderer {
           gg.fillStyle = '#0a0810'; gg.fillRect(ax - 3, ay - 7, 7, 8); gg.fillStyle = '#ffd84a'; gg.fillRect(ax - 2, ay - 6, 5, 6); gg.fillStyle = '#fff4c0'; gg.fillRect(ax - 2, ay - 6, 1, 6);
         }
         drawHeroEffortFx(gg, s, TS, t);
-        if (swapFx) { const k = (t - swapFx.t0) / 0.5; if (k < 0 || k > 1) swapFx = null; else drawStanceSwap(gg, p.x * TS, p.y * TS + p.r * TS * 1.1, k, swapFx.c, swapFx.from, t); }
         for (const b of s.bullets) if (!(artReady() && drawShot32(gg, b, TS))) drawBullet(b, TS, t);
         for (const f of s.fx) {
           if (f.kind === 'death' && artReady()) drawPuff(gg, f.x * TS, f.y * TS + 8, (t - f.t0) / f.life);
@@ -863,7 +865,15 @@ export function createRenderer(): GameRenderer {
       lg.globalAlpha=1;lg.globalCompositeOperation='source-over';gg.drawImage(lightC,0,0);
       }
       if(s.curse){gg.fillStyle=s.curse.color+'12';gg.fillRect(0,0,W,H);}
-      if(p.hurt<0.3){gg.fillStyle='#f4516133';gg.fillRect(0,0,W,2);gg.fillRect(0,H-2,W,2);gg.fillRect(0,0,2,H);gg.fillRect(W-2,0,2,H);}
+      if (p.hurt < 0.3 || (p.hp > 0 && p.hp < p.maxHp * 0.35)) {
+        const lowA = p.hp < p.maxHp * 0.35 ? 0.16 + 0.14 * Math.sin(t * 7) : 0;
+        const hurtA = p.hurt < 0.3 ? 0.28 : 0;
+        gg.save();
+        gg.globalAlpha = Math.max(lowA, hurtA);
+        gg.fillStyle = '#f45161';
+        gg.fillRect(0, 0, W, 3); gg.fillRect(0, H - 3, W, 3); gg.fillRect(0, 0, 3, H); gg.fillRect(W - 3, 0, 3, H);
+        gg.restore();
+      }
       g=output;output.imageSmoothingEnabled=false;
       output.drawImage(worldCanvas,0,0,W*pixelScale,H*pixelScale);
       lastHero = { x: (p.x * TS - Math.round(cx)) * pixelScale, y: (p.y * TS + p.r * TS * 1.1 - Math.round(cy)) * pixelScale, scale: pixelScale, angle: s.aim.angle, stance: s.archetype.chassis };
@@ -1050,8 +1060,8 @@ export function createRenderer(): GameRenderer {
       }
     }
 
-    // bottom-left row: Archetype + Weapon Card, 3 Mid-Ride Pace Control chips (COOL / CRUISE / PUSH), and 4 Gear sockets
-    const LY = runLayout(W, H, insetCss * dpr, u, 3,
+    // bottom-left row: Archetype + Weapon Card and 4 Gear sockets
+    const LY = runLayout(W, H, insetCss * dpr, u, 0,
       W > H && W / dpr > 700 && H / dpr > 500
         ? hudOcclusions?.map(r => ({ x: r.x * dpr, y: r.y * dpr, w: r.w * dpr, h: r.h * dpr })) : undefined);
     {
@@ -1078,22 +1088,6 @@ export function createRenderer(): GameRenderer {
       } else {
         gg.fillStyle = wcol; fillTextShadow(gg, name, tx, R.y + R.h / 2 + 3.5 * sc1);
       }
-
-      // Mid-Ride Pace Control chips: COOL (-1) / CRUISE (0) / PUSH (+1)
-      const C = LY.stance;
-      const biases: PaceBias[] = [-1, 0, 1];
-      const cw = (C.w - 2 * 3 * u) / 3;
-      biases.forEach((b, k) => {
-        const pm = PACE_MODES[b];
-        const x = C.x + k * (cw + 3 * u), active = s.paceBias.bias === b;
-        hudBox(x, C.y, cw, C.h);
-        hudHits.push({ x, y: C.y, w: cw, h: C.h, action: { type: 'paceBias', bias: b } });
-        pixelPanel(gg, x, C.y, cw, C.h, active ? pm.color : '#3a3243', active ? mixHex(pm.color, '#171320', 0.62) : '#171320dd', q);
-        if (active) { gg.fillStyle = pm.color; gg.fillRect(Math.round(x + 2 * q), Math.round(C.y + 2 * q), Math.round(cw - 4 * q), q); }
-        gg.fillStyle = active ? '#fff' : '#9a90a6'; gg.font = pixelFont(Math.round(7.5 * u)); gg.textAlign = 'center';
-        fillTextShadow(gg, pm.shortLabel, x + cw / 2, C.y + C.h * 0.62, cw - 4 * q);
-        gg.textAlign = 'left';
-      });
 
       // Equipped gear sockets
       const G = LY.gear; let gx = G.x;

@@ -39,9 +39,20 @@ const vhash = (n: number): number => {
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
 };
 
-/** Extract compact active HUD buff pills from a snapshot. Pure. */
+/** Extract compact active HUD buff & diegetic status pills from a snapshot. Pure. */
 export function activeBuffs(s: DungeonSnapshot): BuffPill[] {
   const out: BuffPill[] = [];
+  for (const st of s.statuses ?? []) {
+    out.push({
+      id: `st_${st.kind}`,
+      label: `${st.label} +${st.gradeAdd.toFixed(1).replace(/\.0$/, '')}%`,
+      color: st.color,
+      fill: Math.min(1, st.leftS / Math.max(0.5, st.totalS)),
+    });
+  }
+  if (s.terrain?.bogged) {
+    out.push({ id: 'bogged', label: 'DIG IN!', color: '#ff6e5a' });
+  }
   if (s.player.firedUpLeft && s.player.firedUpLeft > 0) {
     out.push({ id: 'fired', label: `FIRED UP ${Math.ceil(s.player.firedUpLeft)}s`, color: '#ff8c2a', fill: Math.min(1, s.player.firedUpLeft / 60) });
   }
@@ -50,9 +61,6 @@ export function activeBuffs(s: DungeonSnapshot): BuffPill[] {
   }
   if (s.player.mountainKing) {
     out.push({ id: 'mtnKing', label: 'MTN KING', color: '#ff66a8' });
-  }
-  if (s.paceBias.bias !== 0) {
-    out.push({ id: 'pace', label: s.paceBias.label.toUpperCase(), color: s.paceBias.color });
   }
   if (s.player.warded) {
     out.push({ id: 'ward', label: 'WARD', color: '#7fe7ff' });

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile, TuningRegistry } from '../../../core';
 import { module } from '../index';
-import { ARCHETYPES, ARCHETYPE_ORDER, PACE_MODES } from '../sim/archetypes';
+import { ARCHETYPES, ARCHETYPE_ORDER } from '../sim/archetypes';
+import { STATUS_DEFS } from '../sim/statusEffects';
 import { SKILL_TREES } from '../sim/skillTree';
 import { BRANCH_CRESTS, RELIC_ICONS, SKILL_ICONS, UI_ICONS } from '../render/skillArt';
 import { GLYPHS } from '../render/font';
@@ -46,7 +47,7 @@ describe('skillArt pixel icons & pixel-font glyph coverage', () => {
     for (const [k, rows] of Object.entries(UI_ICONS)) assertGrid(`ui:${k}`, rows);
   });
 
-  it('uses only characters present in font.ts GLYPHS across all archetype, pace, and skill copy', () => {
+  it('uses only characters present in font.ts GLYPHS across all archetype, status, and skill copy', () => {
     for (const aid of ARCHETYPE_ORDER) {
       const a = ARCHETYPES[aid];
       assertAllGlyphsSupported(`${aid}.name`, a.name);
@@ -71,14 +72,13 @@ describe('skillArt pixel icons & pixel-font glyph coverage', () => {
         }
       }
     }
-    for (const pm of Object.values(PACE_MODES)) {
-      assertAllGlyphsSupported(`pace.${pm.id}.label`, pm.label);
-      assertAllGlyphsSupported(`pace.${pm.id}.shortLabel`, pm.shortLabel);
-      assertAllGlyphsSupported(`pace.${pm.id}.desc`, pm.desc);
+    for (const st of Object.values(STATUS_DEFS)) {
+      assertAllGlyphsSupported(`status.${st.kind}.label`, st.label);
+      assertAllGlyphsSupported(`status.${st.kind}.desc`, st.desc);
     }
   });
 
-  it('protects unfocused Tier 3 Forks with two-step tap focus and emits distinct audio cues for upgrades, forks, and pace shifts', () => {
+  it('protects unfocused Tier 3 Forks with two-step tap focus and emits distinct audio cues for upgrades and forks', () => {
     const reg = new TuningRegistry({ profileId: 'skill-ux-test' });
     reg.scoped('dungeon').num('baseDamage', 10, 1, 200, 1);
     reg.set('dungeon.baseDamage', 140);
@@ -91,17 +91,6 @@ describe('skillArt pixel icons & pixel-font glyph coverage', () => {
       simOpts: { skipCamp: true, invulnerable: true, skills: 'none' },
       tuningRegistry: reg,
     });
-
-    // Pace Bias shifts emit distinct surge / chime / swap cues
-    s.sim.receive?.({ type: 'paceBias', bias: 1 });
-    s.step(1);
-    expect((s.sim.snapshot() as any).cues.some((c: any) => c.name === 'surge')).toBe(true);
-    s.sim.receive?.({ type: 'paceBias', bias: -1 });
-    s.step(1);
-    expect((s.sim.snapshot() as any).cues.some((c: any) => c.name === 'chime')).toBe(true);
-    s.sim.receive?.({ type: 'paceBias', bias: 0 });
-    s.step(1);
-    expect((s.sim.snapshot() as any).cues.some((c: any) => c.name === 'swap')).toBe(true);
 
     // Earn >= 3 SP by clearing rooms
     for (let i = 0; i < 30 * 60 * 5; i++) {

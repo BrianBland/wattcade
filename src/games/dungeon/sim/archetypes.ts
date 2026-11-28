@@ -1,4 +1,4 @@
-// Hero Archetypes & Mid-Ride Pace Bias (pure, deterministic).
+// Hero Archetypes (pure, deterministic).
 // Each archetype couples a cycling workout profile (DirectorCfg overrides in both ERG and Grade)
 // with a distinct combat silhouette, weapon family, and 3 Diablo-style skill trees.
 import type { DirectorCfg, Seg, SegTarget } from './director';
@@ -7,41 +7,6 @@ import type { WeaponStyle } from './loot';
 export type ArchetypeId = 'rouleur' | 'puncheur' | 'grimpeur';
 export type HeroChassis = 'vanguard' | 'skirmisher' | 'arcanist' | 'ranger';
 export type JerseyKit = 'yellow' | 'green' | 'polka' | 'rainbow';
-export type PaceBias = -1 | 0 | 1;
-
-export interface PaceModeDef {
-  bias: PaceBias;
-  id: 'cool' | 'cruise' | 'push';
-  label: string;
-  shortLabel: string;
-  color: string;
-  ergDelta: number;     // additive FTP fraction delta
-  gradeDelta: number;   // additive grade % delta
-  dmgMult: number;      // outgoing damage multiplier
-  dmgTakenMult: number; // incoming damage multiplier
-  regenMult: number;    // passive regen multiplier
-  cdRefillMult: number; // cooldown refill speed multiplier
-  bountyMult: number;   // coins + XP multiplier
-  desc: string;
-}
-
-export const PACE_MODES: Record<PaceBias, PaceModeDef> = {
-  [-1]: {
-    bias: -1, id: 'cool', label: 'Cool Off', shortLabel: 'COOL', color: '#66ccff',
-    ergDelta: -0.14, gradeDelta: -1.5, dmgMult: 0.9, dmgTakenMult: 0.85, regenMult: 1.35, cdRefillMult: 0.92, bountyMult: 0.95,
-    desc: 'Lighter effort, +35% regen, -15% damage taken',
-  },
-  0: {
-    bias: 0, id: 'cruise', label: 'Cruise', shortLabel: 'BASE', color: '#ffd84a',
-    ergDelta: 0, gradeDelta: 0, dmgMult: 1, dmgTakenMult: 1, regenMult: 1, cdRefillMult: 1, bountyMult: 1,
-    desc: 'Archetype target pace',
-  },
-  1: {
-    bias: 1, id: 'push', label: 'Push Hard', shortLabel: 'PUSH', color: '#ff7a2a',
-    ergDelta: 0.12, gradeDelta: 1.5, dmgMult: 1.2, dmgTakenMult: 1.05, regenMult: 0.9, cdRefillMult: 1.2, bountyMult: 1.15,
-    desc: 'Harder effort, +20% dmg & refill, +15% XP/coins',
-  },
-};
 
 export interface ArchetypeDef {
   id: ArchetypeId;
@@ -266,19 +231,17 @@ export function grimpeurProgress(p: UnlockProgress): {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 /**
- * Derive the effective DirectorCfg for an archetype and active mid-ride Pace Bias.
+ * Derive the effective DirectorCfg for an archetype.
  * Applies cleanly to both ERG targets and Grade offsets while keeping warmup/cooldown safe.
  */
-export function archetypeDirectorCfg(base: DirectorCfg, archId: ArchetypeId, paceBias: PaceBias): DirectorCfg {
+export function archetypeDirectorCfg(base: DirectorCfg, archId: ArchetypeId): DirectorCfg {
   const arch = ARCHETYPES[archId];
-  const pm = PACE_MODES[paceBias];
   const targets = {} as Record<Seg, SegTarget>;
   for (const seg of Object.keys(base.targets) as Seg[]) {
     const b = base.targets[seg];
     const ov = arch.director.targets[seg];
-    const isCalm = seg === 'warmup' || seg === 'cooldown';
-    const rawErg = (ov?.erg ?? b.erg) + (isCalm ? 0 : pm.ergDelta);
-    const rawGrade = (ov?.grade ?? b.grade) + (isCalm ? 0 : pm.gradeDelta);
+    const rawErg = ov?.erg ?? b.erg;
+    const rawGrade = ov?.grade ?? b.grade;
     targets[seg] = {
       ...b,
       ...(ov ?? {}),

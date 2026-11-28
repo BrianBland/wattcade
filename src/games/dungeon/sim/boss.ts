@@ -18,8 +18,8 @@ export interface BossCfg {
   tideMax: number;                // cap on the tide bonus (fraction)
 }
 export const DEFAULT_BOSS: BossCfg = {
-  phaseSplits: [0.66, 0.33], bigEveryS: 20, bigEveryPhaseCut: 3, windupS: 2, exposedS: 5, exposedMult: 2,
-  strikeBonusS: 1.5, parryBonusS: 2, staggerS: 1.5, tideAfterS: 120, tideRate: 0.01, tideMax: 1,
+  phaseSplits: [0.66, 0.33], bigEveryS: 13, bigEveryPhaseCut: 2, windupS: 1.85, exposedS: 5, exposedMult: 2,
+  strikeBonusS: 1.5, parryBonusS: 2, staggerS: 1.5, tideAfterS: 140, tideRate: 0.01, tideMax: 1,
 };
 
 export interface BossState { phase: 1 | 2 | 3; cycle: BossCycle; cycleT: number; left: number; fightT: number; parried: boolean; struck: boolean }

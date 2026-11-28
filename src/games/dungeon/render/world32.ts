@@ -339,20 +339,123 @@ export function lavaTexture(t: number): HTMLCanvasElement {
   }
   g.putImageData(d, 0, 0); return lavaC;
 }
-/** Lava over visible swamp tiles of the Deep, with a cooled crust skin along every bank. Emissive: call after lighting. */
+/** Lava over visible swamp tiles of the Deep, with organic curved volcanic basalt shorelines & caldera crusts. Emissive: call after lighting. */
 export function drawLava(g: CanvasRenderingContext2D, tiles: Array<{ x: number; y: number }>, isSwamp: (x: number, y: number) => boolean, t: number) {
   const tex = lavaTexture(t);
+  const ROUND = [14, 11, 9, 7, 6, 5, 4, 3, 2, 2, 1, 1];
+  const waveX = (wy: number, seed: number) =>
+    Math.max(1, Math.min(9, Math.round(4.5 + Math.sin(wy * 0.13 + seed) * 2.6 + Math.sin(wy * 0.29 + seed * 2.1) * 1.4)));
+  const waveY = (wx: number, seed: number) =>
+    Math.max(1, Math.min(9, Math.round(4.8 + Math.sin(wx * 0.13 + seed) * 2.6 + Math.sin(wx * 0.27 + seed * 1.9) * 1.4)));
+
   for (const q of tiles) {
     const px = q.x * T32, py = q.y * T32, ox = (q.x * T32) % 64, oy = (q.y * T32) % 64;
-    g.drawImage(tex, ox, oy, 32, 32, px, py, 32, 32);
-    g.fillStyle = '#3a1008';
-    if (!isSwamp(q.x, q.y - 1)) { g.fillRect(px, py, 32, 4); g.fillStyle = '#7a2a10'; g.fillRect(px, py + 4, 32, 1); g.fillStyle = '#3a1008'; }
-    if (!isSwamp(q.x - 1, q.y)) g.fillRect(px, py, 2, 32);
-    if (!isSwamp(q.x + 1, q.y)) g.fillRect(px + 30, py, 2, 32);
-    if (!isSwamp(q.x, q.y + 1)) g.fillRect(px, py + 30, 32, 2);
-    // a bubble now and then
+    const N = !isSwamp(q.x, q.y - 1), S = !isSwamp(q.x, q.y + 1), Wn = !isSwamp(q.x - 1, q.y), E = !isSwamp(q.x + 1, q.y);
+    const cNW = N && Wn, cNE = N && E, cSW = S && Wn, cSE = S && E;
+    // Concave inner corners (two adjacent lava neighbors, diagonal is rock) get a rounded basalt headland
+    const inNW = !N && !Wn && !isSwamp(q.x - 1, q.y - 1);
+    const inNE = !N && !E && !isSwamp(q.x + 1, q.y - 1);
+    const inSW = !S && !Wn && !isSwamp(q.x - 1, q.y + 1);
+    const inSE = !S && !E && !isSwamp(q.x + 1, q.y + 1);
+
+    g.save();
+    // Soft molten ambient glow bleeding onto adjacent volcanic stone banks
+    g.fillStyle = 'rgba(255, 104, 24, 0.15)';
+    if (N) g.fillRect(px + (cNW ? 8 : 0), py - 2, T32 - (cNW ? 8 : 0) - (cNE ? 8 : 0), 5);
+    if (S) g.fillRect(px + (cSW ? 8 : 0), py + 29, T32 - (cSW ? 8 : 0) - (cSE ? 8 : 0), 4);
+    if (Wn) g.fillRect(px - 2, py + (cNW ? 8 : 0), 5, T32 - (cNW ? 8 : 0) - (cSW ? 8 : 0));
+    if (E) g.fillRect(px + 29, py + (cNE ? 8 : 0), 4, T32 - (cNE ? 8 : 0) - (cSE ? 8 : 0));
+
+    // World-space curved shoreline insets (continuous across tile seams!)
+    const leftEdge = (yy: number) => {
+      let l = Wn ? waveX(py + yy, 0.7) : 0;
+      if (cNW && yy < ROUND.length) l = Math.max(l, ROUND[yy]);
+      if (cSW && 31 - yy < ROUND.length) l = Math.max(l, ROUND[31 - yy]);
+      if (inNW && yy < 5) l = Math.max(l, 5 - yy);
+      if (inSW && 31 - yy < 5) l = Math.max(l, 5 - (31 - yy));
+      return l;
+    };
+    const rightEdge = (yy: number) => {
+      let r = E ? waveX(py + yy, 3.4) : 0;
+      if (cNE && yy < ROUND.length) r = Math.max(r, ROUND[yy]);
+      if (cSE && 31 - yy < ROUND.length) r = Math.max(r, ROUND[31 - yy]);
+      if (inNE && yy < 5) r = Math.max(r, 5 - yy);
+      if (inSE && 31 - yy < 5) r = Math.max(r, 5 - (31 - yy));
+      return r;
+    };
+    const topEdge = (xx: number) => {
+      let tp = N ? waveY(px + xx, 1.9) : 0;
+      if (cNW && xx < ROUND.length) tp = Math.max(tp, ROUND[xx]);
+      if (cNE && 31 - xx < ROUND.length) tp = Math.max(tp, ROUND[31 - xx]);
+      return tp;
+    };
+    const botEdge = (xx: number) => {
+      let bt = S ? waveY(px + xx, 4.6) : 0;
+      if (cSW && xx < ROUND.length) bt = Math.max(bt, ROUND[xx]);
+      if (cSE && 31 - xx < ROUND.length) bt = Math.max(bt, ROUND[31 - xx]);
+      return bt;
+    };
+
+    // Clip to organic flowing volcanic caldera silhouette and blit live lava texture
+    g.beginPath();
+    for (let yy = 0; yy < T32; yy++) {
+      const l = leftEdge(yy), r = rightEdge(yy);
+      const x0 = l, x1 = T32 - r;
+      if (x1 <= x0) continue;
+      if ((N && yy < 14) || (S && yy >= T32 - 14)) {
+        for (let xx = x0; xx < x1; xx += 2) {
+          const okN = !N || yy >= topEdge(xx);
+          const okS = !S || 31 - yy >= botEdge(xx);
+          if (okN && okS) g.rect(px + xx, py + yy, Math.min(2, x1 - xx), 1);
+        }
+      } else {
+        g.rect(px + x0, py + yy, x1 - x0, 1);
+      }
+    }
+    g.clip();
+    g.drawImage(tex, ox, oy, T32, T32, px, py, T32, T32);
+
+    // Cooled dark basalt crust rim hugging the inside of every curved shoreline
+    for (let yy = 0; yy < T32; yy++) {
+      const l = leftEdge(yy), r = rightEdge(yy);
+      if (l > 0) {
+        g.fillStyle = '#2d0b05'; g.fillRect(px + l, py + yy, 2, 1);
+        g.fillStyle = '#7d240b'; g.fillRect(px + l + 2, py + yy, 1, 1);
+      }
+      if (r > 0) {
+        g.fillStyle = '#2d0b05'; g.fillRect(px + T32 - r - 2, py + yy, 2, 1);
+        g.fillStyle = '#7d240b'; g.fillRect(px + T32 - r - 3, py + yy, 1, 1);
+      }
+    }
+    if (N) for (let xx = 0; xx < T32; xx += 2) {
+      const tb = topEdge(xx);
+      g.fillStyle = '#240804'; g.fillRect(px + xx, py + tb, 2, 2);
+      g.fillStyle = '#7d240b'; g.fillRect(px + xx, py + tb + 2, 2, 1);
+    }
+    if (S) for (let xx = 0; xx < T32; xx += 2) {
+      const bb = botEdge(xx);
+      g.fillStyle = '#2d0b05'; g.fillRect(px + xx, py + T32 - bb - 2, 2, 2);
+      g.fillStyle = '#7d240b'; g.fillRect(px + xx, py + T32 - bb - 3, 2, 1);
+    }
+
+    // Cooled floating volcanic basalt crust islands inside larger magma interiors
+    if (!N && !S && !Wn && !E && hashF(q.x * 7, q.y * 5) < 0.45) {
+      const ix = px + 6 + Math.floor(hashF(q.x * 3, q.y * 11) * 12);
+      const iy = py + 7 + Math.floor(hashF(q.x * 11, q.y * 3) * 12);
+      g.fillStyle = '#1d0704'; g.fillRect(ix, iy + 2, 10, 4); g.fillRect(ix + 2, iy, 6, 8);
+      g.fillStyle = '#47150a'; g.fillRect(ix + 2, iy + 1, 5, 3);
+      g.fillStyle = '#8a2d0f'; g.fillRect(ix + 1, iy + 5, 6, 1);
+    }
+
+    // Glowing magma pop bubble
     const b = (t * 0.7 + hashF(q.x, q.y)) % 1;
-    if (b < 0.25) { const bx = px + 6 + Math.floor(hashF(q.x * 3, q.y) * 20), by = py + 8 + Math.floor(hashF(q.x, q.y * 3) * 16); g.fillStyle = b < 0.12 ? '#ffe08a' : '#9a2a0a'; g.fillRect(bx, by, 2, 2); }
+    if (b < 0.26) {
+      const bx = px + 8 + Math.floor(hashF(q.x * 3, q.y) * 16);
+      const by = py + 8 + Math.floor(hashF(q.x, q.y * 3) * 15);
+      g.fillStyle = b < 0.13 ? '#ffe08a' : '#d24a16';
+      g.fillRect(bx, by, b < 0.13 ? 3 : 2, 2);
+    }
+    g.restore();
   }
 }
 const hashF = (x: number, y: number) => hash(x * 31 + 7, y * 17 + 3);

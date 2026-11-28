@@ -72,7 +72,7 @@ export function musicFor(s: DungeonSnapshot): MusicWant | null {
   if (s.skillTree?.offer) return { cue: 'camp', gain: 0.24, tempoScale: 1.05, intensity: 0.4 };
 
   const fired = (s.player.firedUpLeft ?? 0) > 0;
-  const rhythm = s.paceBias.bias === 1 || !!s.player.bulletTime || !!s.player.mountainKing;
+  const rhythm = (s.terrain?.extraGrade ?? 0) >= 2 || !!s.player.bulletTime || !!s.player.mountainKing;
   const enemies = s.enemies?.length ?? 0;
 
   if (s.boss?.active) {

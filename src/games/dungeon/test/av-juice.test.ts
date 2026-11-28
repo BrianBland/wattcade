@@ -141,15 +141,18 @@ describe('Purgatour visual juice engine', () => {
     expect(juice.recoilOf(e1.id)).toEqual({ dx: 0, dy: 0 });
   });
 
-  it('extracts active HUD buff pills for Fired Up, Photo Finish, Pace Bias, Ward, and Rally', () => {
+  it('extracts active HUD status debuffs, bogged alert, and buff pills for Fired Up, Photo Finish, Ward, and Rally', () => {
     const snap = baseSnap();
     const buffed: DungeonSnapshot = {
       ...snap,
       player: { ...snap.player, firedUpLeft: 42, warded: true, rallied: true, bulletTime: true },
-      paceBias: { ...snap.paceBias, bias: 1, label: 'Push Hard', color: '#ff7a2a' },
+      statuses: [{ kind: 'slimed', label: 'SLIMED', color: '#6dff6d', leftS: 3.5, totalS: 4.2, gradeAdd: 2.5 }],
+      terrain: { extraGrade: 2.5, demandedFtp: 0.85, bogged: true },
     };
     const pills = activeBuffs(buffed);
-    expect(pills.map((p) => p.id)).toEqual(['fired', 'bulletTime', 'pace', 'ward', 'rally']);
-    expect(pills[0].label).toContain('FIRED UP 42s');
+    expect(pills.map((p) => p.id)).toEqual(['st_slimed', 'bogged', 'fired', 'bulletTime', 'ward', 'rally']);
+    expect(pills[0].label).toContain('SLIMED +2.5%');
+    expect(pills[1].label).toBe('DIG IN!');
+    expect(pills[2].label).toContain('FIRED UP 42s');
   });
 });

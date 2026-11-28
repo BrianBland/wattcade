@@ -41,7 +41,7 @@ describe('Purgatour P0 regressions', () => {
     s.step(1);
     expect(snap().phase).toBe('run');
     expect(s.sim.inMenu!()).toBe(false);
-    expect(s.sim.hud!().touchControls).toEqual(['left', 'right', 'a', 'b', 'y', 'z']);
+    expect(s.sim.hud!().touchControls).toEqual(['a', 'b', 'y', 'z']);
 
     // Ride until first death returns to Camp
     for (let i = 0; i < 30 * 60 * 20 && snap().stats.deaths === 0; i++) s.step(1);
@@ -82,7 +82,7 @@ describe('Purgatour P0 regressions', () => {
     expect(banners).toBe(1);
   });
 
-  it('clears combat resistance grades and hides touch controls when the room-clear Level-Up skill offer opens', () => {
+  it('clears combat resistance grades and hides touch controls when the new-floor Level-Up skill offer opens', () => {
     const reg = new TuningRegistry({ profileId: 'p0-skill-grade' });
     reg.scoped('dungeon').num('baseDamage', 10, 1, 200, 1);
     reg.set('dungeon.baseDamage', 120);

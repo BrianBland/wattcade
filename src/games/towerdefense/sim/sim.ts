@@ -923,6 +923,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       } else if (tw.kind === 'mortar') {
         // Lead the target along its road; the shell bursts where it lands and spares fliers.
         const tg = target!, flight = mortarFlight(), ahead = geo.lanes[tg.lane].at(tg.d + travelSpeed(tg) * flight);
+        tw.angle = Math.atan2(ahead.x - p.x, p.y - ahead.y); // the barrel points where the shell will land
         shells.push({ x0: p.x, y0: p.y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg, r: (def.splash ?? 6) * mortarSplashT(), burnS: 0, burnDps: 0, tower: tw.pad });
         cue('mortar');
       } else {
@@ -1743,7 +1744,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         padCursor: phase === 'run' && !workshop ? cursorPad() : -1, inputEpoch,
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt,
           ...(x.burstAt != null ? { burstAt: x.burstAt, burstS: flamerBurstS() } : {}) })),
-        shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight, r: s.r, ...(s.tower != null ? { tower: true } : {}) })),
+        shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight, r: s.r, ...(s.tower != null ? { tower: true, pad: s.tower } : {}) })),
         burns: burns.map((b): BurnView => ({ x: b.x, y: b.y, r: b.r, k: b.left / b.total })),
         workshop: workshopView(),
         enemies: enemies.map(enemyView), fx: fx.slice(), banner,
